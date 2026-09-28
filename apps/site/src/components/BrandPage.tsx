@@ -3,7 +3,7 @@ import { Fragment, useId, useState, type ReactNode } from 'react'
 import { productLinks } from '../data/products'
 import { routeBrand, type BrandSlug } from '../lib/brand'
 import { faviconGlyphScale, iconGrid, iconSizes, iconTiles, tilePath } from '../lib/iconGrid'
-import { actionMarkBox, latticesAccent, latticesGrid, latticesPalette } from '../lib/marks'
+import { actionMarkBox, latticesAccent, latticesCentres, latticesGrid, latticesPalette, type LatticesCentre } from '../lib/marks'
 import { ActionMark } from './ActionMark'
 import { BlinkMark } from './blink/BlinkMark'
 import { LatticesMark } from './LatticesMark'
@@ -19,8 +19,8 @@ const products = productLinks.map((link) => ({ ...link, slug: routeBrand(link.hr
 /** What each mark draws, what its accent stands for, and its pages' tab title. */
 const markNotes: Record<BrandSlug, { meaning: string; accent: string; tab: string }> = {
   lattices: {
-    meaning: 'The L of a 3 × 3 grid. The centre is a quarter turn pivoting on the crook of the L: the arc a tile sweeps as it swings into place.',
-    accent: 'The tile swinging into place',
+    meaning: "The L of a 3 × 3 grid, with Action's cursor in the centre and its tip in the crook of the L: Lattices puts a window where you point.",
+    accent: 'The pointer taking aim',
     tab: 'Lattices — the programmable workspace for Mac',
   },
   action: {
@@ -53,6 +53,7 @@ const repoTree = 'https://github.com/arach/lattices/tree/main'
 const toc = [
   ['marks', 'Marks'],
   ['accent', 'Accent'],
+  ['centres', 'Centres'],
   ['icons', 'App icons'],
   ['favicons', 'Favicons'],
   ['open-graph', 'Open Graph'],
@@ -174,6 +175,25 @@ export default function BrandPage() {
               ))}
             </ul>
           </div>
+        </Section>
+
+        <Section
+          id="centres"
+          title="Centres"
+          lede={<>The pointer is the Lattices centre. A surface swaps in another with <code>centre</code> only while Lattices does that job there.</>}
+        >
+          <ul className="brand-accent-marks brand-centres">
+            {(Object.keys(latticesCentres) as LatticesCentre[]).map((centre) => (
+              <li key={centre}>
+                <LatticesMark size={56} centre={centre} />
+                <p className="brand-centre-name">
+                  <strong>{latticesCentres[centre].name}</strong>
+                  <code>{latticesCentres[centre].job}</code>
+                </p>
+                <span>{latticesCentres[centre].note}</span>
+              </li>
+            ))}
+          </ul>
         </Section>
 
         <Section id="icons" title="App icons">

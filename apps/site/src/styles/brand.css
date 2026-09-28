@@ -435,6 +435,34 @@
   text-wrap: pretty;
 }
 
+/* The default pointer takes the full row on narrow screens, so the other four pair up. */
+.brand-centres li:first-child {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 820px) {
+  .brand-centres {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .brand-centres li:first-child {
+    grid-column: auto;
+  }
+}
+
+.brand-centre-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.brand-centre-name code {
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+}
+
 /* ── App icon ladders ── */
 
 .brand-ladders {
