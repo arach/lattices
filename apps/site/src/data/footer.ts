@@ -54,6 +54,7 @@ export const footerColumns: FooterColumn[] = [
     links: [
       { label: 'Blog', href: '/blog' },
       { label: 'RSS feed', href: '/rss.xml' },
+      { label: 'Brand', href: '/brand' },
       { label: 'Releases', href: `${repo}/releases`, external: true },
       { label: 'Source', href: repo, external: true },
       { label: 'Report an issue', href: `${repo}/issues/new`, external: true },

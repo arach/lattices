@@ -8,6 +8,7 @@ import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
 import FamilyPage from './components/FamilyPage'
+import BrandPage from './components/BrandPage'
 import { SiteFooter, SiteHeader } from './components/SiteChrome'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 import { routeBrand } from './lib/brand'
@@ -65,6 +66,7 @@ export default function SiteApp() {
   if (route.kind === 'speech') return <SpeechPage />
   if (route.kind === 'products') return <ProductsPage />
   if (route.kind === 'family') return <FamilyPage />
+  if (route.kind === 'brand') return <BrandPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
@@ -117,6 +119,7 @@ type Route =
   | { kind: 'speech'; title: string; description: string }
   | { kind: 'products'; title: string; description: string }
   | { kind: 'family'; title: string; description: string }
+  | { kind: 'brand'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
@@ -162,6 +165,14 @@ function resolveRoute(path: string): Route {
       kind: 'family',
       title: 'What Lattices can do — Lattices',
       description: 'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
+    }
+  }
+
+  if (path === '/brand') {
+    return {
+      kind: 'brand',
+      title: 'Brand — Lattices',
+      description: 'Marks, app icons, favicons and social cards for Lattices, Action, Blink and Speech.',
     }
   }
 
