@@ -84,6 +84,10 @@ enum ActionBlinkInput {
         kAXMenuButtonRole, kAXMenuItemRole, kAXDisclosureTriangleRole, "AXLink", "AXTab",
     ]
 
+    private static let focusableRoles: Set<String> = [
+        kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole, "AXSearchField",
+    ]
+
     /// Presses the pressable element at `point`, climbing a few parents from the hit
     /// element (a button's label or image is often what the hit test returns). Returns
     /// the pressed role, or nil when nothing there takes AXPress.
@@ -97,6 +101,16 @@ enum ActionBlinkInput {
         for _ in 0..<4 {
             let role = stringAttribute(element, kAXRoleAttribute) ?? ""
             if role == kAXWindowRole || role == kAXApplicationRole { return nil }
+            // A click into a text field is a focus change; accessibility can make it
+            // directly. Checked by reading focus back, since web views may ignore the write.
+            if focusableRoles.contains(role) {
+                var settable: DarwinBoolean = false
+                guard AXUIElementIsAttributeSettable(element, kAXFocusedAttribute as CFString, &settable) == .success,
+                      settable.boolValue,
+                      AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success,
+                      boolAttribute(element, kAXFocusedAttribute) == true else { return nil }
+                return "\(role) focused"
+            }
             if pressableRoles.contains(role) {
                 guard boolAttribute(element, kAXEnabledAttribute) != false,
                       actionNames(element).contains(kAXPressAction),
@@ -142,10 +156,18 @@ enum ActionBlinkInput {
         if accessibilityFirst, let role = insertText(text, into: app) {
             return "\(targetLabel(for: app)) \(text.count) chars via=ax role=\(role)"
         }
+        var landed = false
         try borrowFocus(of: app, anyDisplay: anyDisplay) {
+            let field = focusedTextElement(of: app)
+            let before = field.flatMap { stringAttribute($0, kAXValueAttribute) }
             try postTextToApp(app: app, text: text, delayMs: delayMs)
+            // Draining the app's main loop isn't enough when the field lives in another
+            // process (a web view): hold focus until the text shows up in the field.
+            if let field, let before {
+                landed = waitForValue(of: field, toContain: text, changedFrom: before, timeoutMs: 1_000 + 8 * text.count)
+            }
         }
-        return "\(targetLabel(for: app)) \(text.count) chars via=keys"
+        return "\(targetLabel(for: app)) \(text.count) chars via=keys\(landed ? " verified" : "")"
     }
 
     /// Inserts `text` at the caret of the app's focused text element by replacing its
@@ -154,27 +176,40 @@ enum ActionBlinkInput {
     /// write and ignore it. Secure fields, and elements without a readable value, are
     /// left to keystrokes.
     private static func insertText(_ text: String, into app: NSRunningApplication) -> String? {
+        guard let element = focusedTextElement(of: app) else { return nil }
+        var settable: DarwinBoolean = false
+        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
+              settable.boolValue,
+              let before = stringAttribute(element, kAXValueAttribute),
+              AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success,
+              // A web view applies the edit in its content process, a beat later.
+              waitForValue(of: element, toContain: text, changedFrom: before, timeoutMs: 300) else { return nil }
+        return stringAttribute(element, kAXRoleAttribute)
+    }
+
+    /// The app's focused element when it is a non-secure text element.
+    private static func focusedTextElement(of app: NSRunningApplication) -> AXUIElement? {
         let application = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(application, 0.5)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
               let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
         let element = focused as! AXUIElement
-
         let role = stringAttribute(element, kAXRoleAttribute) ?? ""
         let subrole = stringAttribute(element, kAXSubroleAttribute) ?? ""
-        guard [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole, "AXSearchField"].contains(role),
-              subrole != kAXSecureTextFieldSubrole else { return nil }
+        guard focusableRoles.contains(role), subrole != kAXSecureTextFieldSubrole else { return nil }
+        return element
+    }
 
-        var settable: DarwinBoolean = false
-        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
-              settable.boolValue,
-              let before = stringAttribute(element, kAXValueAttribute) else { return nil }
-
-        guard AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success,
-              let after = stringAttribute(element, kAXValueAttribute),
-              after != before, after.contains(text) else { return nil }
-        return role
+    private static func waitForValue(of element: AXUIElement, toContain text: String, changedFrom before: String, timeoutMs: Int) -> Bool {
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1_000)
+        repeat {
+            if let value = stringAttribute(element, kAXValueAttribute), value != before, value.contains(text) {
+                return true
+            }
+            usleep(10_000)
+        } while Date() < deadline
+        return false
     }
 
     static func press(_ key: String, modifiers: [String], into app: NSRunningApplication, anyDisplay: Bool) throws -> String {
