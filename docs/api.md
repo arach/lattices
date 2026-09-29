@@ -2123,6 +2123,9 @@ Returns empty `layers` array if no workspace config is loaded.
 Show All. Puts back every window a layer switch parked and unhides every
 app a switch hid; apps the user hid stay hidden. A window parked on a
 desktop that isn't showing stays parked until that desktop is showing.
+Untracked windows sitting in the park corner (an app can reopen a window
+where it last saw it) are centred on the main screen and counted in
+`rescued`.
 
 **Params**: none
 
@@ -2133,6 +2136,7 @@ desktop that isn't showing stays parked until that desktop is showing.
   "ok": true,
   "unparked": 3,
   "stillParked": 0,
+  "rescued": 0,
   "unhidden": ["Slack"],
   "stage": { "parked": [], "hidden": [] }
 }

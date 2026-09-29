@@ -24,7 +24,9 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
     if (sub === "reveal" || sub === "show-all") {
       const result = await daemonCall("layers.reveal") as any;
       const unhidden: string[] = result.unhidden ?? [];
+      const rescued: number = result.rescued ?? 0;
       console.log(`Put back ${result.unparked} parked window${result.unparked === 1 ? "" : "s"}` +
+        (rescued ? `, rescued ${rescued} stranded in the corner` : "") +
         (unhidden.length ? `, unhid ${unhidden.join(", ")}` : "") + ".");
       if (result.stillParked > 0) {
         console.log(`${result.stillParked} still parked on a desktop that isn't showing; run this again from there.`);

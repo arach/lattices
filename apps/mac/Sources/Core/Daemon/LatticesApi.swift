@@ -1035,13 +1035,14 @@ final class LatticesApi {
             description: "Show All: put back every window a layer switch parked and unhide every app it hid",
             access: .mutate,
             params: [],
-            returns: .custom("Object with 'unparked' and 'stillParked' counts, 'unhidden' app names, and the resulting 'stage'"),
+            returns: .custom("Object with 'unparked', 'stillParked' and 'rescued' counts, 'unhidden' app names, and the resulting 'stage'"),
             handler: { _ in
                 let outcome = LayerStage.shared.showAll()
                 return .object([
                     "ok": .bool(true),
                     "unparked": .int(outcome.unparked),
                     "stillParked": .int(outcome.stillParked),
+                    "rescued": .int(outcome.rescued),
                     "unhidden": .array(outcome.unhidden.map { .string($0) }),
                     "stage": Self.layerStageStatus()
                 ])

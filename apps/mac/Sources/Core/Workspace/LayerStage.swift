@@ -15,6 +15,11 @@ import ApplicationServices
 /// Parked frames are written to `~/.lattices/layer-stage.json` so a window
 /// can't be stranded in the corner: quitting puts them back, and after a
 /// crash the next launch does.
+///
+/// Not every app lets a window go off-screen: standard Cocoa windows
+/// constrain an AX move to the visible frame, so "parking" one just piles it
+/// in the corner. Each park is read back, and a window that didn't go past
+/// the edge is put straight back and left showing.
 final class LayerStage {
     static let shared = LayerStage()
 
@@ -33,11 +38,16 @@ final class LayerStage {
         /// Parked windows AX couldn't reach: they sit on a desktop that
         /// isn't showing.
         var stillParked = 0
+        /// Windows whose app kept them on screen: put back where they were.
+        var refused = 0
+        /// Untracked windows found in the park corner and brought back.
+        var rescued = 0
         var hidden: [String] = []
         var unhidden: [String] = []
 
         var summary: String {
             "parked \(parked), unparked \(unparked), still parked \(stillParked), "
+                + "refused \(refused), rescued \(rescued), "
                 + "hid [\(hidden.joined(separator: ", "))], unhid [\(unhidden.joined(separator: ", "))]"
         }
     }
@@ -79,6 +89,7 @@ final class LayerStage {
     func status() -> Status {
         lock.lock(); defer { lock.unlock() }
         pruneLocked(Stage.mainBounds)
+        persistLocked()
         let hidden = state.hiddenPids.compactMap { pid -> String? in
             guard let app = NSRunningApplication(processIdentifier: pid), app.isHidden else { return nil }
             return app.localizedName ?? "pid \(pid)"
@@ -179,7 +190,7 @@ final class LayerStage {
             })
         }
         if stage.canPark {
-            outcome.parked = parkLocked(toPark, at: stage.parkOrigin)
+            (outcome.parked, outcome.refused) = parkLocked(toPark, at: stage.parkOrigin)
         } else if !toPark.isEmpty {
             DiagnosticLog.shared.warn("LayerStage: a display sits past the main screen's bottom-right corner — not parking \(toPark.count) windows")
         }
@@ -197,7 +208,9 @@ final class LayerStage {
     // MARK: - Show All
 
     /// Unpark every parked window, unhide every app a switch hid, and forget
-    /// the layers' scenes. The escape hatch.
+    /// the layers' scenes. The escape hatch: it also brings back windows
+    /// sitting in the park corner that the ledger lost, such as one an app
+    /// reopened where it last saw it.
     @discardableResult
     func showAll() -> Outcome {
         lock.lock()
@@ -211,6 +224,7 @@ final class LayerStage {
         outcome.unparked = restored.count
         state.parked.removeAll { restored.contains($0.wid) }
         outcome.stillParked = state.parked.count
+        outcome.rescued = Self.rescueStrays(tracked: Set(state.parked.map(\.wid)))
         for pid in state.hiddenPids {
             guard let app = NSRunningApplication(processIdentifier: pid), app.isHidden else { continue }
             app.unhide()
@@ -340,25 +354,81 @@ final class LayerStage {
 
     /// Park windows at `origin`, keeping their size. The ledger is written
     /// before anything moves, so a crash mid-switch can't lose a window.
-    private func parkLocked(_ entries: [WindowEntry], at origin: CGPoint) -> Int {
+    /// Returns how many parked, and how many the app kept on screen; those
+    /// go straight back to where they were.
+    private func parkLocked(_ entries: [WindowEntry], at origin: CGPoint) -> (parked: Int, refused: Int) {
         let fresh = entries.filter { entry in !state.parked.contains { $0.wid == entry.wid } }
-        guard !fresh.isEmpty else { return 0 }
+        guard !fresh.isEmpty else { return (0, 0) }
         state.parked.append(contentsOf: fresh.map {
             ParkedWindow(wid: $0.wid, pid: $0.pid, app: $0.app, title: $0.title, frame: $0.frame)
         })
         persistLocked()
 
+        let byWid = Dictionary(fresh.map { ($0.wid, $0) }, uniquingKeysWith: { first, _ in first })
         var moved = Set<UInt32>()
+        var refused = 0
         Self.withAXWindows(for: fresh.map { ($0.wid, $0.pid) }) { wid, axWindow in
             guard !Self.isMinimized(axWindow) else { return }
             var point = origin
             guard let value = AXValueCreate(.cgPoint, &point),
                   AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success else { return }
+            // A Cocoa window constrains the move to the screen; it lands in
+            // the corner in full view. Put it back rather than lose it there.
+            guard let landed = Self.position(of: axWindow), landed.x >= origin.x + 1 - Self.parkedSlack else {
+                if let entry = byWid[wid] {
+                    var home = CGPoint(x: entry.frame.x, y: entry.frame.y)
+                    if let back = AXValueCreate(.cgPoint, &home) {
+                        AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, back)
+                    }
+                }
+                refused += 1
+                return
+            }
             moved.insert(wid)
         }
         let attempted = Set(fresh.map(\.wid))
         state.parked.removeAll { attempted.contains($0.wid) && !moved.contains($0.wid) }
-        return moved.count
+        if refused > 0 {
+            DiagnosticLog.shared.info("LayerStage: \(refused) windows stayed on screen when parked — left where they were")
+        }
+        return (moved.count, refused)
+    }
+
+    /// Bring back windows sitting in the main screen's park corner that
+    /// aren't in the ledger. Centres each on the main screen, keeping its
+    /// size. Only reaches desktops that are showing.
+    private static func rescueStrays(tracked: Set<UInt32>) -> Int {
+        guard let stage = Stage.current(), stage.canPark else { return 0 }
+        let bounds = stage.bounds
+        guard let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return 0 }
+        var strays: [(wid: UInt32, pid: Int32, size: CGSize)] = []
+        for window in info {
+            guard (window[kCGWindowLayer as String] as? Int) == 0,
+                  let wid = window[kCGWindowNumber as String] as? UInt32, !tracked.contains(wid),
+                  let pid = window[kCGWindowOwnerPID as String] as? Int32, pid != getpid(),
+                  stageableApp(pid) != nil,
+                  let dict = window[kCGWindowBounds as String] as? NSDictionary else { continue }
+            var rect = CGRect.zero
+            guard CGRectMakeWithDictionaryRepresentation(dict, &rect),
+                  rect.width >= minSide, rect.height >= minSide,
+                  rect.minX >= bounds.maxX - parkedSlack, rect.minX < bounds.maxX,
+                  rect.minY >= bounds.minY, rect.minY < bounds.maxY else { continue }
+            strays.append((wid, pid, rect.size))
+        }
+        guard !strays.isEmpty else { return 0 }
+        let sizes = Dictionary(strays.map { ($0.wid, $0.size) }, uniquingKeysWith: { first, _ in first })
+        var rescued = 0
+        withAXWindows(for: strays.map { ($0.wid, $0.pid) }) { wid, axWindow in
+            guard let size = sizes[wid] else { return }
+            var point = CGPoint(
+                x: bounds.midX - min(size.width, bounds.width) / 2,
+                y: max(bounds.minY, bounds.midY - min(size.height, bounds.height) / 2)
+            )
+            guard let value = AXValueCreate(.cgPoint, &point),
+                  AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success else { return }
+            rescued += 1
+        }
+        return rescued
     }
 
     /// Move parked windows back to their saved frames. Returns the ones AX
@@ -416,6 +486,14 @@ final class LayerStage {
                 body(wid, axWindow)
             }
         }
+    }
+
+    private static func position(of axWindow: AXUIElement) -> CGPoint? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &ref) == .success,
+              let ref, CFGetTypeID(ref) == AXValueGetTypeID() else { return nil }
+        var point = CGPoint.zero
+        return AXValueGetValue(ref as! AXValue, .cgPoint, &point) ? point : nil
     }
 
     private static func isMinimized(_ axWindow: AXUIElement) -> Bool {

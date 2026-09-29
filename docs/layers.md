@@ -306,6 +306,8 @@ A switch clears the main display before it raises the new layer:
   display's bottom-right corner, where macOS leaves a sliver showing.
   An app that also has windows on another display or desktop is parked
   rather than hidden, so those windows stay where they are.
+  Some apps (TextEdit and other standard Cocoa windows) won't let a
+  window go off-screen; theirs stay where they are and keep showing.
 - **Scenes.** Each layer remembers what else it had showing, beyond its
   own entries, and brings it back when you return. A window you open
   while a layer is up comes back with that layer.
@@ -333,7 +335,8 @@ quitting:
 Show All puts back every parked window and unhides every app a switch
 hid. Apps you hid yourself stay hidden. A window parked on a desktop
 that isn't showing can only move once that desktop is showing, so run
-Show All again from there.
+Show All again from there. It also brings back any window sitting in
+the park corner that Lattices lost track of, centred on the main screen.
 
 ⌘\` can land on a parked window: in Ghostty, a parked terminal. It
 stays in the corner until you switch layers or use Show All.
