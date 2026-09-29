@@ -920,14 +920,16 @@ class WorkspaceManager: ObservableObject {
     }
 
     /// The layer's windows in entry order, front to back within an entry,
-    /// each under the first entry that matches it. `placed` marks the ones
-    /// whose entry sets its own `tile` or `display`, which a layout leaves be.
-    func memberWindows(of layer: Layer, in windows: [WindowEntry]) -> [(entry: WindowEntry, placed: Bool)] {
+    /// each under the first entry that matches it, whose index in
+    /// `layer.projects` is `project`. `placed` marks the ones whose entry
+    /// sets its own `tile` or `display`, which a layout leaves be.
+    func memberWindows(of layer: Layer, in windows: [WindowEntry]) -> [(entry: WindowEntry, placed: Bool, project: Int)] {
         let windows = windows.sorted { $0.zIndex < $1.zIndex }
-        var members: [(entry: WindowEntry, placed: Bool)] = []
+        var members: [(entry: WindowEntry, placed: Bool, project: Int)] = []
         var seen = Set<UInt32>()
+        var project = 0
         func add(_ entry: WindowEntry, placed: Bool) {
-            if seen.insert(entry.wid).inserted { members.append((entry, placed)) }
+            if seen.insert(entry.wid).inserted { members.append((entry, placed, project)) }
         }
         func matchApp(_ app: String, title: String?, placed: Bool) {
             for entry in windows where entry.app.localizedCaseInsensitiveContains(app)
@@ -942,7 +944,8 @@ class WorkspaceManager: ObservableObject {
                 add(entry, placed: placed)
             }
         }
-        for lp in layer.projects {
+        for (index, lp) in layer.projects.enumerated() {
+            project = index
             let placed = lp.tile != nil || lp.display != nil
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 for tab in grp.tabs {
@@ -1008,7 +1011,7 @@ class WorkspaceManager: ObservableObject {
         activeLayerIndex = index
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
+        showBezel(for: index, in: layers)
         if switching {
             HandsOffSession.shared.playCachedCue("Switched.")
         }
@@ -1293,8 +1296,12 @@ class WorkspaceManager: ObservableObject {
         activeLayerIndex = index
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
-        // Show layer bezel
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
+        // Show layer bezel. Its list would call apps still launching not open.
+        if launch {
+            LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
+        } else {
+            showBezel(for: index, in: layers)
+        }
 
         let maxDelay = max(
             fallbacks.isEmpty ? 0.0 : Double(fallbacks.count) * 0.15 + 0.3,

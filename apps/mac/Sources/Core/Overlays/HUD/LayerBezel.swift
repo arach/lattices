@@ -4,10 +4,11 @@ import AppKit
 
 /// The layer switch, laid out like the matrix picker: a 3×3 of slots numbered
 /// like ⌘⌥1–9. Layers fill the eight round the middle (`LayerSlots`); the new
-/// layer's slot is lit and its name sits in a bar underneath. The middle holds
-/// the mark's pointer, aimed at the lit slot. Slots without a layer stay dim.
-/// `acknowledge` shows the bar alone, for actions that don't land on a slot:
-/// tabs, and saved Studio layers.
+/// layer's slot is lit and its name sits in a bar underneath, over a list of
+/// the layer's apps (`LayerRoster`). The middle holds the mark's pointer,
+/// aimed at the lit slot. Slots without a layer stay dim. `acknowledge` shows
+/// the bar alone, for actions that don't land on a slot: tabs, and saved
+/// Studio layers.
 final class LayerBezel {
     static let shared = LayerBezel()
 
@@ -20,11 +21,20 @@ final class LayerBezel {
 
     private init() {}
 
-    /// Lights the slot of layer `index` among `total`, and names it `label`.
-    /// A layer past the eighth has no slot, so none lights.
-    func show(label: String, index: Int, total: Int) {
+    /// Lights the slot of layer `index` among `total`, names it `label`, and
+    /// lists its `apps` underneath. A layer past the eighth has no slot, so
+    /// none lights.
+    func show(label: String, index: Int, total: Int, apps: [LayerRoster.App] = []) {
         let filled = (0..<min(total, LayerSlots.ordered.count)).compactMap(LayerSlots.slot(forIndex:))
-        present(label: label, slots: LayerBezelView.Slots(lit: LayerSlots.slot(forIndex: index), filled: Set(filled)))
+        let rows = apps.map { app -> LayerBezelView.Row in
+            let presence: LayerBezelView.Row.Presence = switch app.place {
+            case .here: .here
+            case .noWindow, .notOpen: .absent
+            default: .away
+            }
+            return LayerBezelView.Row(name: app.name, icon: LayerRoster.icon(for: app), note: app.place.note, presence: presence)
+        }
+        present(label: label, slots: LayerBezelView.Slots(lit: LayerSlots.slot(forIndex: index), filled: Set(filled)), rows: rows)
     }
 
     /// Shows `label` in the bar alone.
@@ -44,19 +54,21 @@ final class LayerBezel {
         })
     }
 
-    private func present(label: String, slots: LayerBezelView.Slots?) {
+    private func present(label: String, slots: LayerBezelView.Slots?, rows: [LayerBezelView.Row] = []) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         dismissTimer?.invalidate()
         generation += 1
 
         let (panel, view) = ensurePanel()
 
-        // Centred, two thirds of the way up the screen.
-        let size = LayerBezelView.size(label: label, slots: slots)
+        // Centred, two thirds of the way up the screen, not counting the
+        // list, so the slots keep their place whatever it holds.
+        let size = LayerBezelView.size(label: label, slots: slots, rows: rows)
         let area = screen.frame
+        let top = area.minY + area.height * 2 / 3 + LayerBezelView.size(label: label, slots: slots).height / 2
         let frame = CGRect(
             x: round(area.midX - size.width / 2),
-            y: round(area.minY + area.height * 2 / 3 - size.height / 2),
+            y: round(top - size.height),
             width: size.width,
             height: size.height
         )
@@ -68,13 +80,14 @@ final class LayerBezel {
             panel.orderFrontRegardless()
         }
         // On screen first, so the pointer's turn has a display to run on.
-        view.show(label: label, slots: slots)
+        view.show(label: label, slots: slots, rows: rows)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
         }
 
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+        // A list takes longer to read.
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: rows.isEmpty ? 1.5 : 2.5, repeats: false) { [weak self] _ in
             self?.dismiss()
         }
     }
@@ -111,15 +124,26 @@ final class LayerBezel {
 // MARK: - Bezel View
 
 /// Nine slots cut like the matrix's cells, numbered in reading order, and the
-/// name bar as a fourth row. The middle slot shows the mark's pointer in place
-/// of its number. Unlike the matrix's see-through cells these are nearly
-/// opaque, so the numbers read over any window.
+/// name bar as a fourth row, over a box listing the layer's apps. The middle
+/// slot shows the mark's pointer in place of its number. Unlike the matrix's
+/// see-through cells these are nearly opaque, so the numbers read over any
+/// window.
 final class LayerBezelView: NSView {
     struct Slots {
         /// The lit slot, numbered 1–9 like its hotkey.
         var lit: Int?
         /// The slots that hold a layer.
         var filled: Set<Int>
+    }
+
+    /// One of the layer's apps, with where its windows are unless they're
+    /// here.
+    struct Row {
+        enum Presence { case here, away, absent }
+        let name: String
+        let icon: NSImage?
+        let note: String?
+        let presence: Presence
     }
 
     static let cellSize: CGFloat = 44
@@ -131,6 +155,13 @@ final class LayerBezelView: NSView {
     static let barInset: CGFloat = 14
     /// How wide a bar shown alone grows before its label truncates.
     static let maxBarWidth: CGFloat = 420
+    static let rowHeight: CGFloat = 24
+    static let listInset = CGSize(width: 10, height: 5)
+    static let iconSide: CGFloat = 16
+    static let iconGap: CGFloat = 7
+    static let noteGap: CGFloat = 16
+    /// How wide the list grows before names truncate.
+    static let maxListWidth: CGFloat = 300
 
     /// #f2f2f2, the mark's ink on dark, lights the active slot.
     static let ink = NSColor(srgbRed: 242 / 255, green: 242 / 255, blue: 242 / 255, alpha: 0.94)
@@ -139,12 +170,15 @@ final class LayerBezelView: NSView {
     static let darkInk = NSColor(srgbRed: 16 / 255, green: 21 / 255, blue: 24 / 255, alpha: 1)
     static let numberFont = rounded(17, .semibold)
     static let labelFont = rounded(13, .semibold)
+    static let nameFont = rounded(12, .medium)
+    static let noteFont = rounded(11, .medium)
     /// The pointer's square, as a share of the middle cell, as in the matrix.
     static let pointerScale: CGFloat = 0.64
     static let turnDuration: CFTimeInterval = 0.16
 
     private var label = ""
     private var slots: Slots?
+    private var rows: [Row] = []
     /// The slot the pointer aims at, nil at rest, once it has aimed.
     private var aimed: Int?
     private var hasAimed = false
@@ -167,12 +201,13 @@ final class LayerBezelView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// Shows `label`, over `slots` if given. When the lit slot changes, the
-    /// pointer turns to it from the slot it aimed at before, so a step shows
-    /// which way it went. The first aim is instant.
-    func show(label: String, slots: Slots?) {
+    /// Shows `label`, under `slots` if given and over `rows`. When the lit
+    /// slot changes, the pointer turns to it from the slot it aimed at
+    /// before, so a step shows which way it went. The first aim is instant.
+    func show(label: String, slots: Slots?, rows: [Row] = []) {
         self.label = label
         self.slots = slots
+        self.rows = rows
         if let slots, !hasAimed || slots.lit != aimed {
             from = pose
             if let lit = slots.lit {
@@ -209,25 +244,51 @@ final class LayerBezelView: NSView {
         needsDisplay = true
     }
 
-    /// Fixed with slots, so a switch never resizes the panel; fitted to
-    /// `label` without.
-    static func size(label: String, slots: Slots?) -> CGSize {
+    /// Fixed with slots, so a switch never resizes the slots and bar; fitted
+    /// to `label` without. A list adds its height, and widens the panel when
+    /// it's wider than the slots.
+    static func size(label: String, slots: Slots?, rows: [Row] = []) -> CGSize {
+        var size: CGSize
         if slots != nil {
-            return CGSize(width: gridSide + pad * 2, height: gridSide + gap + barHeight + pad * 2)
+            size = CGSize(width: gridSide + pad * 2, height: gridSide + gap + barHeight + pad * 2)
+        } else {
+            let text = ceil((label as NSString).size(withAttributes: [.font: labelFont]).width)
+            let width = min(max(gridSide, text + barInset * 2), maxBarWidth)
+            size = CGSize(width: width + pad * 2, height: barHeight + pad * 2)
         }
-        let text = ceil((label as NSString).size(withAttributes: [.font: labelFont]).width)
-        let width = min(max(gridSide, text + barInset * 2), maxBarWidth)
-        return CGSize(width: width + pad * 2, height: barHeight + pad * 2)
+        if !rows.isEmpty {
+            size.width = max(size.width, listWidth(rows) + pad * 2)
+            size.height += gap + listHeight(rows)
+        }
+        return size
+    }
+
+    /// Fitted to the widest row, at least as wide as the slots.
+    private static func listWidth(_ rows: [Row]) -> CGFloat {
+        let widest = rows.map { row -> CGFloat in
+            let name = (row.name as NSString).size(withAttributes: [.font: nameFont]).width
+            let note = row.note.map { noteGap + ($0 as NSString).size(withAttributes: [.font: noteFont]).width } ?? 0
+            return ceil(iconSide + iconGap + name + note)
+        }.max() ?? 0
+        return min(max(gridSide, widest + listInset.width * 2), maxListWidth)
+    }
+
+    private static func listHeight(_ rows: [Row]) -> CGFloat {
+        CGFloat(rows.count) * rowHeight + listInset.height * 2
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // Top-down: the slots, the bar, then the list, centred.
         let content = bounds.insetBy(dx: Self.pad, dy: Self.pad)
+        let blockWidth = slots == nil ? Self.size(label: label, slots: nil).width - Self.pad * 2 : Self.gridSide
+        let left = bounds.midX - blockWidth / 2
+        var top = content.maxY
         if let slots {
             for slot in 1...9 {
                 let (col, row) = ((slot - 1) % 3, (slot - 1) / 3)
                 let cell = CGRect(
-                    x: content.minX + CGFloat(col) * (Self.cellSize + Self.gap),
-                    y: content.maxY - CGFloat(row + 1) * Self.cellSize - CGFloat(row) * Self.gap,
+                    x: left + CGFloat(col) * (Self.cellSize + Self.gap),
+                    y: top - CGFloat(row + 1) * Self.cellSize - CGFloat(row) * Self.gap,
                     width: Self.cellSize,
                     height: Self.cellSize
                 )
@@ -240,10 +301,48 @@ final class LayerBezelView: NSView {
                     drawText("\(slot)", font: Self.numberFont, colour: colour, in: cell)
                 }
             }
+            top -= Self.gridSide + Self.gap
         }
-        let bar = CGRect(x: content.minX, y: content.minY, width: content.width, height: Self.barHeight)
+        let bar = CGRect(x: left, y: top - Self.barHeight, width: blockWidth, height: Self.barHeight)
         drawBox(bar, lit: false)
         drawText(label, font: Self.labelFont, colour: NSColor.white.withAlphaComponent(0.92), in: bar.insetBy(dx: Self.barInset, dy: 0))
+        if !rows.isEmpty {
+            let width = Self.listWidth(rows)
+            let height = Self.listHeight(rows)
+            drawList(in: CGRect(x: bounds.midX - width / 2, y: bar.minY - Self.gap - height, width: width, height: height))
+        }
+    }
+
+    /// The layer's apps, one per row: the icon, the name, and where its
+    /// windows are on the right when they aren't here. Away rows dim a
+    /// little, apps with no window more.
+    private func drawList(in box: CGRect) {
+        drawBox(box, lit: false)
+        let inner = box.insetBy(dx: Self.listInset.width, dy: Self.listInset.height)
+        for (index, row) in rows.enumerated() {
+            let line = CGRect(x: inner.minX, y: inner.maxY - CGFloat(index + 1) * Self.rowHeight, width: inner.width, height: Self.rowHeight)
+            let alpha: CGFloat = switch row.presence {
+            case .here: 1
+            case .away: 0.62
+            case .absent: 0.36
+            }
+            let icon = CGRect(x: line.minX, y: line.midY - Self.iconSide / 2, width: Self.iconSide, height: Self.iconSide)
+            if let image = row.icon {
+                image.draw(in: icon, from: .zero, operation: .sourceOver, fraction: alpha, respectFlipped: true, hints: nil)
+            } else {
+                NSColor.white.withAlphaComponent(0.14 * alpha).setFill()
+                NSBezierPath(roundedRect: icon.insetBy(dx: 1, dy: 1), xRadius: 3.5, yRadius: 3.5).fill()
+            }
+            var nameRect = CGRect(x: icon.maxX + Self.iconGap, y: line.minY, width: line.maxX - icon.maxX - Self.iconGap, height: line.height)
+            if let note = row.note {
+                let width = ceil((note as NSString).size(withAttributes: [.font: Self.noteFont]).width)
+                let noteRect = CGRect(x: line.maxX - width, y: line.minY, width: width, height: line.height)
+                let noteAlpha: CGFloat = row.presence == .absent ? 0.4 : 0.62
+                drawText(note, font: Self.noteFont, colour: NSColor.white.withAlphaComponent(noteAlpha), in: noteRect, alignment: .right)
+                nameRect.size.width = noteRect.minX - Self.noteGap - nameRect.minX
+            }
+            drawText(row.name, font: Self.nameFont, colour: NSColor.white.withAlphaComponent(0.9 * alpha), in: nameRect, alignment: .left)
+        }
     }
 
     /// A cell in the dark ink, or lit in the light one. The corners follow the
@@ -284,9 +383,9 @@ final class LayerBezelView: NSView {
 
     /// One line of `text` centred in `rect` on its cap height, cut short with
     /// an ellipsis when it doesn't fit.
-    private func drawText(_ text: String, font: NSFont, colour: NSColor, in rect: CGRect) {
+    private func drawText(_ text: String, font: NSFont, colour: NSColor, in rect: CGRect, alignment: NSTextAlignment = .center) {
         let style = NSMutableParagraphStyle()
-        style.alignment = .center
+        style.alignment = alignment
         style.lineBreakMode = .byTruncatingTail
         // Lines run down from the top, so the baseline lands `ascender` below
         // it; the extra height underneath only keeps the line from clipping.

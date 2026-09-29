@@ -93,7 +93,7 @@ enum HotkeyBootstrap {
         let workspace = WorkspaceManager.shared
         guard let layers = workspace.config?.layers, !layers.isEmpty else { return }
         let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
-        LayerBezel.shared.show(label: layers[current].label, index: current, total: layers.count)
+        workspace.showBezel(for: current, in: layers)
     }
 
     /// Cmd+Opt+arrows move across the pad the way they point, through the
@@ -110,7 +110,7 @@ enum HotkeyBootstrap {
         guard let layers = workspace.config?.layers, !layers.isEmpty else { return }
         let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
         guard let index = LayerSlots.neighbour(of: current, direction, count: layers.count) else {
-            LayerBezel.shared.show(label: layers[current].label, index: current, total: layers.count)
+            workspace.showBezel(for: current, in: layers)
             return
         }
         workspace.focusLayer(index: index)

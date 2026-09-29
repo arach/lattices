@@ -417,6 +417,12 @@ slot. The new layer's slot is lit, its name sits underneath, and slots
 without a layer stay dim. The middle slot holds the Lattices pointer,
 which turns to aim at the new layer's slot.
 
+Under the name, the layer's apps are listed, one row each. A switch only
+brings windows on the desktop the main display is showing, so an app
+whose windows are elsewhere says where: Desktop 2, Left display, Full
+screen. A running app without the layer's window says No window, and an
+entry with nothing running says Not open.
+
 Cmd+Option+arrows move to the nearest layer that way on the pad, hopping
 the middle: from 4, right goes to 6. At the pad's edge, Cmd+Option+5 or
 a slot without a layer, the grid shows the layer you're on.
