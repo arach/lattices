@@ -14,6 +14,7 @@ public enum EmbeddedLatticesError: LocalizedError, Equatable, Sendable {
     case sessionNotFound(String)
     case windowNotFound(String)
     case accessibilityUnavailable
+    case elementNotFound(String)
 
     public var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ public enum EmbeddedLatticesError: LocalizedError, Equatable, Sendable {
             return "Lattices window not found: \(target)"
         case .accessibilityUnavailable:
             return "Accessibility access is unavailable for this host app."
+        case .elementNotFound(let detail):
+            return detail
         }
     }
 }
@@ -794,6 +797,104 @@ public final class EmbeddedLatticesAccessibility: Sendable {
         return LatticesAccessibilitySnapshot(target: window, elements: elements)
     }
 
+    /// Focuses the one text element in `pid` whose value is exactly `value`
+    /// (whitespace-normalized) and returns it. Anchoring on content rather
+    /// than a label or window lets a host that just put text into another
+    /// app's composer act on that very composer; zero or several matches
+    /// throw instead of guessing.
+    ///
+    /// Chromium and Electron apps publish only their window frame until an
+    /// assistive client sets `AXEnhancedUserInterface`. When nothing matches,
+    /// this turns it on, waits up to `exposeTimeout` for the web content to
+    /// appear, and turns it back off afterwards (it slows window animation).
+    @discardableResult
+    public func focusElement(
+        holdingValue value: String,
+        pid: pid_t,
+        roles: Set<String> = ["AXTextArea", "AXTextField"],
+        exposeTimeout: TimeInterval = 3
+    ) throws -> LatticesAXElement {
+        guard AXIsProcessTrusted() else { throw EmbeddedLatticesError.accessibilityUnavailable }
+        let expected = Self.normalized(value)
+        guard !expected.isEmpty else {
+            throw EmbeddedLatticesError.elementNotFound("An empty value can't anchor an element.")
+        }
+        let root = AXUIElementCreateApplication(pid)
+        var hits = elements(in: root, holding: expected, roles: roles)
+
+        let enhanced = "AXEnhancedUserInterface" as CFString
+        var exposed = false
+        if hits.isEmpty, !boolAttribute(root, enhanced as String) {
+            exposed = AXUIElementSetAttributeValue(root, enhanced, kCFBooleanTrue) != .apiDisabled
+            let deadline = Date().addingTimeInterval(exposeTimeout)
+            while hits.isEmpty, Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.25)
+                hits = elements(in: root, holding: expected, roles: roles)
+            }
+        }
+        defer {
+            if exposed { _ = AXUIElementSetAttributeValue(root, enhanced, kCFBooleanFalse) }
+        }
+
+        guard hits.count == 1, let hit = hits.first else {
+            throw EmbeddedLatticesError.elementNotFound(
+                "\(hits.count) text elements hold that text; expected exactly 1."
+            )
+        }
+        let result = AXUIElementSetAttributeValue(hit.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        guard result == .success else {
+            throw EmbeddedLatticesError.elementNotFound("Couldn't focus the element holding that text (\(result.rawValue)).")
+        }
+        return LatticesAXElement(
+            id: "e1",
+            path: "anchor",
+            depth: hit.depth,
+            role: stringAttribute(hit.element, kAXRoleAttribute) ?? "",
+            title: stringAttribute(hit.element, kAXTitleAttribute),
+            value: stringAttribute(hit.element, kAXValueAttribute),
+            label: stringAttribute(hit.element, kAXDescriptionAttribute),
+            frame: frame(hit.element)
+        )
+    }
+
+    static func normalized(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
+    }
+
+    private func elements(
+        in root: AXUIElement,
+        holding expected: String,
+        roles: Set<String>,
+        maxDepth: Int = 64,
+        maxElements: Int = 20_000
+    ) -> [(element: AXUIElement, depth: Int)] {
+        var queue: [(AXUIElement, Int)] = [(root, 0)]
+        var hits: [(element: AXUIElement, depth: Int)] = []
+        var visited = 0
+        while !queue.isEmpty, visited < maxElements {
+            let (element, depth) = queue.removeFirst()
+            visited += 1
+            if let role = stringAttribute(element, kAXRoleAttribute), roles.contains(role),
+               let value = stringAttribute(element, kAXValueAttribute),
+               Self.normalized(value) == expected {
+                hits.append((element, depth))
+            }
+            guard depth < maxDepth else { continue }
+            var childrenRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+               let children = childrenRef as? [AXUIElement] {
+                queue.append(contentsOf: children.map { ($0, depth + 1) })
+            }
+        }
+        return hits
+    }
+
+    private func boolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success else { return false }
+        return (ref as? Bool) ?? false
+    }
+
     private func traverse(
         _ element: AXUIElement,
         path: String,
@@ -903,6 +1004,26 @@ public final class EmbeddedLatticesInput: Sendable {
         up.flags = parsed.flags
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
+        return true
+    }
+
+    /// Posts one key press to a specific process rather than to whichever app
+    /// is frontmost, so it lands in that app's focused element. Pair it with
+    /// `accessibility.focusElement(holdingValue:pid:)` to submit a composer.
+    @discardableResult
+    public func pressKey(_ shortcut: String, pid: pid_t) throws -> Bool {
+        guard AXIsProcessTrusted() else { throw EmbeddedLatticesError.accessibilityUnavailable }
+        let parsed = try EmbeddedShortcut.parse(shortcut)
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: parsed.keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: parsed.keyCode, keyDown: false)
+        else {
+            throw EmbeddedLatticesError.accessibilityUnavailable
+        }
+        down.flags = parsed.flags
+        up.flags = parsed.flags
+        down.postToPid(pid)
+        up.postToPid(pid)
         return true
     }
 
