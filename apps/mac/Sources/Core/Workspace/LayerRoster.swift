@@ -91,6 +91,42 @@ enum LayerRoster {
         return display.midY < main.midY ? .above : .below
     }
 
+    /// The displays as `place(of:in:main:sides:)` reads them, gathered once
+    /// for a batch of windows.
+    struct Context {
+        let displays: [DisplaySpaces]
+        let main: String
+        let sides: [String: Side]
+
+        static func current() -> Context {
+            let displays = WindowTiler.getDisplaySpaces()
+            let mainID = CGMainDisplayID()
+            return Context(
+                displays: displays,
+                main: WindowTiler.displaySpaces(forDisplayID: mainID, in: displays)?.displayId ?? "",
+                sides: LayerRoster.sides(of: displays, from: mainID)
+            )
+        }
+
+        func place(of spaceIds: [Int]) -> Place? {
+            LayerRoster.place(of: spaceIds, in: displays, main: main, sides: sides)
+        }
+    }
+
+    /// Where each display but the main one sits, by its Spaces id.
+    private static func sides(of displays: [DisplaySpaces], from main: CGDirectDisplayID) -> [String: Side] {
+        var count: UInt32 = 0
+        guard displays.count > 1, CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [:] }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [:] }
+        var sides: [String: Side] = [:]
+        for id in ids.prefix(Int(count)) where id != main {
+            guard let display = WindowTiler.displaySpaces(forDisplayID: id, in: displays) else { continue }
+            sides[display.displayId] = side(of: CGDisplayBounds(id), from: CGDisplayBounds(main))
+        }
+        return sides
+    }
+
     /// The app's icon: its process's, else an app of that name in the usual
     /// folders.
     static func icon(for app: App) -> NSImage? {
@@ -116,17 +152,9 @@ extension WorkspaceManager {
 
     /// The layer's apps for the bezel (`LayerRoster`), placed from `windows`.
     func roster(of layer: Layer, in windows: [WindowEntry]) -> [LayerRoster.App] {
-        let displays = WindowTiler.getDisplaySpaces()
-        let mainID = CGMainDisplayID()
-        let main = WindowTiler.displaySpaces(forDisplayID: mainID, in: displays)?.displayId ?? ""
-        let sides = Self.sides(of: displays, from: mainID)
-        // Windows as the stage counts them. Apps keep untitled helper
-        // surfaces, and those sit on the desktop too.
-        let me = getpid()
-        let members = memberWindows(of: layer, in: windows).filter {
-            $0.entry.axVerified && !$0.entry.title.isEmpty && $0.entry.pid != me
-                && $0.entry.frame.w >= 120 && $0.entry.frame.h >= 120
-        }
+        let context = LayerRoster.Context.current()
+        let members = listedMembers(of: layer, in: windows)
+        let running = NSWorkspace.shared.runningApplications
 
         var apps: [LayerRoster.App] = []
         func add(_ name: String, pid: Int32?, place: LayerRoster.Place) {
@@ -140,38 +168,40 @@ extension WorkspaceManager {
         }
         for (index, project) in layer.projects.enumerated() {
             let matched = members.compactMap { member -> (entry: WindowEntry, place: LayerRoster.Place)? in
-                guard member.project == index,
-                      let place = LayerRoster.place(of: member.entry.spaceIds, in: displays, main: main, sides: sides)
-                else { return nil }
+                guard member.project == index, let place = context.place(of: member.entry.spaceIds) else { return nil }
                 return (member.entry, place)
             }
             for member in matched {
                 add(member.entry.app, pid: member.entry.pid, place: member.place)
             }
-            guard matched.isEmpty, let name = project.app ?? project.launch
-                    ?? project.group.flatMap({ group(byId: $0)?.label })
-                    ?? project.path.map({ ($0 as NSString).lastPathComponent }) else { continue }
-            // Named as the app it matches when that's running, so it shares a
-            // row with the app's windows from other entries.
-            let running = project.group == nil && project.path == nil
-                ? NSWorkspace.shared.runningApplications.first { $0.localizedName?.localizedCaseInsensitiveContains(name) == true }
-                : nil
-            add(running?.localizedName ?? name, pid: running?.processIdentifier, place: running == nil ? .notOpen : .noWindow)
+            if matched.isEmpty, let missing = missingApp(for: project, running: running) {
+                add(missing.name, pid: missing.pid, place: missing.place)
+            }
         }
         return apps
     }
 
-    /// Where each display but the main one sits, by its Spaces id.
-    private static func sides(of displays: [DisplaySpaces], from main: CGDirectDisplayID) -> [String: LayerRoster.Side] {
-        var count: UInt32 = 0
-        guard displays.count > 1, CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [:] }
-        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [:] }
-        var sides: [String: LayerRoster.Side] = [:]
-        for id in ids.prefix(Int(count)) where id != main {
-            guard let display = WindowTiler.displaySpaces(forDisplayID: id, in: displays) else { continue }
-            sides[display.displayId] = LayerRoster.side(of: CGDisplayBounds(id), from: CGDisplayBounds(main))
+    /// The layer's windows as the stage counts them (`memberWindows`). Apps
+    /// keep untitled helper surfaces, and those sit on the desktop too.
+    func listedMembers(of layer: Layer, in windows: [WindowEntry]) -> [(entry: WindowEntry, placed: Bool, project: Int)] {
+        let me = getpid()
+        return memberWindows(of: layer, in: windows).filter {
+            $0.entry.axVerified && !$0.entry.title.isEmpty && $0.entry.pid != me
+                && $0.entry.frame.w >= 120 && $0.entry.frame.h >= 120
         }
-        return sides
     }
+
+    /// What an entry names when no window matches it: `.noWindow` when that
+    /// app is running, `.notOpen` when it isn't. Named as the running app, so
+    /// it shares a row with the app's windows from other entries.
+    func missingApp(for project: LayerProject, running: [NSRunningApplication]) -> LayerRoster.App? {
+        guard let name = project.app ?? project.launch
+                ?? project.group.flatMap({ group(byId: $0)?.label })
+                ?? project.path.map({ ($0 as NSString).lastPathComponent }) else { return nil }
+        let app = project.group == nil && project.path == nil
+            ? running.first { $0.localizedName?.localizedCaseInsensitiveContains(name) == true }
+            : nil
+        return LayerRoster.App(name: app?.localizedName ?? name, pid: app?.processIdentifier, place: app == nil ? .notOpen : .noWindow)
+    }
+
 }

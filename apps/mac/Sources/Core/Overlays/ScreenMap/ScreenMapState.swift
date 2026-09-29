@@ -1901,13 +1901,6 @@ final class ScreenMapController: ObservableObject {
 
         let newEditor = ScreenMapEditorState(windows: mapWindows, displays: displayGeometries)
 
-        // Populate layer names from workspace config
-        if let layers = WorkspaceManager.shared.config?.layers {
-            for (i, layer) in layers.enumerated() {
-                newEditor.layerNames[i] = layer.label
-            }
-        }
-
         // Start monitor-first: focus the display under the cursor, or the first display.
         // Open on all displays so the canvas fills the center panel on first load.
         newEditor.focusedDisplayIndex = nil

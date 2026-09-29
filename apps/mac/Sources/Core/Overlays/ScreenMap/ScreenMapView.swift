@@ -152,6 +152,7 @@ struct ScreenMapView: View {
     @ObservedObject private var diagnosticLog = DiagnosticLog.shared
     @ObservedObject private var studioLayers = StudioLayerStore.shared
     @ObservedObject private var desktop = DesktopModel.shared
+    @StateObject private var layerOverview = LayerOverviewStore()
     @StateObject private var assistantChat = WorkspaceAssistantSession.shared
     @State private var eventMonitor: Any?
     @State private var mouseDownMonitor: Any?
@@ -243,10 +244,12 @@ struct ScreenMapView: View {
         .onAppear {
             installKeyHandler()
             installMouseMonitors()
+            layerOverview.start()
         }
         .onDisappear {
             removeKeyHandler()
             removeMouseMonitors()
+            layerOverview.stop()
         }
         .onChange(of: controller.editor?.isPreviewing) { isPreviewing in
             handlePreviewChange(isPreviewing: isPreviewing ?? false)
@@ -263,6 +266,17 @@ struct ScreenMapView: View {
         return studioLayers.layers.first { $0.id == studioLayerScopeId }
     }
 
+    /// The ⌘⌥ layer Studio is scoped to, when it is.
+    private var activeWorkspaceLayer: LayerOverview? {
+        guard let layerId = studioLayerScopeId.flatMap(LayerOverview.layerId(fromScope:)) else { return nil }
+        return layerOverview.layers.first { $0.id == layerId }
+    }
+
+    /// The layer Studio is scoped to, of either kind.
+    private var scopeName: String? {
+        activeStudioLayer?.name ?? activeWorkspaceLayer?.label
+    }
+
     private func clearStudioLayerScope() {
         studioLayerScopeId = nil
         editingStudioLayerId = nil
@@ -270,6 +284,10 @@ struct ScreenMapView: View {
     }
 
     private func scopedWindows(_ windows: [ScreenMapWindowEntry]) -> [ScreenMapWindowEntry] {
+        if let layer = activeWorkspaceLayer {
+            let showing = layer.showingIds
+            return windows.filter { showing.contains($0.id) }
+        }
         guard let layer = activeStudioLayer else { return windows }
         return windows.filter { screenMapWindow($0, matches: layer) }
     }
@@ -413,10 +431,10 @@ struct ScreenMapView: View {
     private var canvasHeaderBezel: some View {
         HStack(spacing: 6) {
             if let editor = controller.editor {
-                if let layer = activeStudioLayer {
+                if let name = scopeName {
                     Circle().fill(Palette.running.opacity(0.55)).frame(width: 6, height: 6)
                     Text("Layer").font(Typo.monoBold(9)).foregroundColor(Palette.textMuted)
-                    Text(layer.name).font(Typo.monoBold(9)).foregroundColor(Palette.running).lineLimit(1)
+                    Text(name).font(Typo.monoBold(9)).foregroundColor(Palette.running).lineLimit(1)
                     if let focused = editor.focusedDisplay {
                         Text("· \(focused.label)").font(Typo.mono(8)).foregroundColor(Palette.textMuted).lineLimit(1)
                     }
@@ -522,7 +540,17 @@ struct ScreenMapView: View {
 
                     inspectorCanvasContextCard(editor: editor, selectedCount: selectedWindows.count)
 
-                    if selectedWindows.isEmpty {
+                    if let layer = activeWorkspaceLayer {
+                        LayerOverviewDetail(
+                            overview: layer,
+                            onCanvas: Set(scopedWindows(editor.renderedCanvasWindows).map(\.id)),
+                            selected: controller.selectedWindowIds,
+                            onSelect: { controller.selectSingle($0) },
+                            onSwitch: { switchToWorkspaceLayer(layer) }
+                        )
+                    }
+
+                    if selectedWindows.isEmpty && activeWorkspaceLayer == nil {
                         VStack(spacing: 8) {
                             Text("No Selection")
                                 .font(Typo.monoBold(10))
@@ -555,21 +583,30 @@ struct ScreenMapView: View {
         let world = editor.canvasWorldBounds
         let scope = editor.focusedDisplay.map { "\(editor.spatialNumber(for: $0.index)). \($0.label)" } ?? "All Displays"
         let studioLayer = activeStudioLayer
+        let workspaceLayer = activeWorkspaceLayer
 
         return VStack(alignment: .leading, spacing: 4) {
             inspectorRow(label: "Scope", value: scope)
-            inspectorRow(label: "Mode", value: studioLayer == nil ? "Desktop" : "Layer")
+            inspectorRow(label: "Mode", value: scopeName == nil ? "Desktop" : "Layer")
             if let studioLayer {
                 inspectorRow(label: "Layer", value: "\(studioLayer.name) · \(visibleWindowCount(in: editor)) windows")
                 inspectorRow(label: "Rules", value: studioLayer.summary)
             }
+            if let workspaceLayer {
+                let total = workspaceLayer.windows.count
+                inspectorRow(label: "Layer", value: total == 0
+                    ? "\(workspaceLayer.label) · no windows"
+                    : "\(workspaceLayer.label) · \(workspaceLayer.showingIds.count) of \(total) showing")
+                inspectorRow(label: "Layout", value: workspaceLayer.layout ?? "none")
+            }
             inspectorRow(label: "View", value: "\(Int(viewport.midX)), \(Int(viewport.midY)) · \(Int(viewport.width))×\(Int(viewport.height))")
             inspectorRow(label: "World", value: "\(Int(world.width))×\(Int(world.height))")
-            if studioLayer == nil {
+            if scopeName == nil {
                 inspectorRow(label: "Set", value: controller.activeWindowSet?.name ?? "None")
             }
             inspectorRow(label: "Select", value: "\(selectedCount) window\(selectedCount == 1 ? "" : "s")")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 6)
@@ -1492,6 +1529,15 @@ struct ScreenMapView: View {
         controller.flash("Deleted \(layer.name)")
     }
 
+    /// Switches to a ⌘⌥ layer as its key does, then re-reads the canvas once
+    /// its windows have moved and hidden apps have gone.
+    private func switchToWorkspaceLayer(_ layer: LayerOverview) {
+        WorkspaceManager.shared.focusLayer(index: layer.index)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            controller.refresh()
+        }
+    }
+
     private func safeAttachmentStem(_ value: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
@@ -1675,8 +1721,8 @@ struct ScreenMapView: View {
     private var canvasContextBadge: some View {
         HStack(spacing: 6) {
             if let editor = controller.editor {
-                let studioLayer = activeStudioLayer
-                let layerColor = studioLayer != nil
+                let name = scopeName
+                let layerColor = name != nil
                     ? Palette.running
                     : (editor.activeLayer != nil ? Self.layerColor(for: editor.activeLayer!) : Palette.running)
 
@@ -1684,7 +1730,7 @@ struct ScreenMapView: View {
                     .fill(layerColor)
                     .frame(width: 6, height: 6)
 
-                Text(studioLayer.map { "LAYER · \($0.name)" } ?? editor.layerLabel)
+                Text(name.map { "LAYER · \($0)" } ?? editor.layerLabel)
                     .font(Typo.monoBold(9))
                     .foregroundColor(layerColor)
 
@@ -1750,7 +1796,7 @@ struct ScreenMapView: View {
 
     private func layerSidebar(editor: ScreenMapEditorState) -> some View {
         let visibleWindows = scopedWindows(editor.renderedCanvasWindows).sorted { $0.zIndex < $1.zIndex }
-        let visibleRowSlots = visibleWindows.isEmpty && activeStudioLayer != nil ? 2 : visibleWindows.count + 1
+        let visibleRowSlots = visibleWindows.isEmpty && scopeName != nil ? 2 : visibleWindows.count + 1
         let rowWidth = max(sidebarWidth - 16, 1)
         let viewListHeight = min(
             max(CGFloat(visibleRowSlots) * Self.sidebarWindowRowStride, Self.sidebarWindowRowStride),
@@ -1759,12 +1805,12 @@ struct ScreenMapView: View {
 
         return VStack(spacing: 0) {
             HStack {
-                Text(activeStudioLayer == nil ? "VIEW" : "LAYER VIEW")
+                Text(scopeName == nil ? "VIEW" : "LAYER VIEW")
                     .font(Typo.monoBold(9))
                     .foregroundColor(Palette.textMuted)
                 Spacer()
-                if let layer = activeStudioLayer {
-                    Text(layer.name)
+                if let name = scopeName {
+                    Text(name)
                         .font(Typo.monoBold(8))
                         .foregroundColor(Palette.running)
                         .lineLimit(1)
@@ -1786,12 +1832,12 @@ struct ScreenMapView: View {
                 ZStack(alignment: .topLeading) {
                     VStack(spacing: 2) {
                         layerTreeHeader(
-                            label: activeStudioLayer.map { "Layer: \($0.name)" } ?? "Desktop",
+                            label: scopeName.map { "Layer: \($0)" } ?? "Desktop",
                             count: visibleWindows.count,
-                            isActive: editor.isShowingAll || activeStudioLayer != nil,
+                            isActive: editor.isShowingAll || scopeName != nil,
                             color: Palette.running
                         ) {
-                            if activeStudioLayer != nil {
+                            if studioLayerScopeId != nil {
                                 clearStudioLayerScope()
                             } else {
                                 editor.selectLayer(nil)
@@ -1803,8 +1849,8 @@ struct ScreenMapView: View {
                             visibleWindowRow(win: win)
                         }
 
-                        if visibleWindows.isEmpty, let layer = activeStudioLayer {
-                            Text("No visible windows match \(layer.name).")
+                        if visibleWindows.isEmpty, let name = scopeName {
+                            Text("No visible windows match \(name).")
                                 .font(Typo.mono(8))
                                 .foregroundColor(Palette.textMuted)
                                 .lineLimit(2)
@@ -1882,7 +1928,7 @@ struct ScreenMapView: View {
             .frame(height: viewListHeight)
             .padding(.bottom, 12)
 
-            collapsibleSection(title: "LAYERS", count: studioLayers.layers.count, isExpanded: $showStudioLayers) {
+            collapsibleSection(title: "LAYERS", count: layerOverview.layers.count + studioLayers.layers.count, isExpanded: $showStudioLayers) {
                 studioLayerExplorer(editor: editor)
             }
             collapsibleSection(title: "SETS", count: controller.windowSets.count, isExpanded: $showSets) {
@@ -2223,15 +2269,33 @@ struct ScreenMapView: View {
         return VStack(alignment: .leading, spacing: 4) {
             studioLayerExplorerRow(
                 title: "All Desktop",
-                subtitle: "whole visible desktop",
                 count: allCount,
-                isActive: activeStudioLayer == nil,
+                isActive: scopeName == nil,
                 tint: Palette.running,
                 systemImage: "display"
             ) {
                 clearStudioLayerScope()
                 editor.selectLayer(nil)
                 controller.flash("All Desktop")
+            }
+
+            // The ⌘⌥ layers, in pad order.
+            ForEach(layerOverview.layers) { layer in
+                let count = layer.windows.count
+                studioLayerExplorerRow(
+                    title: layer.label,
+                    count: count,
+                    isActive: activeWorkspaceLayer?.id == layer.id,
+                    tint: count == 0 ? Palette.textMuted.opacity(0.8) : Palette.textDim,
+                    systemImage: LayerOverviewDetail.icon(for: layer)
+                ) {
+                    studioLayerScopeId = LayerOverview.scopeId(for: layer.id)
+                    controller.flash("Layer · \(layer.label)")
+                }
+            }
+
+            if !layerOverview.layers.isEmpty && !visibleLayers.isEmpty {
+                Rectangle().fill(Palette.border).frame(height: 0.5).padding(.vertical, 2)
             }
 
             ForEach(visibleLayers) { layer in
@@ -2259,7 +2323,7 @@ struct ScreenMapView: View {
         }
     }
 
-    private func studioLayerExplorerRow(title: String, subtitle: String, count: Int, isActive: Bool,
+    private func studioLayerExplorerRow(title: String, subtitle: String? = nil, count: Int, isActive: Bool,
                                         tint: Color, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
@@ -2272,10 +2336,12 @@ struct ScreenMapView: View {
                         .font(Typo.monoBold(8))
                         .foregroundColor(isActive ? Palette.text : Palette.textDim)
                         .lineLimit(1)
-                    Text(subtitle)
-                        .font(Typo.mono(7))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(Typo.mono(7))
+                            .foregroundColor(Palette.textMuted)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 4)
                 Text("\(count)")
@@ -3572,7 +3638,7 @@ struct ScreenMapView: View {
         }
 
         let visible = scopedWindows(editor.focusedVisibleWindows)
-        let label = activeStudioLayer.map { "Layer · \($0.name)" } ?? editor.layerLabel
+        let label = scopeName.map { "Layer · \($0)" } ?? editor.layerLabel
         let captures = controller.previewCaptures
 
         let overlay = ScreenMapPreviewOverlay(

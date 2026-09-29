@@ -350,6 +350,13 @@ retain a faint, non-interactive ambient surface after dismissal. Neither UI is
 the read-only terminal [`lattices map`](/docs/workspace-map) command; see that
 page for exact side effects, full-teardown steps, and tab-stack cleanup.
 
+Studio's **Layers** panel lists the Cmd+Option layers in pad order. Picking
+one scopes the canvas to the layer's windows that are showing, and the
+inspector lists each of its entries with the windows it matched and where each
+one is: on another desktop or display, parked, hidden, or nothing, when no
+window matches. Picking a layer only looks; the inspector's Cmd+Option key
+switches to it.
+
 ### In-place window tools
 
 Press Hyper+G to arrange the real windows on the current desktop without
