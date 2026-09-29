@@ -277,7 +277,7 @@ Four ways to switch:
 
 | Method               | How                                      |
 |----------------------|------------------------------------------|
-| **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3...; Cmd+Option+Left/Right step to the previous/next layer |
+| **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3...; Cmd+Option+Left/Right step to the previous/next layer and stop at the first and last |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
 | **CLI**              | `lattices layer <name\|index>`           |
@@ -375,9 +375,12 @@ await daemonCall('window.removeLayer', { wid: 1234 })
 ### Layer bezel
 
 When you switch layers, a 3×3 grid flashes in the upper middle of the
-screen. Its slots are numbered 1–9, like the Cmd+Option hotkeys: the new
-layer's slot is lit, its name sits underneath, and slots without a layer
-stay dim.
+screen. Its slots stand for Cmd+Option+1–9: the new layer's slot is lit,
+its name sits underneath, and slots without a layer stay dim. The middle
+slot holds the Lattices pointer in place of a 5. The pointer turns to aim
+at the new layer's slot, and becomes the knob when the new layer is the
+middle one. A Cmd+Option+Left/Right past the first or last layer shows the
+grid on the layer you're on.
 
 ### Programmatic switching
 

@@ -69,19 +69,24 @@ enum HotkeyBootstrap {
         }
     }
 
-    /// Cmd+Opt+←/→ cycle the session layers when there are any. Otherwise
-    /// they step through the workspace layers, the same fallback the
-    /// numbered layer hotkeys use.
+    /// Cmd+Opt+←/→ step through the session layers when there are any.
+    /// Otherwise they step through the workspace layers, the same fallback
+    /// the numbered layer hotkeys use. They don't wrap: past the first or
+    /// last layer, the bezel shows where you are.
     private static func stepLayer(by step: Int) {
         let session = SessionLayerStore.shared
         if !session.layers.isEmpty {
-            if step > 0 { session.cycleNext() } else { session.cyclePrev() }
+            session.step(by: step)
             return
         }
         let workspace = WorkspaceManager.shared
-        let count = workspace.config?.layers?.count ?? 0
-        guard count > 0 else { return }
-        let index = ((workspace.activeLayerIndex + step) % count + count) % count
+        guard let layers = workspace.config?.layers, !layers.isEmpty else { return }
+        let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
+        let index = current + step
+        guard layers.indices.contains(index) else {
+            LayerBezel.shared.show(label: layers[current].label, index: current, total: layers.count)
+            return
+        }
         workspace.focusLayer(index: index)
         EventBus.shared.post(.layerSwitched(index: index))
     }

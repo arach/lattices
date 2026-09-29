@@ -2,10 +2,11 @@ import AppKit
 
 // MARK: - Layer Switch HUD
 
-/// The layer switch, laid out like the matrix picker: nine numbered slots, one
-/// per ⌘⌥1–9, with the new layer's slot lit and its name in a bar underneath.
-/// Slots without a layer stay dim. `acknowledge` shows the bar alone, for
-/// actions that don't land on a slot: tabs, and saved Studio layers.
+/// The layer switch, laid out like the matrix picker: a 3×3 of slots, one per
+/// ⌘⌥1–9, with the new layer's slot lit and its name in a bar underneath. The
+/// middle holds the mark's pointer, aimed at the lit slot. Slots without a
+/// layer stay dim. `acknowledge` shows the bar alone, for actions that don't
+/// land on a slot: tabs, and saved Studio layers.
 final class LayerBezel {
     static let shared = LayerBezel()
 
@@ -47,7 +48,6 @@ final class LayerBezel {
         generation += 1
 
         let (panel, view) = ensurePanel()
-        view.show(label: label, slots: slots)
 
         // Centred, two thirds of the way up the screen.
         let size = LayerBezelView.size(label: label, slots: slots)
@@ -59,12 +59,14 @@ final class LayerBezel {
             height: size.height
         )
         if panel.frame != frame {
-            panel.setFrame(frame, display: true)
+            panel.setFrame(frame, display: false)
         }
         if !panel.isVisible {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
         }
+        // On screen first, so the pointer's turn has a display to run on.
+        view.show(label: label, slots: slots)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
@@ -107,8 +109,9 @@ final class LayerBezel {
 // MARK: - Bezel View
 
 /// Nine slots cut like the matrix's cells, numbered in reading order, and the
-/// name bar as a fourth row. Unlike the matrix's see-through cells these are
-/// nearly opaque, so the numbers read over any window.
+/// name bar as a fourth row. The middle slot shows the mark's pointer in place
+/// of its number. Unlike the matrix's see-through cells these are nearly
+/// opaque, so the numbers read over any window.
 final class LayerBezelView: NSView {
     struct Slots {
         /// The lit slot, counted from 0.
@@ -134,9 +137,20 @@ final class LayerBezelView: NSView {
     static let darkInk = NSColor(srgbRed: 16 / 255, green: 21 / 255, blue: 24 / 255, alpha: 1)
     static let numberFont = rounded(17, .semibold)
     static let labelFont = rounded(13, .semibold)
+    /// The pointer's square, as a share of the middle cell, as in the matrix.
+    static let pointerScale: CGFloat = 0.64
+    static let turnDuration: CFTimeInterval = 0.16
 
     private var label = ""
     private var slots: Slots?
+    /// The slot the pointer aims at, once it has aimed at one.
+    private var aimed: Int?
+    /// The pointer as drawn, and the turn that carries it toward `aimed`.
+    private var pose = LatticesPointer.Pose.rest
+    private var from = LatticesPointer.Pose.rest
+    private var to = LatticesPointer.Pose.rest
+    private var turnStart: CFTimeInterval = 0
+    private var link: CADisplayLink?
 
     override var isOpaque: Bool { false }
 
@@ -150,9 +164,42 @@ final class LayerBezelView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Shows `label`, over `slots` if given. When the lit slot changes, the
+    /// pointer turns to it from the slot it aimed at before, so a step shows
+    /// which way it went. The first aim is instant.
     func show(label: String, slots: Slots?) {
         self.label = label
         self.slots = slots
+        if let slots, slots.lit != aimed {
+            from = pose
+            to = (0..<9).contains(slots.lit)
+                ? LatticesPointer.aim(col: slots.lit % 3, row: slots.lit / 3, turningFrom: pose.heading)
+                : LatticesPointer.rest(turningFrom: pose.heading)
+            turnStart = CACurrentMediaTime()
+            if aimed == nil { settle() } else { run() }
+            aimed = slots.lit
+        }
+        needsDisplay = true
+    }
+
+    private func run() {
+        guard link == nil else { return }
+        let link = displayLink(target: self, selector: #selector(step(_:)))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        let t = min(1, max(0, (link.targetTimestamp - turnStart) / Self.turnDuration))
+        pose = from.mixed(with: to, by: 1 - pow(1 - t, 3))
+        needsDisplay = true
+        if t == 1 { settle() }
+    }
+
+    private func settle() {
+        link?.invalidate()
+        link = nil
+        pose = to
         needsDisplay = true
     }
 
@@ -180,8 +227,12 @@ final class LayerBezelView: NSView {
                 )
                 let lit = slot == slots.lit
                 drawBox(cell, lit: lit)
-                let colour = lit ? Self.darkInk : NSColor.white.withAlphaComponent(slot < slots.filled ? 0.82 : 0.24)
-                drawText("\(slot + 1)", font: Self.numberFont, colour: colour, in: cell)
+                if slot == 4 {
+                    drawPointer(in: cell)
+                } else {
+                    let colour = lit ? Self.darkInk : NSColor.white.withAlphaComponent(slot < slots.filled ? 0.82 : 0.24)
+                    drawText("\(slot + 1)", font: Self.numberFont, colour: colour, in: cell)
+                }
             }
         }
         let bar = CGRect(x: content.minX, y: content.minY, width: content.width, height: Self.barHeight)
@@ -215,6 +266,14 @@ final class LayerBezelView: NSView {
         path.lineWidth = lit ? 1.0 : 0.6
         (lit ? NSColor.black.withAlphaComponent(0.2) : NSColor.white.withAlphaComponent(0.14)).setStroke()
         path.stroke()
+    }
+
+    /// The mark's pointer in coral, aimed at the lit slot, or the knob when
+    /// the middle slot is the lit one.
+    private func drawPointer(in cell: CGRect) {
+        let centre = CGPoint(x: cell.midX, y: cell.midY)
+        LatticesPointer.coral.setFill()
+        LatticesPointer.path(pose, side: cell.width * Self.pointerScale, centre: centre).fill()
     }
 
     /// One line of `text` centred in `rect` on its cap height, cut short with

@@ -208,16 +208,21 @@ final class SessionLayerStore: ObservableObject {
         DiagnosticLog.shared.info("SessionLayerStore: switched to '\(layers[index].name)' (\(resolved.count)/\(layers[index].windows.count) resolved)")
     }
 
-    func cycleNext() {
+    /// Switches `step` layers along from the active one, without wrapping:
+    /// past the first or last layer, the bezel shows the active one instead.
+    /// With none active, a step lands on the first.
+    func step(by step: Int) {
         guard !layers.isEmpty else { return }
-        let next = (activeIndex + 1) % layers.count
-        switchTo(index: next)
-    }
-
-    func cyclePrev() {
-        guard !layers.isEmpty else { return }
-        let prev = activeIndex <= 0 ? layers.count - 1 : activeIndex - 1
-        switchTo(index: prev)
+        guard layers.indices.contains(activeIndex) else {
+            switchTo(index: 0)
+            return
+        }
+        let index = activeIndex + step
+        if layers.indices.contains(index) {
+            switchTo(index: index)
+        } else {
+            LayerBezel.shared.show(label: layers[activeIndex].name, index: activeIndex, total: layers.count)
+        }
     }
 
     // MARK: - Resolution
