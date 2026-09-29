@@ -49,8 +49,8 @@ enum HotkeyBootstrap {
     }
 
     private static func registerLayerHotkeys(store: HotkeyStore) {
-        store.register(action: .layerNext) { SessionLayerStore.shared.cycleNext() }
-        store.register(action: .layerPrev) { SessionLayerStore.shared.cyclePrev() }
+        store.register(action: .layerNext) { stepLayer(by: 1) }
+        store.register(action: .layerPrev) { stepLayer(by: -1) }
         store.register(action: .layerTag) { SessionLayerStore.shared.tagFrontmostWindow() }
 
         let workspace = WorkspaceManager.shared
@@ -67,6 +67,23 @@ enum HotkeyBootstrap {
                 EventBus.shared.post(.layerSwitched(index: index))
             }
         }
+    }
+
+    /// Cmd+Opt+←/→ cycle the session layers when there are any. Otherwise
+    /// they step through the workspace layers, the same fallback the
+    /// numbered layer hotkeys use.
+    private static func stepLayer(by step: Int) {
+        let session = SessionLayerStore.shared
+        if !session.layers.isEmpty {
+            if step > 0 { session.cycleNext() } else { session.cyclePrev() }
+            return
+        }
+        let workspace = WorkspaceManager.shared
+        let count = workspace.config?.layers?.count ?? 0
+        guard count > 0 else { return }
+        let index = ((workspace.activeLayerIndex + step) % count + count) % count
+        workspace.focusLayer(index: index)
+        EventBus.shared.post(.layerSwitched(index: index))
     }
 
     private static func registerTilingHotkeys(store: HotkeyStore) {

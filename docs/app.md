@@ -336,6 +336,7 @@ from Settings > Shortcuts.
 | Ctrl+Option+1/2/3  | Tile thirds          |
 | Ctrl+Left/Right    | Instant Space switch |
 | Cmd+Option+1/2/3  | Switch workspace layer |
+| Cmd+Option+Left/Right | Previous/next workspace layer |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |
 | Ctrl+B  Left/Right| Move between panes   |
