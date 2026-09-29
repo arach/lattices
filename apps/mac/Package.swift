@@ -5,11 +5,12 @@ import Foundation
 // HudsonKit source: a local sibling checkout for fast local iteration, or the
 // git dependency for CI/release builds that have no sibling repo. Set
 // LATTICES_HUDSON_SOURCE=git in CI (and rewrite git@ → token HTTPS for the
-// private repo). HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
+// private repo). LATTICES_HUDSON_PATH points the path build at another checkout
+// (a worktree); its directory must be named `hudson`. HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
 let hudsonSource = Context.environment["LATTICES_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
     ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
-    : .package(path: "../../../hudson")
+    : .package(path: Context.environment["LATTICES_HUDSON_PATH"] ?? "../../../hudson")
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
 

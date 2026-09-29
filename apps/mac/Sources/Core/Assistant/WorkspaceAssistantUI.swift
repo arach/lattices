@@ -92,32 +92,6 @@ struct LatticesMarkAvatar: View {
     }
 }
 
-// MARK: - Dot-grid background
-
-/// Faint dot-grid drawn with Canvas. Used as the transcript surface so the
-/// background reads as "designed" rather than a flat fill.
-struct WorkspaceAssistantDotGrid: View {
-    var spacing: CGFloat = 26
-    var dotSize: CGFloat = 1
-    var opacity: Double = 0.06
-    var tint: Color = .white
-
-    var body: some View {
-        Canvas { context, size in
-            let strideX = spacing
-            let strideY = spacing
-            let xStart = -spacing
-            let yStart = -spacing
-            for x in stride(from: xStart, through: size.width, by: strideX) {
-                for y in stride(from: yStart, through: size.height, by: strideY) {
-                    let rect = CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize)
-                    context.fill(Path(ellipseIn: rect), with: .color(tint.opacity(opacity)))
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Transcript
 
 /// Scroll sample used to tell a user's upward scroll apart from content growth.
@@ -126,6 +100,10 @@ private struct ScrollProbe: Equatable {
     var atBottom: Bool
 }
 
+/// The conversation as a document: every turn on one left edge, the user's
+/// marked by a bar in the margin, exchanges split by one-pixel rules
+/// (Hudson's `HudTranscriptTurn`). No bubbles, masks or scale animation, so
+/// the text holds a hard edge at 1x.
 struct WorkspaceAssistantTranscript: View {
     @ObservedObject var session: WorkspaceAssistantSession
     var style: WorkspaceAssistantStyle = .workspace
@@ -137,12 +115,11 @@ struct WorkspaceAssistantTranscript: View {
 
     var body: some View {
         if showsEmptyState {
-            WorkspaceAssistantEmptyState(session: session) { prompt in
+            WorkspaceAssistantEmptyState(session: session, style: style) { prompt in
                 session.draft = prompt
                 session.sendDraft()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(transcriptBackground)
         } else {
             scrollTranscript
         }
@@ -158,22 +135,20 @@ struct WorkspaceAssistantTranscript: View {
         GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: true) {
+                    let messages = visibleMessages
+                    let firstUser = messages.first(where: { $0.role == .user })?.id
                     LazyVStack(alignment: .leading, spacing: style.messageSpacing) {
-                        ForEach(session.messages) { message in
+                        ForEach(messages) { message in
                             WorkspaceAssistantMessageRow(
                                 message: message,
+                                ruled: message.role == .user && message.id != firstUser,
                                 isStreaming: isStreamingMessage(message),
                                 activeToolName: activeToolName(for: message),
                                 style: style
                             )
                             .equatable()
                             .id(message.id)
-                            .transition(
-                                .asymmetric(
-                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                    removal: .opacity
-                                )
-                            )
+                            .transition(.opacity)
                         }
                     }
                     .frame(maxWidth: style.maxContentWidth, alignment: .leading)
@@ -182,9 +157,8 @@ struct WorkspaceAssistantTranscript: View {
                     .padding(.vertical, style.verticalPadding)
                     .frame(minHeight: viewport.size.height, alignment: .bottom)
                 }
-                .scrollIndicators(.visible)
-                .background(transcriptBackground)
-                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.messages.count)
+                .scrollIndicators(.automatic)
+                .animation(.easeOut(duration: 0.14), value: session.messages.count)
                 // Detach only on a genuine *upward* scroll — never because content
                 // grew underneath us (that would un-pin us mid-stream and stop the
                 // follow). Re-pin when the user lands back near the bottom.
@@ -219,23 +193,15 @@ struct WorkspaceAssistantTranscript: View {
         }
     }
 
-    private var transcriptBackground: some View {
-        ZStack {
-            Palette.bg
-
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.14)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.010))
-
-            Rectangle()
-                .fill(Color.black.opacity(0.18))
-
-            WorkspaceAssistantDotGrid(spacing: 26, dotSize: 1, opacity: 0.035, tint: Palette.textMuted)
-                .blendMode(.plusLighter)
+    /// The session seeds a welcome note; the empty state already covers it, so
+    /// system lines before the first user turn stay out of the transcript.
+    private var visibleMessages: [WorkspaceAssistantMessage] {
+        guard let firstUser = session.messages.firstIndex(where: { $0.role == .user }) else {
+            return session.messages
         }
+        return session.messages.enumerated()
+            .filter { $0.offset >= firstUser || $0.element.role != .system }
+            .map(\.element)
     }
 
     private func isStreamingMessage(_ message: WorkspaceAssistantMessage) -> Bool {
@@ -264,12 +230,13 @@ struct WorkspaceAssistantTranscript: View {
 
 private struct WorkspaceAssistantEmptyState: View {
     @ObservedObject var session: WorkspaceAssistantSession
+    var style: WorkspaceAssistantStyle
     var onSelect: (String) -> Void
 
     private let starters: [WorkspaceAssistantStarterPrompt] = [
         WorkspaceAssistantStarterPrompt(
             title: "Inspect my gestures",
-            subtitle: "Read ~/.lattices/mouse-shortcuts.json",
+            subtitle: "~/.lattices/mouse-shortcuts.json",
             icon: "hand.draw",
             text: "Read my current mouse gesture configuration and tell me what's set up."
         ),
@@ -294,96 +261,62 @@ private struct WorkspaceAssistantEmptyState: View {
     ]
 
     var body: some View {
-        VStack(spacing: 28) {
-            VStack(spacing: 14) {
-                LatticesMarkAvatar(size: 56, tint: Palette.running)
-                    .shadow(color: Palette.running.opacity(0.30), radius: 18, y: 4)
+        VStack(alignment: .leading, spacing: 20) {
+            Spacer(minLength: 0)
 
-                VStack(spacing: 6) {
-                    Text("Workspace Assistant")
-                        .font(Typo.title(20))
-                        .foregroundColor(Palette.text)
-                    Text(headerSubtitle)
-                        .font(Typo.body(12))
-                        .foregroundColor(Palette.textDim)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            LatticesMark(size: 24, tint: AssistantInk.prose, dimOpacity: 0.16)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Try")
-                    .font(Typo.geistMonoBold(10))
-                    .tracking(0.8)
-                    .foregroundColor(Palette.textMuted)
-
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                    spacing: 8
-                ) {
-                    ForEach(starters) { starter in
-                        Button {
-                            onSelect(starter.text)
-                        } label: {
-                            starterRow(starter)
-                        }
-                        .buttonStyle(WorkspaceAssistantStarterButtonStyle())
+            // A ruled list on the page's left edge, not a grid of tiles.
+            VStack(alignment: .leading, spacing: 0) {
+                HudRule(color: HudTheme.latticesAssistant.hairline.subtle)
+                ForEach(starters) { starter in
+                    WorkspaceAssistantStarterButton(starter: starter) {
+                        onSelect(starter.text)
                     }
+                    HudRule(color: HudTheme.latticesAssistant.hairline.subtle)
                 }
             }
-            .frame(maxWidth: 520)
 
             Spacer(minLength: 0)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 32)
-        .padding(.top, 40)
-        .padding(.bottom, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: style.maxContentWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, style.horizontalPadding)
     }
+}
 
-    private var headerSubtitle: String {
-        "Connected through Scout. Ask about layouts, gestures, settings, or anything on screen."
-    }
+private struct WorkspaceAssistantStarterButton: View {
+    let starter: WorkspaceAssistantStarterPrompt
+    let action: () -> Void
 
-    private func starterRow(_ starter: WorkspaceAssistantStarterPrompt) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: starter.icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Palette.running)
-                .frame(width: 22, height: 22)
-                .background(
-                    Circle()
-                        .fill(Palette.running.opacity(0.12))
-                )
+    @State private var hovering = false
 
-            VStack(alignment: .leading, spacing: 2) {
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: starter.icon)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(hovering ? AssistantInk.prose : AssistantInk.dim)
+                    .frame(width: 14)
                 Text(starter.title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(Palette.text)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(AssistantInk.prose)
                 Text(starter.subtitle)
-                    .font(Typo.caption(10))
-                    .foregroundColor(Palette.textDim)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 12))
+                    .foregroundColor(AssistantInk.dim)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(AssistantInk.dim)
+                    .opacity(hovering ? 1 : 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 38)
+            .contentShape(Rectangle())
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .opacity(0.34)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.025))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                )
-        )
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -395,89 +328,111 @@ struct WorkspaceAssistantStarterPrompt: Identifiable {
     let text: String
 }
 
-private struct WorkspaceAssistantStarterButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-    }
-}
-
 // MARK: - Message row
 
 struct WorkspaceAssistantMessageRow: View, Equatable {
     let message: WorkspaceAssistantMessage
+    /// A rule above this turn: set on each user turn after the first, so the
+    /// transcript reads as numbered exchanges without numbers.
+    var ruled = false
     let isStreaming: Bool
     var activeToolName: String? = nil
     var style: WorkspaceAssistantStyle = .workspace
 
     static func == (lhs: WorkspaceAssistantMessageRow, rhs: WorkspaceAssistantMessageRow) -> Bool {
         lhs.message == rhs.message
+            && lhs.ruled == rhs.ruled
             && lhs.isStreaming == rhs.isStreaming
             && lhs.activeToolName == rhs.activeToolName
             && lhs.style == rhs.style
     }
 
     var body: some View {
-        HudAgentTurnView(
-            turn: turn,
-            style: agentStyle,
-            assistantAvatar: { active, size, tint in
-                AnyView(LatticesMarkAvatar(size: size, tint: tint, isActive: active))
-            }
-        )
+        switch message.role {
+        case .system:    systemRow
+        case .user:      userRow
+        case .assistant: assistantRow
+        }
     }
 
-    /// Map this transport-specific message onto the transport-agnostic turn
-    /// model the renderer consumes.
-    private var turn: HudAgentTurn {
-        HudAgentTurn(
-            id: message.id,
-            role: agentRole,
-            author: agentAuthor,
+    private var markdown: WorkspaceAssistantMarkdown {
+        WorkspaceAssistantMarkdown(size: style.bodySize)
+    }
+
+    private var systemRow: some View {
+        HudTranscriptTurn(role: .system, style: style.transcript) {
+            Text(message.text)
+                .font(.system(size: style.bodySize - 1.5))
+                .foregroundColor(AssistantInk.dim)
+                .textSelection(.enabled)
+        }
+    }
+
+    private var userRow: some View {
+        HudTranscriptTurn(
+            role: .user,
+            ruled: ruled,
             timestamp: message.timestamp,
-            text: message.text,
-            attachments: message.attachments.map {
-                HudAgentTurnAttachment(
-                    id: $0.id,
-                    name: $0.name,
-                    mediaType: $0.mediaType,
-                    systemImage: $0.systemImage
-                )
-            },
-            isStreaming: isStreaming,
-            toolActivity: activeToolName
-        )
-    }
-
-    private var agentStyle: HudAgentTurnStyle {
-        HudAgentTurnStyle(bodySize: style.bodySize)
-    }
-
-    private var agentRole: HudAgentTurnRole {
-        switch message.role {
-        case .system:    return .system
-        case .user:      return .user
-        case .assistant: return .assistant
+            copyText: message.text,
+            style: style.transcript
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                HudSelectableText(markdown.plain(message.text), ink: AssistantInk.set, opaque: style.opaqueText)
+                if !message.attachments.isEmpty { attachments }
+            }
         }
     }
 
-    private var agentAuthor: String {
-        switch message.role {
-        case .system:    return ""
-        case .user:      return "You"
-        case .assistant: return "Assistant"
+    @ViewBuilder
+    private var assistantRow: some View {
+        if isStreaming {
+            HudTranscriptTurn(role: .assistant, style: style.transcript) {
+                assistantText
+            } status: {
+                HudActivityIndicator(activityLabel, color: Palette.running)
+            }
+        } else {
+            HudTranscriptTurn(
+                role: .assistant,
+                timestamp: message.timestamp,
+                copyText: message.text,
+                style: style.transcript
+            ) {
+                assistantText
+            }
         }
     }
 
+    @ViewBuilder
+    private var assistantText: some View {
+        if !message.text.isEmpty {
+            HudSelectableText(markdown.render(message.text), ink: AssistantInk.set, opaque: style.opaqueText)
+        }
+    }
+
+    private var activityLabel: String {
+        if let tool = activeToolName { return WorkspaceAssistantActivity.label(forTool: tool) }
+        return message.text.isEmpty ? "Thinking" : "Writing"
+    }
+
+    private var attachments: some View {
+        HStack(spacing: 6) {
+            ForEach(message.attachments) { attachment in
+                HStack(spacing: 5) {
+                    Image(systemName: attachment.systemImage)
+                        .font(.system(size: 9))
+                    Text(attachment.name)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .foregroundColor(AssistantInk.dim)
+                .padding(.horizontal, 6)
+                .frame(height: 20)
+                .hudPixelBorder(radius: 3)
+            }
+        }
+    }
 }
 
 // MARK: - Composer
@@ -486,10 +441,15 @@ struct WorkspaceAssistantComposer: View {
     @ObservedObject var session: WorkspaceAssistantSession
     var style: WorkspaceAssistantStyle = .workspace
     var focus: FocusState<Bool>.Binding
+    /// The runtime picker's presentation, owned by the page that hosts
+    /// `.hudRuntimePicker`. Nil where there is no picker: the chip opens
+    /// Settings instead.
+    var runtimePicking: Binding<Bool>? = nil
+
+    @ObservedObject private var catalog = AssistantRuntimeCatalog.shared
 
     #if LATTICES_VOICE && canImport(HudsonVoice)
     @ObservedObject private var voice = WorkspaceVoiceInput.shared
-    @State private var micPulse = false
     #endif
 
     var body: some View {
@@ -521,13 +481,71 @@ struct WorkspaceAssistantComposer: View {
                 trailingAccessory: { micAccessory },
                 onAction: handle(_:),
                 onRemoveQueued: { session.removeQueuedPrompt(id: $0.id) },
-                onEditQueued: { session.editQueuedPrompt(id: $0.id) }
+                onEditQueued: { session.editQueuedPrompt(id: $0.id) },
+                model: modelInfo,
+                onTapModel: {
+                    if let runtimePicking {
+                        catalog.refresh()
+                        runtimePicking.wrappedValue.toggle()
+                    } else {
+                        SettingsWindowController.shared.showAssistant()
+                    }
+                }
+            )
+            .hudRuntimeLane()
+        }
+        .frame(maxWidth: style.maxContentWidth)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, style.horizontalPadding)
+        .padding(.top, 6)
+        .padding(.bottom, style.verticalPadding)
+        .environment(\.hudTheme, .latticesAssistant)
+    }
+
+    /// What answers the next message. With Scout's catalog: the picked
+    /// harness / model / effort, where a harness left on its own default shows
+    /// the model it last reported. Without it: the local harness and its
+    /// reported model, or the API provider's model. Nil (no chip) until one is
+    /// known.
+    private var modelInfo: HudComposerModelInfo? {
+        if !catalog.harnesses.isEmpty, !session.hasSelectedCredential || session.preferredAgentHarness != nil {
+            let selection = session.runtimeSelection
+            var info = HudComposerModelInfo(
+                selection: selection,
+                harnesses: catalog.harnesses,
+                efforts: catalog.efforts
+            )
+            if catalog.launchModel(for: selection) == nil {
+                info.model = session.agentRuntimeHarnessLabel == selection.harnessId
+                    ? session.agentRuntimeModel.map(Self.displayModel) ?? ""
+                    : ""
+            }
+            if info.effort == HudRuntimeEffort.auto.label { info.effort = nil }
+            return info
+        }
+        if let harness = session.agentRuntimeHarnessLabel ?? session.preferredAgentHarness,
+           !harness.isEmpty {
+            return HudComposerModelInfo(
+                model: session.agentRuntimeModel.map(Self.displayModel) ?? "",
+                harness: harness
             )
         }
-        .padding(.horizontal, style.horizontalPadding)
-        .padding(.vertical, style.verticalPadding)
-        .background(composerChrome)
-        .environment(\.hudTheme, .lattices)
+        if session.hasSelectedCredential {
+            return HudComposerModelInfo(model: Self.displayModel(session.currentProvider.modelID))
+        }
+        return nil
+    }
+
+    /// `claude-opus-5-5` → `Opus 5.5`; other ids pass through unchanged.
+    static func displayModel(_ id: String) -> String {
+        var name = id
+        if let bracket = name.firstIndex(of: "[") { name = String(name[..<bracket]) }
+        guard name.hasPrefix("claude-") else { return name }
+        var parts = name.dropFirst("claude-".count).split(separator: "-").map(String.init)
+        if let last = parts.last, last.count == 8, Int(last) != nil { parts.removeLast() }
+        guard let family = parts.first else { return name }
+        let version = parts.dropFirst().joined(separator: ".")
+        return family.prefix(1).uppercased() + family.dropFirst() + (version.isEmpty ? "" : " " + version)
     }
 
     private var queuedItems: [HudComposerQueuedItem] {
@@ -535,9 +553,10 @@ struct WorkspaceAssistantComposer: View {
     }
 
     private var hudStyle: HudComposerStyle {
-        HudComposerStyle(
+        .hairline(
             placeholder: style.placeholder,
             fontSize: style.composerSize,
+            face: .system,
             lineLimit: 1...style.composerLineLimit
         )
     }
@@ -566,44 +585,20 @@ struct WorkspaceAssistantComposer: View {
     }
 
     #if LATTICES_VOICE && canImport(HudsonVoice)
-    /// HudsonVoice-powered mic. Tap to dictate into the draft; tap again to commit.
-    /// Filled-circle states (after OpenScout's ScoutMicButton): a soft halo breathes
-    /// while recording; the glyph, fill, and ring track idle/recording/processing.
+    /// HudsonVoice-powered mic. Tap to dictate into the draft; tap again to
+    /// commit. A bare glyph like Send beside it: live states tint the glyph,
+    /// and nothing breathes or scales.
     private var micButton: some View {
-        Button {
+        HudSquareIconButton(
+            symbol: micSymbol,
+            help: micTooltip,
+            size: 26,
+            iconSize: 12,
+            tint: micLiveTint
+        ) {
             voice.toggle()
-        } label: {
-            ZStack {
-                if voice.state.isCaptureActive {
-                    Circle()
-                        .fill(micAccent.opacity(micPulse ? 0.24 : 0.10))
-                        .frame(width: 34, height: 34)
-                }
-                Circle()
-                    .fill(micFill)
-                    .frame(width: 30, height: 30)
-                    .overlay(
-                        Circle().strokeBorder(micStroke, lineWidth: voice.state.isCaptureActive ? 1.2 : 0.5)
-                    )
-                Image(systemName: micSymbol)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(micTint)
-            }
-            .frame(width: 34, height: 34)
         }
-        .buttonStyle(.plain)
-        .help(micTooltip)
         // Mic stays live during a turn — dictate to queue or steer mid-stream.
-        .animation(.easeInOut(duration: 0.18), value: voice.state)
-        .onChange(of: voice.state.isCaptureActive) {
-            if voice.state.isCaptureActive {
-                withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
-                    micPulse = true
-                }
-            } else {
-                withAnimation(.easeOut(duration: 0.2)) { micPulse = false }
-            }
-        }
     }
 
     /// Compact live strip while the mic is hot. Sits inside the same chrome as
@@ -678,30 +673,14 @@ struct WorkspaceAssistantComposer: View {
         }
     }
 
-    private var micFill: Color {
-        switch voice.state {
-        case .recording, .starting: return Palette.kill.opacity(0.16)
-        case .processing: return Palette.detach.opacity(0.14)
-        case .unavailable: return Color.white.opacity(0.02)
-        case .idle: return Color.white.opacity(0.04)
-        }
-    }
-
-    private var micStroke: Color {
-        switch voice.state {
-        case .recording, .starting: return Palette.kill.opacity(0.5)
-        case .processing: return Palette.detach.opacity(0.45)
-        case .unavailable: return Palette.border.opacity(0.6)
-        case .idle: return Palette.border
-        }
-    }
-
-    private var micTint: Color {
+    /// Red while recording, amber while transcribing; idle takes the
+    /// button's own muted-to-ink hover.
+    private var micLiveTint: Color? {
         switch voice.state {
         case .recording, .starting: return Palette.kill
         case .processing: return Palette.detach
-        case .unavailable: return Palette.textMuted.opacity(0.6)
-        case .idle: return Palette.textMuted
+        case .unavailable: return HudTheme.latticesAssistant.palette.dim
+        case .idle: return nil
         }
     }
 
@@ -717,15 +696,6 @@ struct WorkspaceAssistantComposer: View {
 
     #endif
 
-    private var composerChrome: some View {
-        ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.12)
-            Palette.surface.opacity(0.18)
-        }
-            .overlay(Rectangle().fill(Palette.border).frame(height: 0.5), alignment: .top)
-    }
 }
 
 /// A small synthetic 5-bar equalizer shown while dictating. Decorative, not
@@ -740,11 +710,11 @@ private struct WorkspaceAssistantWaveform: View {
     private let durations: [Double] = [0.50, 0.62, 0.44, 0.70, 0.54]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2.5) {
+        HStack(alignment: .center, spacing: 2) {
             ForEach(lows.indices, id: \.self) { i in
-                Capsule(style: .continuous)
-                    .fill(tint.opacity(0.85))
-                    .frame(width: 2.5, height: animate ? highs[i] : lows[i])
+                Rectangle()
+                    .fill(tint)
+                    .frame(width: 2, height: animate ? highs[i] : lows[i])
                     .animation(
                         .easeInOut(duration: durations[i]).repeatForever(autoreverses: true),
                         value: animate
@@ -756,73 +726,47 @@ private struct WorkspaceAssistantWaveform: View {
     }
 }
 
-// MARK: - Model chip (header)
+// MARK: - Status line (header)
 
-/// Compact Scout/status indicator, now living in the header next to the
-/// gear instead of under the composer. A live status dot + broker name;
-/// shows the streaming/tool phase while a turn is in flight.
-struct WorkspaceAssistantModelChip: View {
+/// Who the assistant is and where it runs. The mark is a square: green and
+/// blinking while a turn runs, red when the runtime is down, otherwise dim.
+struct WorkspaceAssistantStatusLine: View {
     @ObservedObject var session: WorkspaceAssistantSession
 
     var body: some View {
-        HStack(spacing: 6) {
-            if session.isSending {
-                WorkspaceAssistantStatusPulse(color: statusColor)
-            } else {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 5, height: 5)
-            }
-            Text("Scout")
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.textDim)
-            if let detail = providerStatusDetail {
-                Text("· " + detail)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-            }
+        HStack(spacing: 8) {
+            HudBlinkMark(color: markColor, size: 5, still: !session.isSending)
+            Text(harness)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AssistantInk.prose)
+            Text(session.workingDirectoryName)
+                .font(.system(size: 12))
+                .foregroundColor(AssistantInk.dim)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(Palette.border, lineWidth: 0.5)
-        )
-        .help("Chat is routed through the local Scout broker")
+        .lineLimit(1)
+        .frame(height: 18)
+        .help(session.chatTransportSummary)
     }
 
-    private var statusColor: Color {
-        if session.isSending { return Palette.detach }
-        if session.isScoutAvailable == false { return Palette.kill }
-        return Palette.running
+    private var harness: String {
+        guard let label = session.agentRuntimeHarnessLabel, !label.isEmpty else { return "Assistant" }
+        return label
+            .split(whereSeparator: { $0 == "-" || $0 == "_" })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 
-    private var providerStatusDetail: String? {
-        guard session.isSending else { return nil }
-        if session.statusText == "streaming..." { return "streaming" }
-        if session.statusText.hasPrefix("tool:") {
-            return session.statusText.replacingOccurrences(of: "tool: ", with: "tool · ")
-        }
-        return "working"
+    private var markColor: Color {
+        if session.isSending { return Palette.running }
+        if session.isScoutAvailable == false || session.statusText == "error" { return Palette.kill }
+        return AssistantInk.muted
     }
 }
 
-// MARK: - Chrome (avatars, indicators, badges)
-
-struct WorkspaceAssistantStatusPulse: View {
-    let color: Color
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(color.opacity(0.22))
-                .frame(width: 10, height: 10)
-                .modifier(WorkspaceAssistantPulseModifier(minOpacity: 0.15, maxOpacity: 0.55, duration: 1.2))
-
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-        }
+enum WorkspaceAssistantActivity {
+    static func label(forTool tool: String) -> String {
+        let name = tool.replacingOccurrences(of: "_", with: " ")
+        return name.isEmpty ? "Working" : name
     }
 }
 
@@ -848,15 +792,26 @@ enum WorkspaceAssistantStyle: Equatable {
 
     var maxContentWidth: CGFloat {
         switch self {
-        case .workspace: return .infinity
+        case .workspace: return 720
         case .dock: return .infinity
+        }
+    }
+
+    /// The page is opaque, so its text views paint the page colour under the
+    /// glyphs for crisp 1x rendering. The dock floats translucent, so it can't.
+    var opaqueText: Bool { self == .workspace }
+
+    var transcript: HudTranscriptStyle {
+        switch self {
+        case .workspace: return HudTranscriptStyle(barGap: 12, ruleSpacing: 20, metaSpacing: 6)
+        case .dock: return .compact
         }
     }
 
     var messageSpacing: CGFloat {
         switch self {
-        case .workspace: return 18
-        case .dock: return 10
+        case .workspace: return 14
+        case .dock: return 8
         }
     }
 
@@ -876,8 +831,8 @@ enum WorkspaceAssistantStyle: Equatable {
 
     var bodySize: CGFloat {
         switch self {
-        case .workspace: return 12
-        case .dock: return 11
+        case .workspace: return 13
+        case .dock: return 12
         }
     }
 
