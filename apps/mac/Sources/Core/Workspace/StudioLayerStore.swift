@@ -167,8 +167,7 @@ final class StudioLayerStore: ObservableObject {
             return
         }
         WindowTiler.raiseWindowsAndReactivate(windows: wins.map { (wid: $0.wid, pid: $0.pid) })
-        let idx = layers.firstIndex(where: { $0.id == layer.id }) ?? 0
-        LayerBezel.shared.show(label: layer.name, index: idx, total: layers.count, allLabels: layers.map(\.name))
+        LayerBezel.shared.acknowledge(layer.name)
         DiagnosticLog.shared.info("StudioLayerStore: recalled '\(layer.name)' → raised \(wins.count) windows")
     }
 

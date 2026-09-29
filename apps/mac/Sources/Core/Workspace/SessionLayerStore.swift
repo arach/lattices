@@ -103,7 +103,6 @@ final class SessionLayerStore: ObservableObject {
         DesktopModel.shared.clearLayerTags()
         layers.removeAll()
         activeIndex = -1
-        LayerBezel.shared.invalidateCache()
     }
 
     func layerById(_ id: String) -> SessionLayer? {
@@ -174,12 +173,10 @@ final class SessionLayerStore: ObservableObject {
         DiagnosticLog.shared.info("SessionLayerStore: tagged \(entry.app) '\(entry.title)' → '\(layers[targetIndex].name)'")
 
         // Show bezel feedback
-        let allNames = layers.map(\.name)
         LayerBezel.shared.show(
             label: layers[targetIndex].name,
             index: targetIndex,
-            total: layers.count,
-            allLabels: allNames
+            total: layers.count
         )
     }
 
@@ -202,12 +199,10 @@ final class SessionLayerStore: ObservableObject {
             WindowTiler.raiseWindowsAndReactivate(windows: resolved)
         }
 
-        let allNames = layers.map(\.name)
         LayerBezel.shared.show(
             label: layers[index].name,
             index: index,
-            total: layers.count,
-            allLabels: allNames
+            total: layers.count
         )
 
         DiagnosticLog.shared.info("SessionLayerStore: switched to '\(layers[index].name)' (\(resolved.count)/\(layers[index].windows.count) resolved)")

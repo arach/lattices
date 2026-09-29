@@ -374,9 +374,10 @@ await daemonCall('window.removeLayer', { wid: 1234 })
 
 ### Layer bezel
 
-When you switch layers via hotkey, a translucent HUD pill appears
-briefly at the top of the screen showing the new layer's name.
-This provides instant visual feedback without interrupting your flow.
+When you switch layers, a 3×3 grid flashes in the upper middle of the
+screen. Its slots are numbered 1–9, like the Cmd+Option hotkeys: the new
+layer's slot is lit, its name sits underneath, and slots without a layer
+stay dim.
 
 ### Programmatic switching
 

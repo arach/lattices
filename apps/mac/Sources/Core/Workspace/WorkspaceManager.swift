@@ -1018,8 +1018,7 @@ class WorkspaceManager: ObservableObject {
         activeLayerIndex = index
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
-        let allLabels = layers.map(\.label)
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count, allLabels: allLabels)
+        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
         HandsOffSession.shared.playCachedCue("Switched.")
 
         diag.finish(t)
@@ -1256,9 +1255,7 @@ class WorkspaceManager: ObservableObject {
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
         // Show layer bezel
-        let totalLayers = layers.count
-        let allLabels = layers.map(\.label)
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: totalLayers, allLabels: allLabels)
+        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
 
         let maxDelay = max(
             fallbacks.isEmpty ? 0.0 : Double(fallbacks.count) * 0.15 + 0.3,
