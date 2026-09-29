@@ -35,8 +35,8 @@ final class LayerStage {
     struct Outcome {
         var parked = 0
         var unparked = 0
-        /// Parked windows AX couldn't reach: they sit on a desktop that
-        /// isn't showing.
+        /// Parked windows AX couldn't reach, and untracked ones in the park
+        /// corner: they sit on a desktop that isn't showing.
         var stillParked = 0
         /// Windows whose app kept them on screen: put back where they were.
         var refused = 0
@@ -224,7 +224,9 @@ final class LayerStage {
         outcome.unparked = restored.count
         state.parked.removeAll { restored.contains($0.wid) }
         outcome.stillParked = state.parked.count
-        outcome.rescued = Self.rescueStrays(tracked: Set(state.parked.map(\.wid)))
+        let strays = Self.rescueStrays(tracked: Set(state.parked.map(\.wid)))
+        outcome.rescued = strays.rescued
+        outcome.stillParked += strays.found - strays.rescued
         for pid in state.hiddenPids {
             guard let app = NSRunningApplication(processIdentifier: pid), app.isHidden else { continue }
             app.unhide()
@@ -275,7 +277,7 @@ final class LayerStage {
             }
             return Stage(
                 bounds: CGDisplayBounds(main),
-                others: activeDisplays().filter { $0 != main }.map { CGDisplayBounds($0) },
+                others: otherDisplayBounds(),
                 spaceId: display.currentSpaceId,
                 currentSpaceIds: Set(all.map(\.currentSpaceId))
             )
@@ -309,6 +311,11 @@ final class LayerStage {
         func isElsewhere(_ entry: WindowEntry) -> Bool {
             if entry.isOnScreen { return !contains(entry) }
             return !entry.spaceIds.isEmpty && currentSpaceIds.isDisjoint(with: entry.spaceIds)
+        }
+
+        static func otherDisplayBounds() -> [CGRect] {
+            let main = CGMainDisplayID()
+            return activeDisplays().filter { $0 != main }.map { CGDisplayBounds($0) }
         }
 
         private static func activeDisplays() -> [CGDirectDisplayID] {
@@ -396,11 +403,17 @@ final class LayerStage {
 
     /// Bring back windows sitting in the main screen's park corner that
     /// aren't in the ledger. Centres each on the main screen, keeping its
-    /// size. Only reaches desktops that are showing.
-    private static func rescueStrays(tracked: Set<UInt32>) -> Int {
-        guard let stage = Stage.current(), stage.canPark else { return 0 }
-        let bounds = stage.bounds
-        guard let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return 0 }
+    /// size. Only reaches desktops that are showing; the rest count as found
+    /// but not rescued.
+    private static func rescueStrays(tracked: Set<UInt32>) -> (found: Int, rescued: Int) {
+        let bounds = Stage.mainBounds
+        let others = Stage.otherDisplayBounds()
+        let beyond = CGRect(x: bounds.maxX - parkedSlack, y: bounds.minY, width: 20_000, height: bounds.height)
+        guard !others.contains(where: { $0.intersects(beyond) }) else {
+            DiagnosticLog.shared.info("LayerStage: a display sits right of the main screen — not rescuing corner windows")
+            return (0, 0)
+        }
+        guard let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return (0, 0) }
         var strays: [(wid: UInt32, pid: Int32, size: CGSize)] = []
         for window in info {
             guard (window[kCGWindowLayer as String] as? Int) == 0,
@@ -415,7 +428,7 @@ final class LayerStage {
                   rect.minY >= bounds.minY, rect.minY < bounds.maxY else { continue }
             strays.append((wid, pid, rect.size))
         }
-        guard !strays.isEmpty else { return 0 }
+        guard !strays.isEmpty else { return (0, 0) }
         let sizes = Dictionary(strays.map { ($0.wid, $0.size) }, uniquingKeysWith: { first, _ in first })
         var rescued = 0
         withAXWindows(for: strays.map { ($0.wid, $0.pid) }) { wid, axWindow in
@@ -428,7 +441,7 @@ final class LayerStage {
                   AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success else { return }
             rescued += 1
         }
-        return rescued
+        return (strays.count, rescued)
     }
 
     /// Move parked windows back to their saved frames. Returns the ones AX
