@@ -8,8 +8,7 @@ import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { heroDesktopMaps, heroLayer, heroOverlapCount, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
 import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
-
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.3/Lattices.dmg";
+import { latticesDownloadUrl as latticesDownloadURL } from "../seo/routes";
 
 declare global {
   interface Window {
@@ -945,9 +944,10 @@ export default function App() {
   const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
   // (saved choice → system preference → dark). This re-syncs on toggle.
-  const [theme, setTheme] = useState<"light" | "dark">(
-    () => (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark",
-  );
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof document === "undefined") return "dark";
+    return (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark";
+  });
   const activeCuaStep = cuaSteps.find((step) => step.id === cuaStep) ?? cuaSteps[0];
 
   useEffect(() => {

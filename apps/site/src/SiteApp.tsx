@@ -12,6 +12,7 @@ import BrandPage from './components/BrandPage'
 import { SiteFooter, SiteHeader } from './components/SiteChrome'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 import { routeBrand } from './lib/brand'
+import { routeMeta } from './seo/routes'
 
 export default function SiteApp() {
   const [path, setPath] = useState(() => normalizePath(window.location.pathname))
@@ -125,71 +126,27 @@ type Route =
   | { kind: 'blog-post'; slug: string; title: string; description: string }
   | { kind: 'not-found'; title: string; description: string }
 
+function copyFor(path: string): { title: string; description: string } {
+  const meta = routeMeta(path)
+  if (!meta) throw new Error(`Missing SEO metadata for ${path}`)
+  return { title: meta.title, description: meta.description }
+}
+
 function resolveRoute(path: string): Route {
   if (path === '/experiment' || path === '/concept') {
-    return {
-      kind: 'experiment',
-      title: 'SYS. 01 — Lattices Architectural Study',
-      description: 'An architectural design study: Dieter Rams meets Teenage Engineering for macOS and agent workspaces.',
-    }
+    return { kind: 'experiment', ...copyFor('/experiment') }
   }
 
-  if (path === '/') {
-    return {
-      kind: 'home',
-      title: 'Lattices — the programmable workspace for Mac',
-      description: 'Organize windows, run your tools, and automate your workflow. Lattices puts your Mac workspace in your hands, with shortcuts, mouse gestures, and a local API.',
-    }
-  }
-
-  if (path === '/action') {
-    return {
-      kind: 'action',
-      title: 'Action — computer use from Lattices',
-      description: 'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
-    }
-  }
-
-  if (path === '/speech') return { kind: 'speech', title: 'Speech — a standalone player from Lattices', description: 'Queue text, choose a voice, and control playback independently.' }
-
-  if (path === '/products') {
-    return {
-      kind: 'products',
-      title: 'Products — Lattices',
-      description: 'Browse Lattices, Action, Blink, Speech, and the agent API.',
-    }
-  }
-
-  if (path === '/family') {
-    return {
-      kind: 'family',
-      title: 'What Lattices can do — Lattices',
-      description: 'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
-    }
-  }
-
-  if (path === '/brand') {
-    return {
-      kind: 'brand',
-      title: 'Brand — Lattices',
-      description: 'Marks, app icons, favicons and social cards for Lattices, Action, Blink and Speech.',
-    }
-  }
-
-  if (path === '/blink') {
-    return {
-      kind: 'blink',
-      title: 'Blink — spatial notes from Lattices',
-      description: 'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
-    }
-  }
+  if (path === '/') return { kind: 'home', ...copyFor('/') }
+  if (path === '/action') return { kind: 'action', ...copyFor('/action') }
+  if (path === '/speech') return { kind: 'speech', ...copyFor('/speech') }
+  if (path === '/products') return { kind: 'products', ...copyFor('/products') }
+  if (path === '/family') return { kind: 'family', ...copyFor('/family') }
+  if (path === '/brand') return { kind: 'brand', ...copyFor('/brand') }
+  if (path === '/blink') return { kind: 'blink', ...copyFor('/blink') }
 
   if (path === '/blog' || path === '/docs/blog') {
-    return {
-      kind: 'blog-index',
-      title: 'Blog — Lattices',
-      description: 'Ideas and engineering notes from the Lattices team.',
-    }
+    return { kind: 'blog-index', ...copyFor('/blog') }
   }
 
   if (path.startsWith('/blog/') || path.startsWith('/docs/blog/')) {
