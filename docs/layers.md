@@ -254,6 +254,7 @@ the whole topic.
 | `layers[].id`     | string   | Unique identifier (e.g. `"web"`)         |
 | `layers[].label`  | string   | Display name shown in the UI             |
 | `layers[].projects` | array  | Projects in this layer                   |
+| `layers[].layout` | string?  | Lay the windows out: `auto`, `columns` or `master-stack` (see [Layouts](#layouts)) |
 | `projects[].path` | string?  | Absolute path to project directory       |
 | `projects[].group`| string?  | Group ID (alternative to `path`)         |
 | `projects[].app`  | string?  | Application name (for non-terminal windows) |
@@ -270,6 +271,39 @@ Any tile position from the [config reference](/docs/config#tile-positions)
 works: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
 `bottom-left`, `bottom-right`, `left-third`, `center-third`,
 `right-third`, `maximize`, `center`.
+
+### Layouts
+
+Instead of a `tile` per entry, a layer can lay its windows out itself:
+
+```json
+{
+  "id": "web",
+  "label": "Web",
+  "layout": "auto",
+  "projects": [
+    { "app": "Ghostty", "title": "mini: web" },
+    { "app": "Cursor", "title": "web" },
+    { "app": "Google Chrome", "title": "localhost" }
+  ]
+}
+```
+
+| `layout`       | Arrangement |
+|----------------|-------------|
+| `auto`         | Lanes by app: terminals and chat on the left, editors and design tools in the middle, browsers and everything else on the right. On an ultrawide (21:9 or wider) each lane is a column, 30/40/30 with all three, and stacks its windows. On a standard display the editor, or else the first window, takes the left half and the rest stack on the right. |
+| `columns`      | Equal columns in entry order, up to four on an ultrawide and three otherwise. The leftmost columns stack any extra windows. |
+| `master-stack` | The first window takes the left 62%; the rest stack on the right. |
+
+A lone window sits centred at half width on an ultrawide and fills a
+standard display. More than three windows in a lane or column form a
+grid two wide.
+
+The layout applies on the main display, to the layer's windows on the
+desktop it's showing, whenever you switch to the layer or choose it
+again. Every window an entry matches takes part, frontmost first, and
+the layer's first window ends up in front. Entries with their own
+`tile` or `display` keep their place.
 
 ### Switching layers
 
@@ -289,9 +323,11 @@ When you switch to a layer:
 3. App windows are matched by `app` / `title` / `url`
 4. If a project isn't running yet, it gets **launched** automatically
 5. Windows with a `tile` value are **tiled** to that position
+6. A layer with a `layout` **lays out** the rest
 
-The hotkeys and the layer chips only raise: they don't launch or tile.
-The CLI and the command bar launch and tile too.
+The hotkeys and the layer chips don't launch or tile, but they apply a
+`layout`. Choosing the layer you're on again gathers its windows back
+up. The CLI and the command bar launch and tile too.
 
 The app remembers which layer was last active across restarts.
 

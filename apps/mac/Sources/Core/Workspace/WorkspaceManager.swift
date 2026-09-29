@@ -42,6 +42,10 @@ struct Layer: Codable, Identifiable {
     let id: String
     let label: String
     let projects: [LayerProject]
+    /// How to lay the layer's windows out when it's shown: "auto",
+    /// "columns" or "master-stack" (`LayerLayout`). Nil leaves them where
+    /// they are.
+    var layout: String? = nil
 }
 
 struct WorkspaceConfig: Codable {
@@ -912,39 +916,54 @@ class WorkspaceManager: ObservableObject {
     /// Every window a layer's entries match, on any desktop: the layer's own
     /// windows, as opposed to whatever else was showing when it was left.
     func memberWindowIDs(of layer: Layer, in windows: [WindowEntry]) -> Set<UInt32> {
-        var ids = Set<UInt32>()
-        func matchApp(_ app: String, title: String?) {
+        Set(memberWindows(of: layer, in: windows).map(\.entry.wid))
+    }
+
+    /// The layer's windows in entry order, front to back within an entry,
+    /// each under the first entry that matches it. `placed` marks the ones
+    /// whose entry sets its own `tile` or `display`, which a layout leaves be.
+    func memberWindows(of layer: Layer, in windows: [WindowEntry]) -> [(entry: WindowEntry, placed: Bool)] {
+        let windows = windows.sorted { $0.zIndex < $1.zIndex }
+        var members: [(entry: WindowEntry, placed: Bool)] = []
+        var seen = Set<UInt32>()
+        func add(_ entry: WindowEntry, placed: Bool) {
+            if seen.insert(entry.wid).inserted { members.append((entry, placed)) }
+        }
+        func matchApp(_ app: String, title: String?, placed: Bool) {
             for entry in windows where entry.app.localizedCaseInsensitiveContains(app)
                 && (title.map { entry.title.localizedCaseInsensitiveContains($0) } ?? true) {
-                ids.insert(entry.wid)
+                add(entry, placed: placed)
             }
         }
-        func matchSession(_ session: String) {
+        func matchSession(_ session: String, placed: Bool) {
             for entry in windows where SessionWindowLocator.matches(
                 session: session, title: entry.title, extractedSessionName: entry.latticesSession
             ) {
-                ids.insert(entry.wid)
+                add(entry, placed: placed)
             }
         }
         for lp in layer.projects {
+            let placed = lp.tile != nil || lp.display != nil
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 for tab in grp.tabs {
                     if let path = tab.path {
-                        matchSession(Self.sessionName(for: path))
+                        matchSession(Self.sessionName(for: path), placed: placed)
                     } else if let app = tab.app {
-                        matchApp(app, title: tab.title)
+                        matchApp(app, title: tab.title, placed: placed)
                     }
                 }
             } else if let app = lp.app {
-                matchApp(app, title: lp.title)
+                matchApp(app, title: lp.title, placed: placed)
             } else if let path = lp.path {
-                matchSession(Self.sessionName(for: path))
+                matchSession(Self.sessionName(for: path), placed: placed)
                 for cw in projectWindows(at: path) {
-                    if let app = cw.app { matchApp(app, title: cw.title) }
+                    if let app = cw.app {
+                        matchApp(app, title: cw.title, placed: cw.tile != nil || (cw.display ?? lp.display) != nil)
+                    }
                 }
             }
         }
-        return ids
+        return members
     }
 
     /// Put away what the incoming layer doesn't use and bring back what it
@@ -959,22 +978,47 @@ class WorkspaceManager: ObservableObject {
         LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows)
     }
 
-    // MARK: - Layer Focus (raise only)
+    // MARK: - Layer Focus (no launching)
 
-    /// Switch to a layer: put away what it doesn't use, then raise its
-    /// windows in place — no launching, no tiling. This is the default
-    /// hotkey action. Windows on a desktop that isn't showing are left
-    /// there; raising one would switch Spaces.
+    /// Switch to a layer: put away what it doesn't use, then bring its
+    /// windows forward — no launching. This is the default hotkey action. A
+    /// layer with a `layout` lays its windows out (`arrangeLayer`); one
+    /// without raises them in place. Choosing the active layer again does
+    /// the same without staging, which gathers its windows back up. Windows
+    /// on a desktop that isn't showing are left there; raising one would
+    /// switch Spaces.
     func focusLayer(index: Int) {
         guard let config, let layers = config.layers, index < layers.count else { return }
-        if index == activeLayerIndex { return }
+        let switching = index != activeLayerIndex
 
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("focusLayer \(activeLayerIndex)→\(index)")
 
-        stageSwitch(to: index, in: layers)
+        if switching {
+            stageSwitch(to: index, in: layers)
+        } else {
+            DesktopModel.shared.refreshNow()
+        }
 
         let targetLayer = layers[index]
+        if !arrangeLayer(targetLayer, windows: DesktopModel.shared.allWindows()) {
+            raiseWindows(of: targetLayer)
+        }
+
+        activeLayerIndex = index
+        UserDefaults.standard.set(index, forKey: activeLayerKey)
+
+        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
+        if switching {
+            HandsOffSession.shared.playCachedCue("Switched.")
+        }
+
+        diag.finish(t)
+    }
+
+    /// Raises the window each of a layer's entries matches on the showing
+    /// desktop, where it is.
+    private func raiseWindows(of targetLayer: Layer) {
         var windowsToRaise: [(wid: UInt32, pid: Int32)] = []
 
         for lp in targetLayer.projects {
@@ -1014,14 +1058,6 @@ class WorkspaceManager: ObservableObject {
         if !windowsToRaise.isEmpty {
             WindowTiler.raiseWindowsAndReactivate(windows: windowsToRaise)
         }
-
-        activeLayerIndex = index
-        UserDefaults.standard.set(index, forKey: activeLayerKey)
-
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count)
-        HandsOffSession.shared.playCachedCue("Switched.")
-
-        diag.finish(t)
     }
 
     // MARK: - Unified Layer Tiling
@@ -1227,6 +1263,9 @@ class WorkspaceManager: ObservableObject {
             WindowTiler.batchMoveAndRaiseWindows(batchMoves)
             diag.finish(t)
         }
+
+        // Lay out the windows whose entries don't place them.
+        arrangeLayer(targetLayer, windows: DesktopModel.shared.allWindows())
 
         // Phase 3: fallback for running-but-untracked windows
         for (i, fb) in fallbacks.enumerated() {
