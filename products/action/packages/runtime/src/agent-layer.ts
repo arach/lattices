@@ -29,6 +29,10 @@ export interface AgentLayerOpenInput {
   width?: number;
   height?: number;
   pip?: boolean;
+  /** Move only this window (CGWindowID / kCGWindowNumber) instead of all the app's windows. */
+  windowId?: number;
+  /** Move only windows whose title contains this, case-insensitively. */
+  windowTitle?: string;
   owner?: AgentLayerOwner;
 }
 
@@ -61,6 +65,8 @@ export function parseAgentLayerOpen(input: {
   width?: unknown;
   height?: unknown;
   pip?: unknown;
+  windowId?: unknown;
+  windowTitle?: unknown;
   owner?: unknown;
 }): AgentLayerOpenInput {
   const bundleId = typeof input.bundleId === "string" && input.bundleId.trim() ? input.bundleId.trim() : undefined;
@@ -74,12 +80,16 @@ export function parseAgentLayerOpen(input: {
     throw new Error("width and height go together");
   }
   const pip = input.pip === undefined || input.pip === null ? undefined : input.pip !== false && input.pip !== "off" && input.pip !== "false";
+  const windowId = optionalPositiveInt(input.windowId, "windowId");
+  const windowTitle = typeof input.windowTitle === "string" && input.windowTitle.trim() ? input.windowTitle.trim() : undefined;
   const owner: AgentLayerOwner = input.owner === "detached" ? "detached" : DEFAULT_OWNER;
   return {
     ...(bundleId ? { bundleId } : {}),
     ...(pid !== undefined ? { pid } : {}),
     ...(width !== undefined ? { width, height } : {}),
     ...(pip !== undefined ? { pip } : {}),
+    ...(windowId !== undefined ? { windowId } : {}),
+    ...(windowTitle ? { windowTitle } : {}),
     owner,
   };
 }
@@ -201,6 +211,12 @@ export class AgentLayerDirector {
     }
     if (request.pip !== undefined) {
       args.push("--pip", request.pip ? "on" : "off");
+    }
+    if (request.windowId !== undefined) {
+      args.push("--window-id", String(request.windowId));
+    }
+    if (request.windowTitle) {
+      args.push("--window-title", request.windowTitle);
     }
 
     const { stdout } = await this.runHost(args);

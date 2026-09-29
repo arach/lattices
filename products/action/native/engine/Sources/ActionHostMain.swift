@@ -4288,6 +4288,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             try options.required("text"),
             into: app,
             delayMs: delayMs > 0 ? delayMs : nil,
+            // A typing cadence is a keystroke thing; `--keys` forces keystrokes outright.
+            accessibilityFirst: delayMs <= 0 && !options.bool("keys", default: false),
             anyDisplay: options.bool("any-display", default: false)
         )
         try writer.write(ActionHostResponse(status: "blink-typed", outputPath: nil, detail: detail))

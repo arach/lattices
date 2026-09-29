@@ -11,6 +11,7 @@ An agent layer lets Action drive an app without taking the user's screen.
 ## What it does
 
 - Creates a `CGVirtualDisplay` and moves the subject app's windows onto it. The original frame of each window is recorded.
+- `windowId` (the `kCGWindowNumber`) or `windowTitle` (a case-insensitive substring) moves only the matching windows. Use it to borrow one window of an app the user is also in, such as a browser.
 - Shows the PiP viewer unless `pip` is `false`.
 - Writes a state file: display id, global bounds (top-left origin, points), PiP state, and the moved windows with their original frames.
 - Keeps one layer at a time. Opening a second layer closes the first, so its windows go back before the new app moves.
@@ -27,7 +28,11 @@ While a layer is up, `action.act.execute` routes these acts as blink acts:
 
 Accessibility comes first. A target with a bundle id and label is pressed or set through accessibility and never blinks. `blink-click` hit-tests its point before it touches the pointer: if the element there is a button, checkbox, radio, pop-up, menu item, disclosure triangle, link or tab that takes `AXPress`, it is pressed and the result says `via=ax`. Nothing moves and focus does not change.
 
+`blink-type` works the same way. It inserts the text at the caret of the app's focused text field through accessibility (`via=ax`), and only borrows focus for keystrokes (`via=keys`) when the field doesn't take it, is secure, or a `delayMs` cadence is requested. `press-key` has no accessibility equivalent and always borrows focus.
+
 The pointer is the fallback: no pressable element at the point, a requested `holdMs`, or `--pointer` on the host command. A pointer blink saves the cursor position and the frontmost app, clicks, and restores both within tens of milliseconds. Its result says `via=pointer`.
+
+`type` and `press-key` land in the app's focused window. If that window is off the layer, the blink raises the app's layer window first, without activating the app, and refuses if focus still isn't on the layer. Keystrokes never reach a window on the user's screen.
 
 `type` and `press-key` target `input.bundleId` or `input.pid` if given, else the layer's app. Accessibility paths (`press-accessibility-element`, `set-accessibility-value`) do not change. Drag and scroll do not blink. A click outside the layer display uses `click-point`.
 

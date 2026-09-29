@@ -131,11 +131,50 @@ enum ActionBlinkInput {
 
     // MARK: Keys
 
-    static func type(_ text: String, into app: NSRunningApplication, delayMs: Int?, anyDisplay: Bool) throws -> String {
+    static func type(
+        _ text: String,
+        into app: NSRunningApplication,
+        delayMs: Int?,
+        accessibilityFirst: Bool,
+        anyDisplay: Bool
+    ) throws -> String {
+        try requireLayerWindow(app, anyDisplay: anyDisplay)
+        if accessibilityFirst, let role = insertText(text, into: app) {
+            return "\(targetLabel(for: app)) \(text.count) chars via=ax role=\(role)"
+        }
         try borrowFocus(of: app, anyDisplay: anyDisplay) {
             try postTextToApp(app: app, text: text, delayMs: delayMs)
         }
-        return "\(targetLabel(for: app)) \(text.count) chars"
+        return "\(targetLabel(for: app)) \(text.count) chars via=keys"
+    }
+
+    /// Inserts `text` at the caret of the app's focused text element by replacing its
+    /// selected text, which is what typing does, without the app coming forward. Only
+    /// counts it when the element's value visibly took the text: some apps accept the
+    /// write and ignore it. Secure fields, and elements without a readable value, are
+    /// left to keystrokes.
+    private static func insertText(_ text: String, into app: NSRunningApplication) -> String? {
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(application, 0.5)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        let element = focused as! AXUIElement
+
+        let role = stringAttribute(element, kAXRoleAttribute) ?? ""
+        let subrole = stringAttribute(element, kAXSubroleAttribute) ?? ""
+        guard [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole, "AXSearchField"].contains(role),
+              subrole != kAXSecureTextFieldSubrole else { return nil }
+
+        var settable: DarwinBoolean = false
+        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
+              settable.boolValue,
+              let before = stringAttribute(element, kAXValueAttribute) else { return nil }
+
+        guard AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success,
+              let after = stringAttribute(element, kAXValueAttribute),
+              after != before, after.contains(text) else { return nil }
+        return role
     }
 
     static func press(_ key: String, modifiers: [String], into app: NSRunningApplication, anyDisplay: Bool) throws -> String {
@@ -148,14 +187,60 @@ enum ActionBlinkInput {
 
     /// Makes `app` frontmost, runs `body`, waits for the app to take the events, and puts
     /// the previous frontmost app back.
-    private static func borrowFocus(of app: NSRunningApplication, anyDisplay: Bool, _ body: () throws -> Void) throws {
-        if !anyDisplay {
-            guard ActionAgentLayerDisplay.hasWindow(pid: app.processIdentifier) else {
-                throw ActionHostError.accessibilityActionFailed(
-                    "blink refused: \(targetLabel(for: app)) has no window on an agent layer (open one, or pass --any-display)"
-                )
-            }
+    /// Keys and inserted text land in the app's focused window. When the app also has
+    /// windows on the operator's screens (a browser the layer borrowed one window of),
+    /// that has to be the layer window: raise it within the app, without activating the
+    /// app, and refuse if focus still isn't on the layer.
+    private static func requireLayerWindow(_ app: NSRunningApplication, anyDisplay: Bool) throws {
+        guard !anyDisplay else { return }
+        let layers = ActionAgentLayerDisplay.displays().map(CGDisplayBounds)
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(application, 0.5)
+        func onLayer(_ window: AXUIElement) -> Bool {
+            guard let frame = windowFrame(window) else { return false }
+            return layers.contains { $0.intersects(frame) }
         }
+        func focusedWindow() -> AXUIElement? {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute as CFString, &value) == .success,
+                  let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+            return (value as! AXUIElement)
+        }
+
+        if let focused = focusedWindow(), onLayer(focused) { return }
+        var windows: CFTypeRef?
+        AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &windows)
+        guard let layerWindow = ((windows as? [AXUIElement]) ?? []).first(where: onLayer) else {
+            throw ActionHostError.accessibilityActionFailed(
+                "blink refused: \(targetLabel(for: app)) has no window on an agent layer (open one, or pass --any-display)"
+            )
+        }
+        AXUIElementSetAttributeValue(layerWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
+        AXUIElementPerformAction(layerWindow, kAXRaiseAction as CFString)
+        for _ in 0..<20 {
+            if let focused = focusedWindow(), onLayer(focused) { return }
+            usleep(10_000)
+        }
+        throw ActionHostError.accessibilityActionFailed(
+            "blink refused: \(targetLabel(for: app))'s focused window is off the agent layer and would not move there"
+        )
+    }
+
+    private static func windowFrame(_ window: AXUIElement) -> CGRect? {
+        var position: CFTypeRef?
+        var size: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &position) == .success,
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &size) == .success,
+              let position, let size else { return nil }
+        var origin = CGPoint.zero
+        var extent = CGSize.zero
+        AXValueGetValue(position as! AXValue, .cgPoint, &origin)
+        AXValueGetValue(size as! AXValue, .cgSize, &extent)
+        return CGRect(origin: origin, size: extent)
+    }
+
+    private static func borrowFocus(of app: NSRunningApplication, anyDisplay: Bool, _ body: () throws -> Void) throws {
+        try requireLayerWindow(app, anyDisplay: anyDisplay)
 
         let previous = frontmostPID().flatMap(NSRunningApplication.init(processIdentifier:))
         let alreadyFront = previous?.processIdentifier == app.processIdentifier

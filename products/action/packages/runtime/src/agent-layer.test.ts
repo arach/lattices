@@ -96,6 +96,16 @@ describe("parseAgentLayerOpen", () => {
     );
   });
 
+  test("narrows to one window by id or title", () => {
+    assert.deepEqual(parseAgentLayerOpen({ bundleId: "com.google.Chrome", windowId: "4821", windowTitle: " New Issue " }), {
+      bundleId: "com.google.Chrome",
+      windowId: 4821,
+      windowTitle: "New Issue",
+      owner: "caller",
+    });
+    assert.throws(() => parseAgentLayerOpen({ windowId: 0 }), /positive integer/);
+  });
+
   test("rejects half a size and a doubled subject", () => {
     assert.throws(() => parseAgentLayerOpen({ width: 1280 }), /width and height go together/);
     assert.throws(() => parseAgentLayerOpen({ bundleId: "a", pid: 3 }), /bundleId or pid/);

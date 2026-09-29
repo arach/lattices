@@ -34,6 +34,10 @@ final class ActionAgentLayerController: NSObject {
     private let stopFile: String?
     private let stateFile: String?
     private let parentProcessID: pid_t?
+    /// Narrow the move to one window, so a layer can borrow a single browser window
+    /// without taking the operator's others.
+    private let windowID: CGWindowID?
+    private let windowTitle: String?
     private let writer: ResponseWriter
     private let logger: DebugLogger
 
@@ -57,6 +61,8 @@ final class ActionAgentLayerController: NSObject {
         self.stopFile = options.options["stop-file"]
         self.stateFile = options.options["state-file"]
         self.parentProcessID = options.options["parent-pid"].flatMap { pid_t($0) }
+        self.windowID = options.options["window-id"].flatMap { CGWindowID($0) }
+        self.windowTitle = options.options["window-title"].flatMap { $0.isEmpty ? nil : $0.lowercased() }
         if options.options["pid"] != nil || options.options["bundle-id"] != nil || options.options["bundle-path"] != nil {
             self.target = try resolveTargetApplication(from: options)
         } else {
@@ -183,7 +189,7 @@ final class ActionAgentLayerController: NSObject {
         // A freshly launched host can read an empty window list for a moment.
         var windows: [AXUIElement] = []
         for attempt in 0..<20 {
-            windows = copyAttribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
+            windows = (copyAttribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter(isSelected)
             if !windows.isEmpty {
                 if attempt > 0 { logger.log("agent-layer: windows visible after \(attempt) retries") }
                 break
@@ -191,7 +197,7 @@ final class ActionAgentLayerController: NSObject {
             try? await Task.sleep(for: .milliseconds(100))
         }
         guard !windows.isEmpty else {
-            logger.log("agent-layer: \(targetLabel(for: app)) exposes no windows")
+            logger.log("agent-layer: \(targetLabel(for: app)) exposes no matching windows")
             return
         }
 
@@ -224,6 +230,15 @@ final class ActionAgentLayerController: NSObject {
             )
         }
         logger.log("agent-layer: moved \(moved.count) window(s) of \(targetLabel(for: app))")
+    }
+
+    private func isSelected(_ window: AXUIElement) -> Bool {
+        if let windowID, axWindowID(window) != windowID { return false }
+        if let windowTitle {
+            let title = (copyAttribute(window, kAXTitleAttribute) as? String)?.lowercased() ?? ""
+            if !title.contains(windowTitle) { return false }
+        }
+        return true
     }
 
     private func restoreWindows() {
@@ -563,4 +578,13 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
               let status = SCFrameStatus(rawValue: raw) else { return false }
         return status == .complete
     }
+}
+
+@_silgen_name("_AXUIElementGetWindow")
+private func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
+
+/// The WindowServer id behind an accessibility window, matching `kCGWindowNumber`.
+private func axWindowID(_ window: AXUIElement) -> CGWindowID? {
+    var id: CGWindowID = 0
+    return _AXUIElementGetWindow(window, &id) == .success && id != 0 ? id : nil
 }

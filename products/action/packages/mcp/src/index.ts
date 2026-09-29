@@ -1026,6 +1026,8 @@ const tools: Tool[] = [
       width: numberProperty("Layer display width in points. Pass with height."),
       height: numberProperty("Layer display height in points. Pass with width."),
       pip: booleanProperty("Show the picture-in-picture viewer. Defaults to on."),
+      windowId: numberProperty("Move only this window (kCGWindowNumber). Use to borrow one window of an app the user is also using, such as a browser."),
+      windowTitle: textProperty("Move only windows whose title contains this text."),
     }),
     { readOnlyHint: false, idempotentHint: false },
   ),
@@ -1939,6 +1941,8 @@ const handlers: Record<string, ToolHandler> = {
       width: optionalNumber(args.width),
       height: optionalNumber(args.height),
       pip: optionalBoolean(args.pip),
+      windowId: optionalNumber(args.windowId),
+      windowTitle: optionalString(args.windowTitle),
       // This server outlives the call, so the layer watches it and puts the windows
       // back if the server dies before action.layer.close runs.
       owner: "caller",
