@@ -4280,6 +4280,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             anyDisplay: options.bool("any-display", default: false),
             pointerEventLogPath: options.options["pointer-event-log"]
         )
+        ActionAgentLayerDisplay.announceAct(at: CGPoint(x: x, y: y))
         try writer.write(ActionHostResponse(status: "blink-clicked", outputPath: nil, detail: detail))
     case .blinkType:
         let app = try resolveTargetApplication(from: options)
@@ -4292,6 +4293,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             accessibilityFirst: delayMs <= 0 && !options.bool("keys", default: false),
             anyDisplay: options.bool("any-display", default: false)
         )
+        ActionAgentLayerDisplay.announceAct(focusedIn: app)
         try writer.write(ActionHostResponse(status: "blink-typed", outputPath: nil, detail: detail))
     case .blinkKey:
         let app = try resolveTargetApplication(from: options)
@@ -4305,6 +4307,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             into: app,
             anyDisplay: options.bool("any-display", default: false)
         )
+        ActionAgentLayerDisplay.announceAct(focusedIn: app)
         try writer.write(ActionHostResponse(status: "blink-key-pressed", outputPath: nil, detail: detail))
     case .pointerEventLogInit:
         // Written natively so the header's monotonic reference comes from the same clock the

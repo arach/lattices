@@ -200,6 +200,7 @@ export class AgentLayerDirector {
       log: resolve(this.root, "layer.log"),
       controlRequest: resolve(this.root, "control.request.json"),
       controlReply: resolve(this.root, "control.reply.json"),
+      handoff: resolve(this.root, "handoff.json"),
     };
   }
 
@@ -227,6 +228,12 @@ export class AgentLayerDirector {
     // asks for `detached` and relies on `layer close`.
     if (owner === "caller") {
       args.push("--parent-pid", String(process.pid));
+    }
+    // Where the viewer's "go to owner" goes. A detached CLI is gone by then, so the
+    // chain is taken now.
+    const owners = await processAncestry(process.pid);
+    if (owners.length > 0) {
+      args.push("--owner-pids", owners.join(","));
     }
     if (request.bundleId) {
       args.push("--bundle-id", request.bundleId);
@@ -284,6 +291,8 @@ export class AgentLayerDirector {
   /** Touch the stop file, wait for the layer to restore windows and exit, SIGTERM if not. */
   async close(): Promise<AgentLayerStatus> {
     const paths = this.paths();
+    // Closing (or opening, which closes first) acknowledges an operator takeover.
+    await rm(paths.handoff, { force: true });
     const request = await this.readRequest();
     const state = await this.readState();
     const pid = state?.pid ?? request?.pid;
@@ -425,6 +434,24 @@ export class AgentLayerDirector {
     return this.describe(request ?? { owner }, state, true);
   }
 
+  /**
+   * Why an agent act must not run right now, or undefined when it may: the operator
+   * paused the layer from its viewer, or took the windows back.
+   */
+  async actRefusal(): Promise<string | undefined> {
+    const status = await this.status();
+    if (status.active && status.layer?.paused) {
+      return "The operator paused the agent layer from its viewer. Wait for them to resume it.";
+    }
+    if (!status.active) {
+      const handoff = await readJson<{ at?: string }>(this.paths().handoff);
+      if (handoff) {
+        return `The operator took over the agent layer${handoff.at ? ` at ${handoff.at}` : ""} and the windows are back on their desktop. Open a new layer (or close it to acknowledge) before acting again.`;
+      }
+    }
+    return undefined;
+  }
+
   /** Routing input for the interaction layer, or undefined when no layer is up. */
   async routing(): Promise<AgentLayerRouting | undefined> {
     return agentLayerRouting(await this.status());
@@ -485,6 +512,28 @@ export class AgentLayerDirector {
   private async readRequest(): Promise<AgentLayerRequest | undefined> {
     return readJson<AgentLayerRequest>(this.paths().request);
   }
+}
+
+/** `pid` and its parents, nearest first, stopping before launchd. */
+async function processAncestry(pid: number): Promise<number[]> {
+  let table: string;
+  try {
+    ({ stdout: table } = await execFileAsync("/bin/ps", ["-A", "-o", "pid=,ppid="]));
+  } catch {
+    return [pid];
+  }
+  const parents = new Map<number, number>();
+  for (const line of table.split("\n")) {
+    const [child, parent] = line.trim().split(/\s+/).map(Number);
+    if (child && parent !== undefined) {
+      parents.set(child, parent);
+    }
+  }
+  const chain: number[] = [];
+  for (let current = pid; current > 1 && chain.length < 16; current = parents.get(current) ?? 0) {
+    chain.push(current);
+  }
+  return chain;
 }
 
 async function readJson<T>(path: string): Promise<T | undefined> {

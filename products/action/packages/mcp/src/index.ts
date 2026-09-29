@@ -1620,6 +1620,10 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.act.execute"(args) {
+    const refusal = await agentLayerDirector.actRefusal();
+    if (refusal) {
+      throw new Error(refusal);
+    }
     const action = parseRuntimeAction(args.action);
     const engine = newEngine();
     const target = optionalObject(args.target, "target")

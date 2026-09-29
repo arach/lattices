@@ -37,6 +37,8 @@ final class ActionAgentLayerController: NSObject {
     private let stopFile: String?
     private let stateFile: String?
     private let parentProcessID: pid_t?
+    /// The processes driving this layer, nearest first: where "go to owner" goes.
+    private let ownerPIDs: [pid_t]
     /// Narrow the move to one window, so a layer can borrow a single browser window
     /// without taking the operator's others.
     private let windowID: CGWindowID?
@@ -53,6 +55,9 @@ final class ActionAgentLayerController: NSObject {
     private var pollTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
     private var shuttingDown = false
+    /// The operator paused the agent from the viewer; the director refuses its acts.
+    private var paused = false
+    private var actObserver: NSObjectProtocol?
 
     init(options: CommandOptions) throws {
         self.writer = ResponseWriter(replyFile: options.options["reply-file"])
@@ -65,6 +70,7 @@ final class ActionAgentLayerController: NSObject {
         self.stopFile = options.options["stop-file"]
         self.stateFile = options.options["state-file"]
         self.parentProcessID = options.options["parent-pid"].flatMap { pid_t($0) }
+        self.ownerPIDs = (options.options["owner-pids"] ?? "").split(separator: ",").compactMap { pid_t($0) }
         self.windowID = options.options["window-id"].flatMap { CGWindowID($0) }
         self.windowTitle = options.options["window-title"].flatMap { $0.isEmpty ? nil : $0.lowercased() }
         if options.options["pid"] != nil || options.options["bundle-id"] != nil || options.options["bundle-path"] != nil {
@@ -156,14 +162,37 @@ final class ActionAgentLayerController: NSObject {
             )
         )
 
+        // The host posts where each blink act landed; accessibility acts don't move the
+        // pointer, so the viewer rings the spot instead.
+        actObserver = DistributedNotificationCenter.default().addObserver(
+            forName: ActionAgentLayerDisplay.actNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let info = note.userInfo ?? [:]
+            func number(_ key: String) -> CGFloat? { (info[key] as? NSNumber).map { CGFloat($0.doubleValue) } }
+            let point = number("x").flatMap { x in number("y").map { CGPoint(x: x, y: $0) } }
+            let frame: CGRect? = {
+                guard let x = number("fx"), let y = number("fy"), let w = number("fw"), let h = number("fh") else { return nil }
+                return CGRect(x: x, y: y, width: w, height: h)
+            }()
+            Task { @MainActor in self?.pip?.mark(point: point, frame: frame) }
+        }
+
         if showsPiP {
             await showPiP()
         }
     }
 
+    private var liveState: ActionAgentLayerLiveState {
+        paused ? .paused : (feed?.recordingPath != nil ? .recording : .live)
+    }
+
     private func showPiP() async {
         guard pip == nil, !shuttingDown, let feed else { return }
-        let pip = ActionAgentLayerPiP(feed: feed, logger: logger)
+        let pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger)
+        pip.hasOwner = !ownerPIDs.isEmpty
+        pip.onTogglePause = { [weak self] in self?.togglePause() }
+        pip.onTakeOver = { [weak self] in self?.takeOver() }
+        pip.onGoToOwner = { [weak self] in self?.goToOwner() }
         pip.onDismiss = { [weak self] in
             // The operator closed the viewer; the layer keeps working unseen.
             guard let self else { return }
@@ -177,7 +206,59 @@ final class ActionAgentLayerController: NSObject {
             showsPiP = true
             try? writeState()
         }
-        await pip.start(expectsWindows: !moved.isEmpty)
+        await pip.start(expectsWindows: !moved.isEmpty, state: liveState)
+    }
+
+    // MARK: Operator controls
+
+    private func togglePause() {
+        paused.toggle()
+        pip?.state = liveState
+        try? writeState()
+        logger.log("agent-layer: \(paused ? "paused" : "resumed") by the operator")
+    }
+
+    /// The operator takes the windows back. The handoff note outlives the layer, so the
+    /// agent's next act is refused with a reason instead of silently opening a new one.
+    private func takeOver() {
+        if let stateFile {
+            let url = URL(fileURLWithPath: stateFile).deletingLastPathComponent().appendingPathComponent("handoff.json")
+            let note: [String: Any] = [
+                "at": ISO8601DateFormatter().string(from: Date()),
+                "bundleId": target?.bundleIdentifier ?? NSNull(),
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: note, options: [.sortedKeys]) {
+                try? data.write(to: url, options: .atomic)
+            }
+        }
+        logger.log("agent-layer: taken over by the operator")
+        shutdown()
+        // Bring the subject forward on the operator's display once it's back.
+        if let target {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { target.activate() }
+        }
+    }
+
+    /// Focus whatever is driving the layer: the nearest owner process with a window of
+    /// its own (a terminal, an editor), else the terminal window Lattices maps its tty to.
+    private func goToOwner() {
+        for pid in ownerPIDs {
+            for ancestor in processAncestry(pid) {
+                if let app = NSRunningApplication(processIdentifier: ancestor), app.activationPolicy == .regular {
+                    app.activate()
+                    logger.log("agent-layer: owner \(pid) -> \(app.bundleIdentifier ?? "?")")
+                    return
+                }
+            }
+        }
+        let owners = ownerPIDs
+        DispatchQueue.global(qos: .userInitiated).async {
+            let found = ActionAgentLayerOwner.raiseTerminal(ownerPIDs: owners)
+            DispatchQueue.main.async { [weak self] in
+                self?.logger.log("agent-layer: owner via lattices \(found ? "raised" : "not found")")
+                if !found { NSSound.beep() }
+            }
+        }
     }
 
     private func createDisplay() throws {
@@ -324,6 +405,7 @@ final class ActionAgentLayerController: NSObject {
             "displayId": Int(displayID),
             "bounds": rectJSON(bounds),
             "pip": showsPiP,
+            "paused": paused,
             "recording": feed?.recordingPath ?? NSNull(),
             "windows": moved.map { window in
                 [
@@ -377,6 +459,7 @@ final class ActionAgentLayerController: NSObject {
                     reply = ["ok": false, "detail": "record-start needs an out path"]
                 }
                 try? writeState()
+                pip?.state = liveState
             case "record-stop":
                 guard #available(macOS 15.0, *) else {
                     reply = ["ok": false, "detail": "recording the layer needs macOS 15"]
@@ -388,6 +471,7 @@ final class ActionAgentLayerController: NSObject {
                     reply = ["ok": false, "detail": error.localizedDescription]
                 }
                 try? writeState()
+                pip?.state = liveState
             default:
                 reply = ["ok": false, "detail": "unknown op \(json["op"] ?? "none")"]
             }
@@ -445,6 +529,56 @@ final class ActionAgentLayerController: NSObject {
         // the event `NSApplication.stop` waits for, so leaving is the whole teardown.
         logger.log("agent-layer: down")
         Darwin.exit(exitCode)
+    }
+}
+
+/// `pid` and its parents, nearest first.
+private func processAncestry(_ pid: pid_t) -> [pid_t] {
+    var chain: [pid_t] = []
+    var current = pid
+    while current > 1, chain.count < 32 {
+        chain.append(current)
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, current]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { break }
+        current = info.kp_eproc.e_ppid
+    }
+    return chain
+}
+
+/// Owners that live under a daemonized multiplexer have no GUI parent; Lattices knows
+/// which terminal window shows their tty.
+enum ActionAgentLayerOwner {
+    static func raiseTerminal(ownerPIDs: [pid_t]) -> Bool {
+        let owners = Set(ownerPIDs.flatMap(processAncestry).map(Int.init))
+        guard !owners.isEmpty, let json = lattices(["call", "terminals.search", "{}"]),
+              let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) else { return false }
+        let instances = (root as? [[String: Any]]) ?? ((root as? [String: Any])?["instances"] as? [[String: Any]]) ?? []
+        for instance in instances {
+            let pids = ((instance["processes"] as? [[String: Any]]) ?? []).compactMap { ($0["pid"] as? NSNumber)?.intValue }
+            guard pids.contains(where: owners.contains), let wid = (instance["windowId"] as? NSNumber)?.intValue else { continue }
+            return lattices(["call", "window.focus", "{\"wid\":\(wid)}"]) != nil
+        }
+        return false
+    }
+
+    private static func lattices(_ arguments: [String]) -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = ["\(home)/.bun/bin/lattices", "/opt/homebrew/bin/lattices", "/usr/local/bin/lattices"]
+        guard let path = candidates.first(where: FileManager.default.isExecutableFile(atPath:)) else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }
 
@@ -753,33 +887,56 @@ struct ActionAgentLayerSnapshotRequest {
 
 // MARK: - Picture in picture
 
+/// What the viewer's dot says, the only state it shows at rest.
+enum ActionAgentLayerLiveState {
+    /// Solid coral: the agent can act.
+    case live
+    /// Coral, breathing: a take is being recorded.
+    case recording
+    /// Hollow: the operator paused the agent; its acts are refused.
+    case paused
+}
+
 /// A floating panel in the operator's bottom-right corner, drawing the layer's feed.
 /// It frames the subject's windows, so a small app fills the panel instead of floating
-/// in an empty desktop; the frame follows them as they move and resize.
+/// in an empty desktop; the frame follows them as they move and resize. Hovering shows
+/// its controls; double-clicking enlarges it.
 @MainActor
 final class ActionAgentLayerPiP {
     private static let width: CGFloat = 380
     private static let margin: CGFloat = 16
     private static let cropPadding: CGFloat = 12
+    /// How long a drive note stays on the viewer.
+    private static let noteLifetime: TimeInterval = 12
 
     private let feed: ActionAgentLayerFeed
     private let logger: DebugLogger
+    private let startedAt: Date
     private var panel: NSPanel?
     private var viewer: ActionAgentLayerViewerView?
     private var crop: CGRect = .zero
     private var cropTimer: Timer?
-    /// Called once the operator's close button has taken the viewer down.
-    var onDismiss: (() -> Void)?
+    /// The panel's corner frame while it's enlarged, to go back to.
+    private var compactFrame: CGRect?
     private var presented = false
+    private var shownNoteAt: String?
 
-    init(feed: ActionAgentLayerFeed, logger: DebugLogger) {
+    /// The operator's controls. `onDismiss` fires after the viewer has gone.
+    var onDismiss: (() -> Void)?
+    var onTogglePause: (() -> Void)?
+    var onTakeOver: (() -> Void)?
+    var onGoToOwner: (() -> Void)?
+    var hasOwner = false
+
+    init(feed: ActionAgentLayerFeed, startedAt: Date, logger: DebugLogger) {
         self.feed = feed
+        self.startedAt = startedAt
         self.logger = logger
     }
 
     private var fullCrop: CGRect { CGRect(origin: .zero, size: feed.displayBounds.size) }
 
-    func start(expectsWindows: Bool) async {
+    func start(expectsWindows: Bool, state: ActionAgentLayerLiveState) async {
         crop = feed.windowsRect(padding: Self.cropPadding) ?? fullCrop
         // Windows the layer just moved reach the window list a beat later; launching on
         // the full display would snap to the window half a second in.
@@ -791,6 +948,7 @@ final class ActionAgentLayerPiP {
         }
         showPanel()
         guard let viewer else { return }
+        viewer.state = state
         // Launch on a frame, so the viewer grows in already showing the layer rather
         // than as an empty box. A feed that never delivers still gets a viewer.
         feed.attach(viewer.videoLayer) { [weak self] in
@@ -800,7 +958,10 @@ final class ActionAgentLayerPiP {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.present() }
 
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.followWindows() }
+            Task { @MainActor in
+                self?.followWindows()
+                self?.readNote()
+            }
         }
         cropTimer = timer
         RunLoop.main.add(timer, forMode: .common)
@@ -829,6 +990,23 @@ final class ActionAgentLayerPiP {
         })
     }
 
+    var state: ActionAgentLayerLiveState {
+        get { viewer?.state ?? .live }
+        set { viewer?.state = newValue }
+    }
+
+    /// Ring the spot an act landed on: a point for a click, a frame for a field.
+    /// Global top-left coordinates, as the blink reported them.
+    func mark(point: CGPoint?, frame: CGRect?) {
+        let bounds = feed.displayBounds
+        guard point.map(bounds.contains) ?? frame.map(bounds.intersects) ?? false else { return }
+        let origin = bounds.origin
+        viewer?.mark(
+            point: point.map { CGPoint(x: $0.x - origin.x, y: $0.y - origin.y) },
+            frame: frame.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) }
+        )
+    }
+
     private func dismiss() {
         stop(animated: true)
         onDismiss?()
@@ -847,9 +1025,13 @@ final class ActionAgentLayerPiP {
 
     // MARK: Panel
 
-    private func showPanel() {
+    private var operatorScreen: NSScreen? {
         let displayID = feed.displayID
-        guard let screen = NSScreen.screens.first(where: { screenNumber($0) != displayID }) ?? NSScreen.main else { return }
+        return NSScreen.screens.first(where: { screenNumber($0) != displayID }) ?? NSScreen.main
+    }
+
+    private func showPanel() {
+        guard let screen = operatorScreen else { return }
         let height = (Self.width * crop.height / max(crop.width, 1)).rounded()
         let visible = screen.visibleFrame
         let frame = CGRect(
@@ -868,7 +1050,8 @@ final class ActionAgentLayerPiP {
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        // The viewer drags itself, so a double-click can reach it.
+        panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
@@ -880,18 +1063,19 @@ final class ActionAgentLayerPiP {
 
         let content = ActionAgentLayerViewerView(frame: CGRect(origin: .zero, size: frame.size), displaySize: feed.displayBounds.size)
         content.crop = crop
-        let close = ActionAgentLayerCloseButton(frame: CGRect(x: frame.width - 28, y: frame.height - 28, width: 20, height: 20))
-        close.autoresizingMask = [.minXMargin, .minYMargin]
-        close.onPress = { [weak self] in self?.dismiss() }
-        content.addSubview(close)
-        content.addTrackingArea(
-            NSTrackingArea(
-                rect: .zero,
-                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                owner: close,
-                userInfo: [ActionAgentLayerCloseButton.viewerKey: true]
-            )
-        )
+        content.onDoubleClick = { [weak self] in self?.toggleEnlarged() }
+        content.addControl(symbol: "person.crop.circle", label: "Go to the agent's session", enabled: hasOwner) { [weak self] in
+            self?.onGoToOwner?()
+        }
+        content.addControl(symbol: "pause.fill", label: "Pause the agent", toggledSymbol: "play.fill", toggledLabel: "Resume the agent") { [weak self] in
+            self?.onTogglePause?()
+        }
+        content.addControl(symbol: "arrow.uturn.backward", label: "Take over: put the windows back and end the layer") { [weak self] in
+            self?.onTakeOver?()
+        }
+        content.addControl(symbol: nil, label: "Hide viewer") { [weak self] in
+            self?.dismiss()
+        }
         panel.contentView = content
         self.panel = panel
         self.viewer = content
@@ -917,6 +1101,37 @@ final class ActionAgentLayerPiP {
         }
     }
 
+    /// Double-click: grow to a large centred view of the layer, and back to the corner.
+    private func toggleEnlarged() {
+        guard let panel, let screen = operatorScreen else { return }
+        let target: CGRect
+        if let compactFrame {
+            target = compactFrame
+            self.compactFrame = nil
+        } else {
+            compactFrame = panel.frame
+            let visible = screen.visibleFrame
+            let aspect = crop.height / max(crop.width, 1)
+            var width = (visible.width * 0.72).rounded()
+            if width * aspect > visible.height * 0.82 { width = (visible.height * 0.82 / aspect).rounded() }
+            let height = (width * aspect).rounded()
+            target = CGRect(x: visible.midX - width / 2, y: visible.midY - height / 2, width: width, height: height)
+        }
+        animate(panel, to: target, duration: 0.32)
+    }
+
+    private func animate(_ panel: NSPanel, to frame: CGRect, duration: TimeInterval) {
+        guard !Self.reduceMotion, presented else {
+            panel.setFrame(frame, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            panel.animator().setFrame(frame, display: true)
+        }
+    }
+
     private func screenNumber(_ screen: NSScreen) -> CGDirectDisplayID? {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
@@ -928,30 +1143,66 @@ final class ActionAgentLayerPiP {
         crop = next
         viewer?.crop = next
         guard let panel else { return }
-        // Keep the panel's bottom edge put; width stays, height follows the crop.
+        // Width stays, height follows the crop: from the bottom edge in the corner, from
+        // the middle when enlarged.
         let frame = panel.frame
         let height = (frame.width * next.height / max(next.width, 1)).rounded()
         panel.contentAspectRatio = CGSize(width: frame.width, height: height)
-        let resized = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: height)
-        if Self.reduceMotion || !presented {
-            panel.setFrame(resized, display: true)
-        } else {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.28
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
-                panel.animator().setFrame(resized, display: true)
-            }
-        }
+        let y = compactFrame == nil ? frame.minY : frame.midY - height / 2
+        animate(panel, to: CGRect(x: frame.minX, y: y, width: frame.width, height: height), duration: 0.28)
+    }
+
+    /// The latest `action.drive.note`, while it's fresh and from this layer's lifetime.
+    private func readNote() {
+        guard let note = Self.latestNote(), note.at != shownNoteAt else { return }
+        guard let date = ISO8601DateFormatter.withFractions.date(from: note.at) ?? ISO8601DateFormatter().date(from: note.at),
+              date > startedAt, Date().timeIntervalSince(date) < Self.noteLifetime else { return }
+        shownNoteAt = note.at
+        viewer?.show(note: note.line, for: Self.noteLifetime - Date().timeIntervalSince(date))
+    }
+
+    private static let notesURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Action/runtime/supervision/notes.jsonl")
+
+    private static func latestNote() -> (at: String, line: String)? {
+        guard let handle = try? FileHandle(forReadingFrom: notesURL) else { return nil }
+        defer { try? handle.close() }
+        let end = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: end > 4096 ? end - 4096 : 0)
+        guard let data = try? handle.readToEnd(), let text = String(data: data, encoding: .utf8),
+              let last = text.split(separator: "\n").last,
+              let json = try? JSONSerialization.jsonObject(with: Data(last.utf8)) as? [String: Any],
+              let at = json["at"] as? String, let line = json["line"] as? String else { return nil }
+        return (at, line)
     }
 }
 
-/// The viewer's content: the whole-layer feed, positioned so `crop` fills the bounds.
-/// Cropping is layout, not a stream reconfiguration, so the frame can follow the
-/// windows without the stream restarting.
+private extension ISO8601DateFormatter {
+    nonisolated(unsafe) static let withFractions: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+}
+
+/// The viewer's content: the whole-layer feed, positioned so `crop` fills the bounds,
+/// with the dot, act marks, the drive note, and the hover controls on top. Cropping is
+/// layout, not a stream reconfiguration, so the frame can follow the windows without
+/// the stream restarting.
 private final class ActionAgentLayerViewerView: NSView {
+    private static let ink = NSColor(srgbRed: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255, alpha: 1)
+    private static let coral = NSColor(srgbRed: 0xEF / 255, green: 0x6A / 255, blue: 0x47 / 255, alpha: 1)
+
     let videoLayer = AVSampleBufferDisplayLayer()
     private let displaySize: CGSize
+    private let marks = CALayer()
+    private let dot = CALayer()
+    private let controls = NSStackView()
+    private let note = NSTextField(labelWithString: "")
+    private var noteHide: DispatchWorkItem?
+    var onDoubleClick: (() -> Void)?
     var crop: CGRect = .zero { didSet { needsLayout = true } }
+    var state: ActionAgentLayerLiveState = .live { didSet { applyState() } }
 
     init(frame: NSRect, displaySize: CGSize) {
         self.displaySize = displaySize
@@ -961,31 +1212,82 @@ private final class ActionAgentLayerViewerView: NSView {
         root.cornerRadius = 10
         root.cornerCurve = .continuous
         root.masksToBounds = true
-        root.backgroundColor = NSColor(srgbRed: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255, alpha: 1).cgColor
+        root.backgroundColor = Self.ink.cgColor
         root.borderWidth = 1
         root.borderColor = NSColor(white: 0.95, alpha: 0.16).cgColor
 
         videoLayer.videoGravity = .resize
         root.addSublayer(videoLayer)
+        marks.zPosition = 1
+        root.addSublayer(marks)
 
-        // The one coral: this surface is live. Above the video.
-        let dot = CALayer()
-        dot.frame = CGRect(x: 10, y: root.bounds.height - 16, width: 6, height: 6)
-        dot.autoresizingMask = [.layerMinYMargin]
+        // Bottom-right: the top-left corner is where the subject's traffic lights land.
+        dot.frame = CGRect(x: frame.width - 16, y: 10, width: 6, height: 6)
+        dot.autoresizingMask = [.layerMinXMargin]
         dot.cornerRadius = 3
-        dot.zPosition = 1
-        dot.backgroundColor = NSColor(srgbRed: 0xEF / 255, green: 0x6A / 255, blue: 0x47 / 255, alpha: 1).cgColor
+        dot.zPosition = 2
         root.addSublayer(dot)
+        applyState()
+
+        note.font = .systemFont(ofSize: 11, weight: .medium)
+        note.textColor = NSColor(white: 0.95, alpha: 1)
+        note.lineBreakMode = .byTruncatingTail
+        note.maximumNumberOfLines = 1
+        note.drawsBackground = false
+        note.alphaValue = 0
+        note.wantsLayer = true
+        note.layer?.backgroundColor = Self.ink.withAlphaComponent(0.78).cgColor
+        note.layer?.cornerRadius = 4
+        addSubview(note)
+
+        controls.orientation = .horizontal
+        controls.spacing = 6
+        controls.alphaValue = 0
+        addSubview(controls)
+
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
     required init?(coder: NSCoder) { nil }
 
+    func addControl(symbol: String?, label: String, enabled: Bool = true, toggledSymbol: String? = nil, toggledLabel: String? = nil, action: @escaping () -> Void) {
+        let button = ActionAgentLayerControlButton(symbol: symbol, label: label, toggledSymbol: toggledSymbol, toggledLabel: toggledLabel)
+        button.isEnabled = enabled
+        button.onPress = action
+        controls.addArrangedSubview(button)
+        needsLayout = true
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            onDoubleClick?()
+        } else {
+            window?.performDrag(with: event)
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) { fadeControls(to: 1) }
+    override func mouseExited(with event: NSEvent) { fadeControls(to: 0) }
+
+    private func fadeControls(to alpha: CGFloat) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.14
+            controls.animator().alphaValue = alpha
+        }
+    }
+
     override func layout() {
         super.layout()
+        let size = controls.fittingSize
+        controls.frame = CGRect(x: bounds.width - size.width - 8, y: bounds.height - size.height - 8, width: size.width, height: size.height)
+        layoutNote()
         guard crop.width > 0, crop.height > 0 else { return }
         // Scale so the crop's width fills ours; lay the whole display out from its top-left,
         // shifted so the crop's top-left lands on ours. Layer space runs bottom-up.
-        let k = bounds.width / crop.width
+        let k = scale
         let height = displaySize.height * k
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -995,7 +1297,107 @@ private final class ActionAgentLayerViewerView: NSView {
             width: displaySize.width * k,
             height: height
         )
+        marks.frame = bounds
         CATransaction.commit()
+    }
+
+    private var scale: CGFloat { bounds.width / max(crop.width, 1) }
+
+    /// Display-local top-left point to our bottom-up coordinates.
+    private func viewPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: (point.x - crop.minX) * scale, y: bounds.height - (point.y - crop.minY) * scale)
+    }
+
+    private func applyState() {
+        dot.removeAnimation(forKey: "breathe")
+        switch state {
+        case .live, .recording:
+            dot.backgroundColor = Self.coral.cgColor
+            dot.borderWidth = 0
+        case .paused:
+            dot.backgroundColor = NSColor.clear.cgColor
+            dot.borderColor = Self.coral.cgColor
+            dot.borderWidth = 1.25
+        }
+        if state == .recording, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let breathe = CABasicAnimation(keyPath: "opacity")
+            breathe.fromValue = 1
+            breathe.toValue = 0.3
+            breathe.duration = 0.9
+            breathe.autoreverses = true
+            breathe.repeatCount = .infinity
+            breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            dot.add(breathe, forKey: "breathe")
+        }
+        for case let button as ActionAgentLayerControlButton in controls.arrangedSubviews where button.toggles {
+            button.isToggled = state == .paused
+        }
+    }
+
+    /// A coral ring that opens and fades where an act landed.
+    func mark(point: CGPoint?, frame: CGRect?) {
+        guard crop.width > 0 else { return }
+        let shape = CAShapeLayer()
+        shape.fillColor = nil
+        shape.strokeColor = Self.coral.cgColor
+        shape.lineWidth = 2
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if let frame {
+            let a = viewPoint(frame.origin)
+            let b = viewPoint(CGPoint(x: frame.maxX, y: frame.maxY))
+            let rect = CGRect(x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y).insetBy(dx: -2, dy: -2)
+            shape.path = CGPath(roundedRect: rect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+        } else if let point {
+            let center = viewPoint(point)
+            shape.frame = CGRect(x: center.x - 12, y: center.y - 12, width: 24, height: 24)
+            shape.path = CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 24, height: 24), transform: nil)
+            if !reduce {
+                let grow = CABasicAnimation(keyPath: "transform.scale")
+                grow.fromValue = 0.5
+                grow.toValue = 1.3
+                grow.duration = 0.7
+                grow.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+                shape.add(grow, forKey: "grow")
+            }
+        } else {
+            return
+        }
+        marks.addSublayer(shape)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { shape.removeFromSuperlayer() }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.beginTime = CACurrentMediaTime() + (frame != nil ? 0.5 : 0.25)
+        fade.duration = 0.5
+        fade.fillMode = .both
+        shape.opacity = 0
+        shape.add(fade, forKey: "fade")
+        CATransaction.commit()
+    }
+
+    func show(note text: String, for seconds: TimeInterval) {
+        note.stringValue = " \(text) "
+        needsLayout = true
+        noteHide?.cancel()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            note.animator().alphaValue = 1
+        }
+        let hide = DispatchWorkItem { [weak self] in
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.4
+                self?.note.animator().alphaValue = 0
+            }
+        }
+        noteHide = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(seconds, 1), execute: hide)
+    }
+
+    private func layoutNote() {
+        let size = note.fittingSize
+        let width = min(size.width, bounds.width - 32)
+        note.frame = CGRect(x: 8, y: 8, width: width, height: size.height + 2)
     }
 }
 
@@ -1088,80 +1490,86 @@ private func axWindowID(_ window: AXUIElement) -> CGWindowID? {
     return _AXUIElementGetWindow(window, &id) == .success && id != 0 ? id : nil
 }
 
-/// The viewer's close control: a 20pt ink disc with a thin ×, shown while the pointer
-/// is over the viewer. It owns the viewer's tracking area so it can fade itself in.
-private final class ActionAgentLayerCloseButton: NSView {
+/// One of the viewer's hover controls: a 20pt ink disc with an SF Symbol, or a thin ×
+/// when there's no symbol. A toggling control swaps its symbol and label when on.
+private final class ActionAgentLayerControlButton: NSView {
     var onPress: (() -> Void)?
+    var isEnabled = true { didSet { needsDisplay = true } }
+    var isToggled = false { didSet { applyLabel() } }
+    var toggles: Bool { toggledSymbol != nil }
+    private let symbol: String?
+    private let label: String
+    private let toggledSymbol: String?
+    private let toggledLabel: String?
     private var hovering = false { didSet { needsDisplay = true } }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        alphaValue = 0
+    init(symbol: String?, label: String, toggledSymbol: String?, toggledLabel: String?) {
+        self.symbol = symbol
+        self.label = label
+        self.toggledSymbol = toggledSymbol
+        self.toggledLabel = toggledLabel
+        super.init(frame: CGRect(x: 0, y: 0, width: 20, height: 20))
+        setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel("Hide viewer")
+        applyLabel()
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
     required init?(coder: NSCoder) { nil }
 
+    override var intrinsicContentSize: NSSize { NSSize(width: 20, height: 20) }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// Marks the viewer-wide tracking area, as opposed to the button's own.
-    static let viewerKey = "viewer"
-
-    override func mouseEntered(with event: NSEvent) {
-        if isViewerArea(event) { fade(to: 1) } else { hovering = true }
+    private func applyLabel() {
+        let text = isToggled ? (toggledLabel ?? label) : label
+        toolTip = text
+        setAccessibilityLabel(text)
+        needsDisplay = true
     }
 
-    override func mouseExited(with event: NSEvent) {
-        if isViewerArea(event) { fade(to: 0) } else { hovering = false }
-    }
-
-    private func isViewerArea(_ event: NSEvent) -> Bool {
-        event.trackingArea?.userInfo?[Self.viewerKey] as? Bool == true
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.filter { $0.owner === self && $0.userInfo == nil }.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-    }
-
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseDown(with event: NSEvent) {}
 
     override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onPress?() }
+        if isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) { onPress?() }
     }
 
     override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
         onPress?()
         return true
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        let active = hovering && isEnabled
         let disc = NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
-        NSColor(srgbRed: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255, alpha: hovering ? 0.92 : 0.72).setFill()
+        NSColor(srgbRed: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255, alpha: active ? 0.92 : 0.72).setFill()
         disc.fill()
         NSColor(white: 0.95, alpha: 0.16).setStroke()
         disc.lineWidth = 1
         disc.stroke()
 
-        let inset: CGFloat = 7
-        let cross = NSBezierPath()
-        cross.move(to: CGPoint(x: inset, y: inset))
-        cross.line(to: CGPoint(x: bounds.width - inset, y: bounds.height - inset))
-        cross.move(to: CGPoint(x: inset, y: bounds.height - inset))
-        cross.line(to: CGPoint(x: bounds.width - inset, y: inset))
-        cross.lineWidth = 1.25
-        cross.lineCapStyle = .round
-        NSColor(white: 0.95, alpha: hovering ? 1 : 0.8).setStroke()
-        cross.stroke()
-    }
-
-    private func fade(to alpha: CGFloat) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
-            animator().alphaValue = alpha
+        let ink = NSColor(white: 0.95, alpha: isEnabled ? (active ? 1 : 0.8) : 0.3)
+        let name = isToggled ? (toggledSymbol ?? symbol) : symbol
+        guard let name else {
+            let inset: CGFloat = 7
+            let cross = NSBezierPath()
+            cross.move(to: CGPoint(x: inset, y: inset))
+            cross.line(to: CGPoint(x: bounds.width - inset, y: bounds.height - inset))
+            cross.move(to: CGPoint(x: inset, y: bounds.height - inset))
+            cross.line(to: CGPoint(x: bounds.width - inset, y: inset))
+            cross.lineWidth = 1.25
+            cross.lineCapStyle = .round
+            ink.setStroke()
+            cross.stroke()
+            return
         }
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
+        let size = image.size
+        image.draw(in: CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
     }
 }

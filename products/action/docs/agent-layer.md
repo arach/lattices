@@ -43,9 +43,21 @@ Blink acts report the `blink` tier. A background drive lease allows them. They d
 
 The layer captures its own display, not the subject app. A stream that targets an app makes macOS badge that app's windows as shared, and the badge is drawn into the window, so it would show in every frame. The framing to the subject's windows happens downstream, by crop. The stream only delivers frames when something on the layer changes, so an idle layer costs next to nothing.
 
-- **Viewer.** The PiP grows out of the screen corner on its first frame and frames the subject's windows, following them as they move and resize. Hovering shows a × that hides it; the layer keeps running. `layer pip` / `action.layer.pip` brings it back.
+- **Viewer.** The PiP grows out of the screen corner on its first frame and frames the subject's windows, following them as they move and resize. Drag moves it; double-click enlarges it to a large centred view, and double-click again puts it back. Hiding it with × leaves the layer running; `layer pip` / `action.layer.pip` brings it back.
+- **State.** One dot in the viewer's bottom-right corner: solid coral while the agent can act, breathing while a take records, hollow while paused.
+- **Marks.** Blink acts don't move the pointer, so the host posts where each one landed and the viewer rings it: a circle for a click, an outline around the focused field for typing and keys.
+- **Note.** The latest `action.drive.note` shows along the bottom edge for about 12 seconds.
 - **Snapshot.** `layer snapshot` / `action.layer.snapshot` writes a PNG from the latest frame: the subject's windows by default, one window with `windowId`, or the whole layer with `full`. Nothing is captured on request, so it answers in tens of milliseconds. `unchangedMs` is how long the layer has been still, not how stale the picture is.
 - **Recording.** `layer record start|stop` / `action.layer.record` adds a recording output to the running stream, so the take starts on the next frame. It records the whole layer display at its native size. One take at a time; closing the layer finishes a take in progress.
+
+## Operator controls
+
+Hovering the viewer shows four controls:
+
+- **Go to owner.** Focuses whatever opened the layer. Action records the opener's process chain at `open` (`--owner-pids`), activates the nearest app in that chain, and otherwise asks Lattices (`terminals.search`, then `window.focus`) which terminal window shows it. An agent under a daemonized multiplexer has no app in its chain, so this needs the Lattices app running; if nothing resolves, the viewer beeps.
+- **Pause / resume.** While paused, `state.json` has `"paused": true` and `action.act.execute` refuses with a message saying so.
+- **Take over.** Ends the layer, puts the windows back, and leaves `handoff.json`. Until the next `layer open` or `layer close`, `action.act.execute` refuses and says the operator took over.
+- **×.** Hides the viewer.
 
 Requests go through `control.request.json` next to the state file and a `SIGUSR2`; the reply lands in `control.reply.json`.
 

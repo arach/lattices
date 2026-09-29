@@ -360,6 +360,37 @@ enum ActionBlinkInput {
 enum ActionAgentLayerDisplay {
     static let vendorID: UInt32 = 0x4163 // "Ac"
     static let productID: UInt32 = 0x4C59 // "LY"
+    /// Posted by the host after each blink act, so the layer's viewer can mark the spot.
+    static let actNotification = Notification.Name("com.arach.action.agent-layer.act")
+
+    /// Tell a running layer where an act landed: the click point, or the focused field's
+    /// frame for typing and keys. Global top-left coordinates; the layer ignores spots
+    /// off its display.
+    static func announceAct(at point: CGPoint? = nil, focusedIn app: NSRunningApplication? = nil) {
+        var info: [String: Any] = [:]
+        if let point {
+            info = ["x": point.x, "y": point.y]
+        } else if let app {
+            let element = AXUIElementCreateApplication(app.processIdentifier)
+            var focused: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+                  let field = focused, CFGetTypeID(field) == AXUIElementGetTypeID() else { return }
+            var positionRef: CFTypeRef?
+            var sizeRef: CFTypeRef?
+            var origin = CGPoint.zero
+            var size = CGSize.zero
+            guard AXUIElementCopyAttributeValue(field as! AXUIElement, kAXPositionAttribute as CFString, &positionRef) == .success,
+                  AXUIElementCopyAttributeValue(field as! AXUIElement, kAXSizeAttribute as CFString, &sizeRef) == .success,
+                  let positionRef, let sizeRef,
+                  AXValueGetValue(positionRef as! AXValue, .cgPoint, &origin),
+                  AXValueGetValue(sizeRef as! AXValue, .cgSize, &size) else { return }
+            info = ["fx": origin.x, "fy": origin.y, "fw": size.width, "fh": size.height]
+        }
+        guard !info.isEmpty else { return }
+        DistributedNotificationCenter.default().postNotificationName(
+            actNotification, object: nil, userInfo: info, deliverImmediately: true
+        )
+    }
 
     static func isAgentLayer(_ display: CGDirectDisplayID) -> Bool {
         CGDisplayVendorNumber(display) == vendorID && CGDisplayModelNumber(display) == productID
