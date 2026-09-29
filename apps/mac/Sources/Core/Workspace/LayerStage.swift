@@ -164,7 +164,10 @@ final class LayerStage {
                 $0.pid == pid && Self.isStageable($0) && stage.isElsewhere($0)
             }
             let hide = app.activationPolicy == .regular && !targetPids.contains(pid) && !keepsWindowsElsewhere
-            if hide, app.hide() {
+            if hide {
+                // hide() answers false even when the app goes on to hide, so
+                // its answer can't be the cue to park the windows instead.
+                app.hide()
                 outcome.hidden.append(app.localizedName ?? strays[0].app)
                 if !state.hiddenPids.contains(pid) { state.hiddenPids.append(pid) }
             } else {
@@ -351,10 +354,14 @@ final class LayerStage {
     }
 
     /// Forget parked windows that closed, or that were dragged back by hand.
+    /// A window that's off screen still counts: a hidden app's parked
+    /// windows are still parked.
     private func pruneLocked(_ main: CGRect) {
-        state.parked.removeAll { parked in
-            guard let live = Self.liveWindow(parked.wid), live.pid == parked.pid else { return true }
-            return live.frame.minX < main.maxX - Self.parkedSlack
+        if !state.parked.isEmpty, let live = Self.liveWindows() {
+            state.parked.removeAll { parked in
+                guard let window = live[parked.wid], window.pid == parked.pid else { return true }
+                return window.frame.minX < main.maxX - Self.parkedSlack
+            }
         }
         state.hiddenPids.removeAll { NSRunningApplication(processIdentifier: $0) == nil }
     }
@@ -515,14 +522,21 @@ final class LayerStage {
             && (ref as? Bool) == true
     }
 
-    /// A window's owner and CG frame, or nil once it's gone.
-    private static func liveWindow(_ wid: UInt32) -> (pid: Int32, frame: CGRect)? {
-        guard let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(wid)) as? [[String: Any]])?.first,
-              let pid = info[kCGWindowOwnerPID as String] as? Int32,
-              let bounds = info[kCGWindowBounds as String] as? NSDictionary else { return nil }
-        var rect = CGRect.zero
-        guard CGRectMakeWithDictionaryRepresentation(bounds, &rect) else { return nil }
-        return (pid, rect)
+    /// Every window's owner and CG frame, by id, on screen or not: a hidden
+    /// app's windows and those on other desktops included. A lookup of one
+    /// window by id finds only on-screen ones. Nil if the list can't be read.
+    private static func liveWindows() -> [UInt32: (pid: Int32, frame: CGRect)]? {
+        guard let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
+        var windows: [UInt32: (pid: Int32, frame: CGRect)] = [:]
+        for window in info {
+            guard let wid = window[kCGWindowNumber as String] as? UInt32,
+                  let pid = window[kCGWindowOwnerPID as String] as? Int32,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary else { continue }
+            var rect = CGRect.zero
+            guard CGRectMakeWithDictionaryRepresentation(bounds, &rect) else { continue }
+            windows[wid] = (pid, rect)
+        }
+        return windows
     }
 
     // MARK: - Persistence
