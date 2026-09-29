@@ -1174,7 +1174,7 @@ private final class MotionPanel: NSPanel {
         guard !picked.isEmpty else { NSSound.beep(); return }
         let layer = StudioLayerStore.shared.saveFromPluck(picked)
         DiagnosticLog.shared.info("Motion — saved \(picked.count) selected windows as layer '\(layer.name)' [\(layer.summary)]")
-        LayerBezel.shared.show(label: "Saved · \(layer.name)", index: 0, total: 1, allLabels: ["Saved · \(layer.name)"])
+        LayerBezel.shared.acknowledge("Saved · \(layer.name)")
     }
 
     /// Turn the current per-display pluck into an ephemeral tab stack. The same
@@ -1197,12 +1197,7 @@ private final class MotionPanel: NSPanel {
             screen: targetScreen ?? activeSurveyScreen ?? screen(for: picked[0])
         ) else { NSSound.beep(); return }
         AppFeedback.shared.commitTactile()
-        LayerBezel.shared.show(
-            label: "Tabs · \(tabs.name)",
-            index: 0,
-            total: 1,
-            allLabels: ["Tabs · \(tabs.name)"]
-        )
+        LayerBezel.shared.acknowledge("Tabs · \(tabs.name)")
         onExit?()
     }
 
