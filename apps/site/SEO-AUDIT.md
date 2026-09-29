@@ -22,3 +22,39 @@ Crawler view of `apps/site/dist` after `bun run build` on 2026-09-29. No JavaScr
 | `/blink/agents.md` | Markdown file. In the sitemap. No HTML head. |
 
 Image `alt` attributes are present on exported `<img>` tags (decorative images use an empty `alt`). The homepage download control is an icon with `aria-label="Download Lattices for macOS"`. No `click here` / `read more` links in the React pages. Pagefind indexes 47 pages and skips HTML without `data-pagefind-body` (home and product pages).
+
+## Done / Not done
+
+Checked again with `bun run build` and `bun run lint` after the fixes. `bun /tmp` checks were local; the committed proof is the export script plus a pass over `dist` (one `h1` per HTML file, sitemap locs, canonicals, and JSON-LD parse).
+
+### Done
+
+- `0b262649` records the findings above.
+- `c361151b` is the fix. `src/seo/routes.ts` is the catalog for the static pages. `scripts/export-static.mjs` writes each page's title, description, canonical, Open Graph, and Twitter tags from that catalog, from doc front matter, or from the first prose paragraph. The sitemap is that same list. `robots.txt` still points at `https://lattices.dev/sitemap.xml`.
+- `/`, `/experiment`, and `/concept` are prerendered. `/concept` canonicalizes to `/experiment`. Only `/experiment` is in the sitemap.
+- `/docs` canonicalizes to `/docs/overview`. `/docs/blog` and `/docs/blog/<slug>` canonicalize to `/blog` and `/blog/<slug>`. Those aliases stay out of the sitemap.
+- `/docs/api` uses `og-api.png`. `/docs/config` uses `og-cli.png`. Other routes keep the card `routeBrand` already selected. Each `og:image` URL is a file in `dist`.
+- JSON-LD on `/`: `Organization`, `WebSite`, and `SoftwareApplication` (macOS, `DeveloperApplication`, download `v0.12.3/Lattices.dmg`). `/action`, `/blink`, and `/speech` get `SoftwareApplication`. Posts get `BlogPosting` from their front matter. Blink sets `isAccessibleForFree` because the install section says free. Action and Blink `downloadUrl` values are `https://lattices.dev/action/download` and `https://lattices.dev/blink/download`. Speech uses `speech-v0.2.0/Speech.dmg` and `softwareVersion` `0.2.0`.
+- Doc pages keep a single `h1`. A markdown `h1` that repeats the title is removed. Any other markdown `h1` is an `h2`. Descriptions that were the shared fallback `Lattices documentation` now come from `nav.json` or the first paragraph of at least 40 characters.
+- `404.html` is `noindex`. Its social title and description match the 404 page. It does not canonicalize to the homepage.
+- `/action/download` and `/blink/download` stay `noindex` and now have an `h1` and a description.
+- `/action/agents/` keeps the trailing slash already used by its HTML and by the site footer. The sitemap uses that same URL. The export adds the missing Twitter title, description, and image from the page's own tags.
+- `284bcc5e` clears Blink lint errors that were already failing `bun run lint` (`SpatialDemo` callback order, empty `catch`, and effect `setState` timing). Theme application is unchanged. The reveal flag and the theme-switcher label update on a microtask.
+
+### Not done
+
+- `og-site.png` is still unused. The homepage keeps `og.png`, which is the card `bun run og` writes for Lattices.
+- Pagefind still ignores the homepage and the product pages. They do not set `data-pagefind-body`.
+- Proposal and internal docs stay indexable. They were already public HTML.
+- Short front matter is unchanged. `/docs/overview` is still "What lattices is and who it's for".
+- No price, rating, or review markup. The pages do not state a currency.
+- No Search Console property, sitemap submission, or change to the existing gtag snippet.
+- JSON-LD is in the static HTML for a full page load. A client-side route change updates `document.title` from the same catalog and leaves the JSON-LD of the first document in place.
+
+### Needs a person
+
+- Confirm `https://lattices.dev` in Search Console and submit `https://lattices.dev/sitemap.xml`.
+- Confirm how GitHub Pages treats a trailing slash. Generated routes omit it. `/action/agents/` keeps it, matching the footer.
+- Decide whether `/experiment` belongs in the sitemap. It was an unlinked SPA path. It is now a real page at priority `0.4`.
+- Decide whether engineering proposals and internal notes should be `noindex`.
+- Decide whether to use or remove `og-site.png`.
