@@ -135,8 +135,8 @@ the `tabStacks.*` daemon methods described in the Agent API.
 
 ## Layers
 
-Layers let you group projects into switchable contexts. Define two or
-three layers and switch between them. A switch puts away what the new
+Layers let you group projects into switchable contexts. Define up to
+eight layers and switch between them. A switch puts away what the new
 layer doesn't use, then brings its windows to the front and tiles them.
 Layers work like virtual desktops, without macOS Spaces: see
 [Putting windows away](#putting-windows-away).
@@ -277,7 +277,7 @@ Four ways to switch:
 
 | Method               | How                                      |
 |----------------------|------------------------------------------|
-| **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3...; Cmd+Option+Left/Right step to the previous/next layer and stop at the first and last |
+| **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Cmd+Option+arrows move across the pad and stop at its edges |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
 | **CLI**              | `lattices layer <name\|index>`           |
@@ -375,12 +375,15 @@ await daemonCall('window.removeLayer', { wid: 1234 })
 ### Layer bezel
 
 When you switch layers, a 3×3 grid flashes in the upper middle of the
-screen. Its slots stand for Cmd+Option+1–9: the new layer's slot is lit,
-its name sits underneath, and slots without a layer stay dim. The middle
-slot holds the Lattices pointer in place of a 5. The pointer turns to aim
-at the new layer's slot, and becomes the knob when the new layer is the
-middle one. A Cmd+Option+Left/Right past the first or last layer shows the
-grid on the layer you're on.
+screen, numbered like Cmd+Option+1–9. Layers fill the eight slots round
+the middle in order: 1, 2, 3, 4, then 6, 7, 8, 9, so a ninth layer has no
+slot. The new layer's slot is lit, its name sits underneath, and slots
+without a layer stay dim. The middle slot holds the Lattices pointer,
+which turns to aim at the new layer's slot.
+
+Cmd+Option+arrows move to the nearest layer that way on the pad, hopping
+the middle: from 4, right goes to 6. At the pad's edge, Cmd+Option+5 or
+a slot without a layer, the grid shows the layer you're on.
 
 ### Programmatic switching
 
@@ -401,7 +404,8 @@ await daemonCall('layer.switch', { name: 'hudson' })
 ```
 
 The `layer.switch` call puts away what the target layer doesn't use,
-then focuses and tiles its windows, like the command bar. A
+then focuses and tiles its windows, like the command bar. Its `index`
+counts layers in list order from 0, not pad slots. A
 `layer.switched` event is broadcast to all connected clients.
 `layers.list` also reports what switches have put away, under `stage`,
 and `layers.reveal` brings it all back.

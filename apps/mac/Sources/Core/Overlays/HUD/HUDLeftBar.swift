@@ -830,7 +830,7 @@ struct HUDLeftBar: View {
 
                         Spacer()
 
-                        Text("\(idx + 1)")
+                        Text(LayerSlots.slot(forIndex: idx).map(String.init) ?? "·")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(isActive ? Palette.text : Palette.textDim)
                             .frame(width: 18, height: 18)

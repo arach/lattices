@@ -49,41 +49,67 @@ enum HotkeyBootstrap {
     }
 
     private static func registerLayerHotkeys(store: HotkeyStore) {
-        store.register(action: .layerNext) { stepLayer(by: 1) }
-        store.register(action: .layerPrev) { stepLayer(by: -1) }
+        store.register(action: .layerPrev) { stepLayer(.left) }
+        store.register(action: .layerNext) { stepLayer(.right) }
+        store.register(action: .layerUp) { stepLayer(.up) }
+        store.register(action: .layerDown) { stepLayer(.down) }
         store.register(action: .layerTag) { SessionLayerStore.shared.tagFrontmostWindow() }
 
-        let workspace = WorkspaceManager.shared
-        let configLayerCount = (workspace.config?.layers ?? []).count
-        let maxLayers = max(configLayerCount, 9)
-        for (index, action) in HotkeyAction.layerActions.prefix(maxLayers).enumerated() {
-            store.register(action: action) {
-                let session = SessionLayerStore.shared
-                if !session.layers.isEmpty && index < session.layers.count {
-                    session.switchTo(index: index)
-                } else {
-                    workspace.focusLayer(index: index)
-                }
-                EventBus.shared.post(.layerSwitched(index: index))
-            }
+        for (offset, action) in HotkeyAction.layerActions.enumerated() {
+            let slot = offset + 1
+            store.register(action: action) { selectSlot(slot) }
         }
     }
 
-    /// Cmd+Opt+←/→ step through the session layers when there are any.
-    /// Otherwise they step through the workspace layers, the same fallback
-    /// the numbered layer hotkeys use. They don't wrap: past the first or
-    /// last layer, the bezel shows where you are.
-    private static func stepLayer(by step: Int) {
+    /// Cmd+Opt+N switches to the layer in slot N of the pad: a session layer
+    /// when there's one at that index, else the workspace layer. The middle
+    /// slot, and any slot without a layer, shows where you are instead.
+    private static func selectSlot(_ slot: Int) {
+        guard let index = LayerSlots.index(forSlot: slot) else {
+            showCurrentLayer()
+            return
+        }
         let session = SessionLayerStore.shared
-        if !session.layers.isEmpty {
-            session.step(by: step)
+        let workspace = WorkspaceManager.shared
+        if index < session.layers.count {
+            session.switchTo(index: index)
+        } else if index < (workspace.config?.layers ?? []).count {
+            workspace.focusLayer(index: index)
+        } else {
+            showCurrentLayer()
+            return
+        }
+        EventBus.shared.post(.layerSwitched(index: index))
+    }
+
+    /// Shows the bezel on the layer you're on, without switching.
+    private static func showCurrentLayer() {
+        let session = SessionLayerStore.shared
+        if session.layers.indices.contains(session.activeIndex) {
+            let index = session.activeIndex
+            LayerBezel.shared.show(label: session.layers[index].name, index: index, total: session.layers.count)
             return
         }
         let workspace = WorkspaceManager.shared
         guard let layers = workspace.config?.layers, !layers.isEmpty else { return }
         let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
-        let index = current + step
-        guard layers.indices.contains(index) else {
+        LayerBezel.shared.show(label: layers[current].label, index: current, total: layers.count)
+    }
+
+    /// Cmd+Opt+arrows move across the pad the way they point, through the
+    /// session layers when there are any, else the workspace layers, the same
+    /// fallback the numbered hotkeys use. They hop the middle and don't wrap:
+    /// at the pad's edge, the bezel shows where you are.
+    private static func stepLayer(_ direction: LayerSlots.Direction) {
+        let session = SessionLayerStore.shared
+        if !session.layers.isEmpty {
+            session.step(direction)
+            return
+        }
+        let workspace = WorkspaceManager.shared
+        guard let layers = workspace.config?.layers, !layers.isEmpty else { return }
+        let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
+        guard let index = LayerSlots.neighbour(of: current, direction, count: layers.count) else {
             LayerBezel.shared.show(label: layers[current].label, index: current, total: layers.count)
             return
         }

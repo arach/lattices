@@ -2,11 +2,12 @@ import AppKit
 
 // MARK: - Layer Switch HUD
 
-/// The layer switch, laid out like the matrix picker: a 3×3 of slots, one per
-/// ⌘⌥1–9, with the new layer's slot lit and its name in a bar underneath. The
-/// middle holds the mark's pointer, aimed at the lit slot. Slots without a
-/// layer stay dim. `acknowledge` shows the bar alone, for actions that don't
-/// land on a slot: tabs, and saved Studio layers.
+/// The layer switch, laid out like the matrix picker: a 3×3 of slots numbered
+/// like ⌘⌥1–9. Layers fill the eight round the middle (`LayerSlots`); the new
+/// layer's slot is lit and its name sits in a bar underneath. The middle holds
+/// the mark's pointer, aimed at the lit slot. Slots without a layer stay dim.
+/// `acknowledge` shows the bar alone, for actions that don't land on a slot:
+/// tabs, and saved Studio layers.
 final class LayerBezel {
     static let shared = LayerBezel()
 
@@ -19,10 +20,11 @@ final class LayerBezel {
 
     private init() {}
 
-    /// Lights slot `index` of the `total` that hold a layer, and names it
-    /// `label`. A layer past the ninth has no slot, so none lights.
+    /// Lights the slot of layer `index` among `total`, and names it `label`.
+    /// A layer past the eighth has no slot, so none lights.
     func show(label: String, index: Int, total: Int) {
-        present(label: label, slots: LayerBezelView.Slots(lit: index, filled: total))
+        let filled = (0..<min(total, LayerSlots.ordered.count)).compactMap(LayerSlots.slot(forIndex:))
+        present(label: label, slots: LayerBezelView.Slots(lit: LayerSlots.slot(forIndex: index), filled: Set(filled)))
     }
 
     /// Shows `label` in the bar alone.
@@ -80,7 +82,7 @@ final class LayerBezel {
     private func ensurePanel() -> (NSPanel, LayerBezelView) {
         if let panel, let bezelView { return (panel, bezelView) }
 
-        let size = LayerBezelView.size(label: "", slots: LayerBezelView.Slots(lit: 0, filled: 0))
+        let size = LayerBezelView.size(label: "", slots: LayerBezelView.Slots(lit: nil, filled: []))
         let view = LayerBezelView(frame: CGRect(origin: .zero, size: size))
         let panel = NSPanel(
             contentRect: view.frame,
@@ -114,10 +116,10 @@ final class LayerBezel {
 /// opaque, so the numbers read over any window.
 final class LayerBezelView: NSView {
     struct Slots {
-        /// The lit slot, counted from 0.
-        var lit: Int
-        /// How many slots hold a layer.
-        var filled: Int
+        /// The lit slot, numbered 1–9 like its hotkey.
+        var lit: Int?
+        /// The slots that hold a layer.
+        var filled: Set<Int>
     }
 
     static let cellSize: CGFloat = 44
@@ -143,8 +145,9 @@ final class LayerBezelView: NSView {
 
     private var label = ""
     private var slots: Slots?
-    /// The slot the pointer aims at, once it has aimed at one.
+    /// The slot the pointer aims at, nil at rest, once it has aimed.
     private var aimed: Int?
+    private var hasAimed = false
     /// The pointer as drawn, and the turn that carries it toward `aimed`.
     private var pose = LatticesPointer.Pose.rest
     private var from = LatticesPointer.Pose.rest
@@ -170,13 +173,16 @@ final class LayerBezelView: NSView {
     func show(label: String, slots: Slots?) {
         self.label = label
         self.slots = slots
-        if let slots, slots.lit != aimed {
+        if let slots, !hasAimed || slots.lit != aimed {
             from = pose
-            to = (0..<9).contains(slots.lit)
-                ? LatticesPointer.aim(col: slots.lit % 3, row: slots.lit / 3, turningFrom: pose.heading)
-                : LatticesPointer.rest(turningFrom: pose.heading)
+            if let lit = slots.lit {
+                to = LatticesPointer.aim(col: (lit - 1) % 3, row: (lit - 1) / 3, turningFrom: pose.heading)
+            } else {
+                to = LatticesPointer.rest(turningFrom: pose.heading)
+            }
             turnStart = CACurrentMediaTime()
-            if aimed == nil { settle() } else { run() }
+            if hasAimed { run() } else { settle() }
+            hasAimed = true
             aimed = slots.lit
         }
         needsDisplay = true
@@ -217,8 +223,8 @@ final class LayerBezelView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let content = bounds.insetBy(dx: Self.pad, dy: Self.pad)
         if let slots {
-            for slot in 0..<9 {
-                let (col, row) = (slot % 3, slot / 3)
+            for slot in 1...9 {
+                let (col, row) = ((slot - 1) % 3, (slot - 1) / 3)
                 let cell = CGRect(
                     x: content.minX + CGFloat(col) * (Self.cellSize + Self.gap),
                     y: content.maxY - CGFloat(row + 1) * Self.cellSize - CGFloat(row) * Self.gap,
@@ -227,11 +233,11 @@ final class LayerBezelView: NSView {
                 )
                 let lit = slot == slots.lit
                 drawBox(cell, lit: lit)
-                if slot == 4 {
+                if slot == LayerSlots.centre {
                     drawPointer(in: cell)
                 } else {
-                    let colour = lit ? Self.darkInk : NSColor.white.withAlphaComponent(slot < slots.filled ? 0.82 : 0.24)
-                    drawText("\(slot + 1)", font: Self.numberFont, colour: colour, in: cell)
+                    let colour = lit ? Self.darkInk : NSColor.white.withAlphaComponent(slots.filled.contains(slot) ? 0.82 : 0.24)
+                    drawText("\(slot)", font: Self.numberFont, colour: colour, in: cell)
                 }
             }
         }
@@ -268,8 +274,8 @@ final class LayerBezelView: NSView {
         path.stroke()
     }
 
-    /// The mark's pointer in coral, aimed at the lit slot, or the knob when
-    /// the middle slot is the lit one.
+    /// The mark's pointer in coral, aimed at the lit slot, or at rest when no
+    /// slot is lit.
     private func drawPointer(in cell: CGRect) {
         let centre = CGPoint(x: cell.midX, y: cell.midY)
         LatticesPointer.coral.setFill()

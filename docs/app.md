@@ -335,8 +335,8 @@ from Settings > Shortcuts.
 | Ctrl+Option+mouse  | Aim HUD; release to tile, stay centered to cancel |
 | Ctrl+Option+1/2/3  | Tile thirds          |
 | Ctrl+Left/Right    | Instant Space switch |
-| Cmd+Option+1/2/3  | Switch workspace layer |
-| Cmd+Option+Left/Right | Previous/next workspace layer |
+| Cmd+Option+1–9    | Switch to the layer in that slot; 5 shows the current one |
+| Cmd+Option+arrows | Move across the layer pad |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |
 | Ctrl+B  Left/Right| Move between panes   |
