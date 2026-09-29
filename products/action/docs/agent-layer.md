@@ -12,6 +12,7 @@ An agent layer lets Action drive an app without taking the user's screen.
 
 - Creates a `CGVirtualDisplay` and moves the subject app's windows onto it. The original frame of each window is recorded.
 - `windowId` (the `kCGWindowNumber`) or `windowTitle` (a case-insensitive substring) moves only the matching windows. Use it to borrow one window of an app the user is also in, such as a browser.
+- Starts one ScreenCaptureKit stream on the layer display and keeps it running for the layer's life. The viewer, snapshots and recordings all come off that stream (see [Feed](#feed)).
 - Shows the PiP viewer unless `pip` is `false`.
 - Writes a state file: display id, global bounds (top-left origin, points), PiP state, and the moved windows with their original frames.
 - Keeps one layer at a time. Opening a second layer closes the first, so its windows go back before the new app moves.
@@ -38,6 +39,16 @@ The pointer is the fallback: no pressable element at the point, a requested `hol
 
 Blink acts report the `blink` tier. A background drive lease allows them. They do not show the pointer-focus countdown.
 
+## Feed
+
+The layer captures its own display, not the subject app. A stream that targets an app makes macOS badge that app's windows as shared, and the badge is drawn into the window, so it would show in every frame. The framing to the subject's windows happens downstream, by crop. The stream only delivers frames when something on the layer changes, so an idle layer costs next to nothing.
+
+- **Viewer.** The PiP grows out of the screen corner on its first frame and frames the subject's windows, following them as they move and resize. Hovering shows a × that hides it; the layer keeps running. `layer pip` / `action.layer.pip` brings it back.
+- **Snapshot.** `layer snapshot` / `action.layer.snapshot` writes a PNG from the latest frame: the subject's windows by default, one window with `windowId`, or the whole layer with `full`. Nothing is captured on request, so it answers in tens of milliseconds. `unchangedMs` is how long the layer has been still, not how stale the picture is.
+- **Recording.** `layer record start|stop` / `action.layer.record` adds a recording output to the running stream, so the take starts on the next frame. It records the whole layer display at its native size. One take at a time; closing the layer finishes a take in progress.
+
+Requests go through `control.request.json` next to the state file and a `SIGUSR2`; the reply lands in `control.reply.json`.
+
 ## Lifetime
 
 `action.layer.close` is the intended teardown. It creates the stop file and waits for the layer to put the windows back and exit. If the layer does not exit, Action sends `SIGTERM`.
@@ -53,12 +64,12 @@ State lives in `~/Library/Application Support/Action/agent-layer/`.
 
 ## Surfaces
 
-- MCP: `action.layer.open`, `action.layer.close`, `action.layer.status`
-- CLI: `bun packages/cli/src/main.ts layer open|close|status`
+- MCP: `action.layer.open`, `action.layer.close`, `action.layer.status`, `action.layer.pip`, `action.layer.snapshot`, `action.layer.record`
+- CLI: `bun packages/cli/src/main.ts layer open|close|status|pip|snapshot|record`
 
 ## Requirements and limits
 
-- The PiP needs Screen Recording for Action. Without it the layer still works (windows move, blink acts land) and the panel stays dark; the layer's `layer.log` says `stream failed`.
+- The feed needs Screen Recording for Action. Without it the layer still works (windows move, blink acts land), but there is no viewer, snapshot or recording; the layer's `layer.log` says `feed failed`. Recording needs macOS 15.
 - The display touches the bottom-right-most display only at its corner. A pointer pushed exactly through that corner can still cross onto it.
 - A pointer blink click on another app activates that app for a moment before focus goes back. The menu bar can flicker for that moment.
 - Blink acts refuse targets that aren't on an agent layer: a point off the layer, or an app with no window on it. `--any-display` lifts that for tests.

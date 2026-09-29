@@ -243,6 +243,31 @@ async function main(argv: string[]): Promise<void> {
       }
       return;
     }
+    if (arg === "pip") {
+      printJson({ ok: true, layer: await director.showViewer() });
+      return;
+    }
+    if (arg === "record") {
+      const verb = extra;
+      if (verb === "start") {
+        printJson(await director.startRecording({ out: flags.out }));
+        return;
+      }
+      if (verb === "stop") {
+        printJson(await director.stopRecording());
+        return;
+      }
+      throw new Error("Usage: layer record start [--out <file.mov>] | layer record stop");
+    }
+    if (arg === "snapshot") {
+      const snapshot = await director.snapshot({
+        windowId: flags["window-id"] ? requiredNumber(flags, "window-id") : undefined,
+        full: flags.full === "true",
+        out: flags.out,
+      });
+      printJson(snapshot);
+      return;
+    }
     printJson({ ok: true, layer: await director.status() });
     return;
   }
@@ -268,6 +293,9 @@ async function main(argv: string[]): Promise<void> {
       "bun packages/cli/src/main.ts stage clear",
       "bun packages/cli/src/main.ts stage status",
       "bun packages/cli/src/main.ts layer open [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--window-id <n> | --window-title <text>] [--pip on|off]",
+      "bun packages/cli/src/main.ts layer pip",
+      "bun packages/cli/src/main.ts layer snapshot [--window-id <n> | --full] [--out <file.png>]",
+      "bun packages/cli/src/main.ts layer record start [--out <file.mov>] | layer record stop",
       "bun packages/cli/src/main.ts layer close",
       "bun packages/cli/src/main.ts layer status",
       "bun packages/cli/src/main.ts inspect current-surface [--direct] [--mock] [--no-ocr] [--vision] [--vision-provider minimax|moondream] [--vision-prompt <prompt>]",

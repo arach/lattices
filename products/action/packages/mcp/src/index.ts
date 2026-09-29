@@ -1039,6 +1039,34 @@ const tools: Tool[] = [
     { readOnlyHint: false, idempotentHint: true },
   ),
   tool(
+    "action.layer.pip",
+    "Show Agent Layer Viewer",
+    "Bring the picture-in-picture viewer back after the user hid it with its close button. The layer keeps running while the viewer is hidden.",
+    objectSchema(),
+    { readOnlyHint: false, idempotentHint: true },
+  ),
+  tool(
+    "action.layer.snapshot",
+    "Snapshot Agent Layer",
+    "Write a PNG of what is on the agent layer right now, from the layer's running capture feed: no capture setup, so it returns in milliseconds. Defaults to the subject app's windows; pass windowId for one window or full for the whole layer. Use it to check the result of an act.",
+    objectSchema({
+      windowId: numberProperty("Crop to this window (kCGWindowNumber). It must be on the layer."),
+      full: booleanProperty("The whole layer instead of the subject's windows."),
+      out: textProperty("PNG path. Defaults to the layer's snapshots folder."),
+    }),
+    { readOnlyHint: true, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.record",
+    "Record Agent Layer",
+    "Start or stop recording the agent layer to a .mov, off the layer's running capture feed (the one the viewer shows), so the take starts on the next frame. One take at a time.",
+    objectSchema({
+      action: textProperty("start or stop."),
+      out: textProperty("Movie path for start. Defaults to the layer's recordings folder."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
     "action.layer.status",
     "Agent Layer Status",
     "Read whether an agent layer is up: its display id, global bounds, PiP state, and the windows on it with their original frames.",
@@ -1934,6 +1962,29 @@ const handlers: Record<string, ToolHandler> = {
     return { ok: true, stage: status };
   },
 
+  async "action.layer.snapshot"(args) {
+    const snapshot = await agentLayerDirector.snapshot({
+      windowId: optionalNumber(args.windowId),
+      full: optionalBoolean(args.full),
+      out: optionalString(args.out),
+    });
+    return { ok: true, snapshot };
+  },
+
+  async "action.layer.record"(args) {
+    const action = optionalString(args.action);
+    if (action === "start") {
+      return { ok: true, recording: await agentLayerDirector.startRecording({ out: optionalString(args.out) }) };
+    }
+    if (action === "stop") {
+      return { ok: true, recording: await agentLayerDirector.stopRecording() };
+    }
+    throw new Error("action.layer.record needs action: start or stop");
+  },
+
+  async "action.layer.pip"() {
+    return { ok: true, layer: await agentLayerDirector.showViewer() };
+  },
   async "action.layer.open"(args) {
     const status = await agentLayerDirector.open({
       bundleId: optionalString(args.bundleId),

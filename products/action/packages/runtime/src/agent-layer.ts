@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -20,6 +21,8 @@ const STATE_POLL_MS = 40;
 const DEFAULT_STATE_WAIT_MS = 3000;
 const DEFAULT_CLOSE_WAIT_MS = 3000;
 const SIGTERM_WAIT_MS = 1500;
+const CONTROL_WAIT_MS = 1500;
+const RECORD_WAIT_MS = 5000;
 
 export type AgentLayerHostRunner = (args: string[]) => Promise<{ stdout: string }>;
 
@@ -34,6 +37,28 @@ export interface AgentLayerOpenInput {
   /** Move only windows whose title contains this, case-insensitively. */
   windowTitle?: string;
   owner?: AgentLayerOwner;
+}
+
+export interface AgentLayerSnapshotInput {
+  /** Crop to this window (kCGWindowNumber). Must be on the layer. */
+  windowId?: number;
+  /** The whole layer instead of the subject's windows. */
+  full?: boolean;
+  /** PNG path. Defaults to the layer's snapshots folder. */
+  out?: string;
+}
+
+export interface AgentLayerSnapshot {
+  ok: boolean;
+  path?: string;
+  width?: number;
+  height?: number;
+  /** Display-local points on the layer. */
+  crop?: { x: number; y: number; width: number; height: number };
+  windowId?: number | null;
+  /** Time since the layer last changed: the frame is current, this is how long it's been still. */
+  unchangedMs?: number;
+  detail?: string;
 }
 
 /** Sidecar the director writes next to the native state file: who asked, and for what. */
@@ -173,6 +198,8 @@ export class AgentLayerDirector {
       state: resolve(this.root, "state.json"),
       request: resolve(this.root, "request.json"),
       log: resolve(this.root, "layer.log"),
+      controlRequest: resolve(this.root, "control.request.json"),
+      controlReply: resolve(this.root, "control.reply.json"),
     };
   }
 
@@ -288,6 +315,85 @@ export class AgentLayerDirector {
       ...(request?.subject ? { subject: request.subject } : {}),
       ...(gone ? {} : { pid }),
     };
+  }
+
+  /** Brings the PiP viewer back after the user dismissed it. The layer itself never stopped. */
+  async showViewer(): Promise<AgentLayerStatus> {
+    const status = await this.status();
+    if (!status.active || !status.layer) {
+      throw new Error("No agent layer is up");
+    }
+    if (!status.layer.pip) {
+      process.kill(status.layer.pid, "SIGUSR1");
+      const deadline = Date.now() + 1000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const next = await this.status();
+        if (next.layer?.pip) {
+          return next;
+        }
+      }
+    }
+    return this.status();
+  }
+
+  /**
+   * A PNG of one window on the layer (or the subject's windows, or the whole layer),
+   * cut from the layer's running feed. Nothing is captured on request: the layer
+   * already holds the current frame, so this answers in milliseconds.
+   */
+  async snapshot(input: AgentLayerSnapshotInput = {}): Promise<AgentLayerSnapshot> {
+    const out = resolve(input.out ?? resolve(this.root, "snapshots", `layer-${Date.now()}.png`));
+    return this.control<AgentLayerSnapshot>("snapshot", {
+      out,
+      ...(input.windowId !== undefined ? { windowId: input.windowId } : {}),
+      full: input.full === true,
+    });
+  }
+
+  /**
+   * Record the layer to a movie off the same running feed the viewer shows, so the
+   * take starts on the next frame. One take at a time; `stopRecording` finishes it.
+   */
+  async startRecording(input: { out?: string } = {}): Promise<{ ok: boolean; path?: string }> {
+    const out = resolve(input.out ?? resolve(this.root, "recordings", `layer-${Date.now()}.mov`));
+    return this.control("record-start", { out }, RECORD_WAIT_MS);
+  }
+
+  async stopRecording(): Promise<{ ok: boolean; path?: string }> {
+    return this.control("record-stop", {}, RECORD_WAIT_MS);
+  }
+
+  /** Leaves a request next to the state file, signals the layer, and waits for its reply. */
+  private async control<T extends { ok: boolean; detail?: string }>(
+    op: string,
+    payload: Record<string, unknown>,
+    budgetMs = CONTROL_WAIT_MS,
+  ): Promise<T> {
+    const status = await this.status();
+    if (!status.active || !status.layer) {
+      throw new Error("No agent layer is up");
+    }
+    const paths = this.paths();
+    const id = randomUUID();
+    await rm(paths.controlReply, { force: true });
+    await writeFile(paths.controlRequest, `${JSON.stringify({ id, op, ...payload })}\n`);
+    process.kill(status.layer.pid, "SIGUSR2");
+    const deadline = Date.now() + budgetMs;
+    for (;;) {
+      const reply = await readJson<T & { id?: string }>(paths.controlReply);
+      if (reply?.id === id) {
+        const { id: _id, ...result } = reply;
+        if (!result.ok) {
+          throw new Error(`agent-layer ${op} failed: ${result.detail ?? "no detail"}`);
+        }
+        return result as unknown as T;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`agent-layer did not answer ${op}`);
+      }
+      await delay(10);
+    }
   }
 
   /** The live layer, or an inactive status. Stale files from a dead layer are removed. */

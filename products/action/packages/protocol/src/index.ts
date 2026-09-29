@@ -527,6 +527,8 @@ export interface AgentLayerState {
   displayId: number;
   bounds: Bounds;
   pip: boolean;
+  /** Movie path while a take is being recorded off the layer's feed. */
+  recording?: string | null;
   windows: AgentLayerWindow[];
   startedAt: string;
 }
