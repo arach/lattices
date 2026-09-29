@@ -1,7 +1,14 @@
 #!/usr/bin/env bun
 
 import { compileScenario } from "@action/compiler";
-import { CompanionClient, inspectCurrentSurface, settleCurrentSurfaceViewport, StageDirector, StageSceneError } from "@action/runtime";
+import {
+  AgentLayerDirector,
+  CompanionClient,
+  inspectCurrentSurface,
+  settleCurrentSurfaceViewport,
+  StageDirector,
+  StageSceneError,
+} from "@action/runtime";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -206,6 +213,38 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "layer") {
+    const nativeHostPath = resolve(
+      process.env.ACTION_NATIVE_HOST
+        ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../../native/engine/scripts/run-app-host.sh"),
+    );
+    const director = new AgentLayerDirector(nativeHostPath);
+    if (arg === "open") {
+      const status = await director.open({
+        bundleId: flags["bundle-id"],
+        pid: flags.pid,
+        width: flags.width,
+        height: flags.height,
+        pip: flags.pip,
+        // This process exits once the layer is up, so the layer cannot watch it.
+        // `layer close` is the teardown.
+        owner: "detached",
+      });
+      printJson({ ok: true, layer: status });
+      return;
+    }
+    if (arg === "close") {
+      const status = await director.close();
+      printJson({ ok: !status.active, layer: status });
+      if (status.active) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    printJson({ ok: true, layer: await director.status() });
+    return;
+  }
+
   if (command === "settle" && arg === "current-surface") {
     const result = await settleCurrentSurfaceViewport({
       targetViewport: {
@@ -226,6 +265,9 @@ async function main(argv: string[]): Promise<void> {
       "bun packages/cli/src/main.ts stage set [--mode drape|space] [--color RRGGBB] [--level normal|desktop] [--subjects bundleId:title,bundleId] [--seconds 1800]",
       "bun packages/cli/src/main.ts stage clear",
       "bun packages/cli/src/main.ts stage status",
+      "bun packages/cli/src/main.ts layer open [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--pip on|off]",
+      "bun packages/cli/src/main.ts layer close",
+      "bun packages/cli/src/main.ts layer status",
       "bun packages/cli/src/main.ts inspect current-surface [--direct] [--mock] [--no-ocr] [--vision] [--vision-provider minimax|moondream] [--vision-prompt <prompt>]",
       "bun packages/cli/src/main.ts vision log [--session-id <id>] [--limit <n>]",
       "bun packages/cli/src/main.ts companion status",

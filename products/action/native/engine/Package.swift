@@ -33,9 +33,14 @@ let package = Package(
             name: "ActionCore",
             path: "CoreSources"
         ),
+        .target(
+            name: "ActionVirtualDisplay",
+            path: "VirtualDisplaySources",
+            linkerSettings: [.linkedFramework("CoreGraphics")]
+        ),
         .executableTarget(
             name: "ActionHost",
-            dependencies: ["ActionCore"],
+            dependencies: ["ActionCore", "ActionVirtualDisplay"],
             path: "Sources"
         ),
         .executableTarget(

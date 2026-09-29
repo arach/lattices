@@ -40,6 +40,7 @@ import {
   MacOSCommandEngine,
   ocrScreenshot,
   StageDirector,
+  AgentLayerDirector,
   StageSceneError,
   pointFromBounds,
   publishPointerEventLog,
@@ -112,6 +113,7 @@ const nativeHostPath = resolve(
 );
 const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath });
 const stageDirector = new StageDirector(nativeHostPath);
+const agentLayerDirector = new AgentLayerDirector(nativeHostPath);
 const driverIdentity = new DriverIdentityContext();
 const cursorPresenter = new DriveCursorPresenter({
   start: async ({ lease, label }) => startAgentCursor({ nativeHostPath, lease, label }),
@@ -1015,6 +1017,33 @@ const tools: Tool[] = [
     { readOnlyHint: true, idempotentHint: true },
   ),
   tool(
+    "action.layer.open",
+    "Open Agent Layer",
+    "Move an app's windows onto a private virtual display off in a corner of the arrangement, with a small picture-in-picture viewer on the user's screen. While the layer is up, coordinate clicks on it, type, and press-key run as blink acts: save the cursor and frontmost app, act, restore. One layer at a time; opening again closes the previous one first.",
+    objectSchema({
+      bundleId: textProperty("App whose windows move onto the layer."),
+      pid: numberProperty("Process id instead of bundleId."),
+      width: numberProperty("Layer display width in points. Pass with height."),
+      height: numberProperty("Layer display height in points. Pass with width."),
+      pip: booleanProperty("Show the picture-in-picture viewer. Defaults to on."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.close",
+    "Close Agent Layer",
+    "Take the agent layer down. Moved windows return to their original frames and the virtual display is removed.",
+    objectSchema(),
+    { readOnlyHint: false, idempotentHint: true },
+  ),
+  tool(
+    "action.layer.status",
+    "Agent Layer Status",
+    "Read whether an agent layer is up: its display id, global bounds, PiP state, and the windows on it with their original frames.",
+    objectSchema(),
+    { readOnlyHint: true, idempotentHint: true },
+  ),
+  tool(
     "action.act.execute",
     "Execute Action",
     "Execute a deterministic runtime action. Prefer resolved targets over raw coordinates.",
@@ -1569,11 +1598,14 @@ const handlers: Record<string, ToolHandler> = {
         ? await engine.resolveTarget(action.target)
         : undefined;
 
-    const channel = target?.mode === "coordinate" ? "hid" : "native";
+    const agentLayer = await agentLayerDirector.routing();
+    const blinkRoute = engine.blinkRoute(action, target, agentLayer);
+    const channel = blinkRoute ? "blink" : target?.mode === "coordinate" ? "hid" : "native";
     const axTier = inferAxTier({
       actionKind: action.kind,
       channel,
       targetMode: target?.mode,
+      blink: Boolean(blinkRoute),
     });
     const lease = await ensureDriveLeaseForAct({
       leaseId: optionalString(args.leaseId),
@@ -1624,8 +1656,10 @@ const handlers: Record<string, ToolHandler> = {
     // performAction throws for anything it could not carry out — including an action kind the
     // runtime has no handler for — and the tool dispatcher turns a throw into an isError reply.
     // Reaching this line is therefore the success signal; the literal below is not an assumption.
-    const stagedPoint = actPoint(action, target);
-    const stagedHighlight = actHighlight(target);
+    // A blink act lands on the hidden layer display; its coordinates are not on the
+    // user's screen, so the synthetic cursor stays put instead of travelling off-screen.
+    const stagedPoint = blinkRoute ? undefined : actPoint(action, target);
+    const stagedHighlight = blinkRoute ? undefined : actHighlight(target);
     await stageCursor({
       lease,
       point: stagedPoint,
@@ -1635,7 +1669,7 @@ const handlers: Record<string, ToolHandler> = {
     });
 
     try {
-      await engine.performAction(action, target);
+      await engine.performAction(action, target, { agentLayer });
     } catch (error) {
       if (pointerFocusWarningShown) {
         try {
@@ -1898,6 +1932,30 @@ const handlers: Record<string, ToolHandler> = {
     return { ok: true, stage: status };
   },
 
+  async "action.layer.open"(args) {
+    const status = await agentLayerDirector.open({
+      bundleId: optionalString(args.bundleId),
+      pid: optionalNumber(args.pid),
+      width: optionalNumber(args.width),
+      height: optionalNumber(args.height),
+      pip: optionalBoolean(args.pip),
+      // This server outlives the call, so the layer watches it and puts the windows
+      // back if the server dies before action.layer.close runs.
+      owner: "caller",
+    });
+    return { ok: true, layer: status };
+  },
+
+  async "action.layer.close"() {
+    const status = await agentLayerDirector.close();
+    return { ok: !status.active, layer: status };
+  },
+
+  async "action.layer.status"() {
+    const status = await agentLayerDirector.status();
+    return { ok: true, layer: status };
+  },
+
   async "action.artifacts.list"(args) {
     const outputDir = resolve(
       actionRoot,
@@ -1970,6 +2028,7 @@ function createServer(): Server {
         "Use action.drive.aim to move the synthetic cursor and highlight a region before acting. Move, then do the thing.",
         "Use action.drive.play to run a named list of beats (note, aim, wait, act) as one sequence.",
         "Use action.stage.set to declare the world for a take: a color drape plus the windows that sit on it. Never write the desktop picture.",
+        "Use action.layer.open to work an app on a hidden virtual display the user watches through a small PiP; clicks and typing there run as blink acts in a background lease. Close it with action.layer.close.",
         "These tools are also how you control the user's regular Chrome: it is a native window like any other, observed through screen capture and accessibility. The action-browser plugin's DOM tools (browser_snapshot / click / fill / screenshot) reach only Action-owned Chrome identities, never the user's own browser.",
       ].join("\n"),
     },

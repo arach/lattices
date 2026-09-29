@@ -42,6 +42,10 @@ enum ActionHostCommand: String {
     case supervisorStop = "supervisor-stop"
     case stageOverlay = "stage-overlay"
     case drape
+    case agentLayer = "agent-layer"
+    case blinkClick = "blink-click"
+    case blinkType = "blink-type"
+    case blinkKey = "blink-key"
     case raiseWindow = "raise-window"
     case windowOrder = "window-order"
     case demoCursorOverlay = "demo-cursor-overlay"
@@ -599,7 +603,15 @@ func postKeyPress(_ key: String, modifiers: [String] = []) throws {
 }
 
 func postKeyPressToApp(bundleId: String, key: String, modifiers: [String] = []) throws {
-    let app = try runningApplication(bundleId: bundleId)
+    try postKeyPressToApp(app: try runningApplication(bundleId: bundleId), key: key, modifiers: modifiers)
+}
+
+func postKeyPressToApp(
+    app: NSRunningApplication,
+    key: String,
+    modifiers: [String] = [],
+    holdMicroseconds: useconds_t = 50_000
+) throws {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         throw ActionHostError.accessibilityActionFailed("Unable to create event source")
     }
@@ -618,7 +630,7 @@ func postKeyPressToApp(bundleId: String, key: String, modifiers: [String] = []) 
     keyDown.flags = flags
     keyUp.flags = flags
     keyDown.postToPid(app.processIdentifier)
-    usleep(50000)
+    usleep(holdMicroseconds)
     keyUp.postToPid(app.processIdentifier)
 }
 
@@ -673,7 +685,10 @@ func postText(_ text: String, delayMs: Int?) throws {
 }
 
 func postTextToApp(bundleId: String, text: String, delayMs: Int?) throws {
-    let app = try runningApplication(bundleId: bundleId)
+    try postTextToApp(app: try runningApplication(bundleId: bundleId), text: text, delayMs: delayMs)
+}
+
+func postTextToApp(app: NSRunningApplication, text: String, delayMs: Int?) throws {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         throw ActionHostError.accessibilityActionFailed("Unable to create event source")
     }
@@ -3882,6 +3897,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         throw ActionHostError.unsupportedOS("stage-overlay should be started via runUICommand")
     case .drape:
         throw ActionHostError.unsupportedOS("drape should be started via runUICommand")
+    case .agentLayer:
+        throw ActionHostError.unsupportedOS("agent-layer should be started via runUICommand")
     case .demoCursorOverlay:
         throw ActionHostError.unsupportedOS("demo-cursor-overlay should be started via runUICommand")
     case .agentCursorOverlay:
@@ -4247,6 +4264,42 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         try postKeyPressToApp(bundleId: bundleId, key: key, modifiers: modifiers)
         let detail = modifiers.isEmpty ? "\(bundleId) \(key)" : "\(bundleId) \(modifiers.joined(separator: "+"))+\(key)"
         try writer.write(ActionHostResponse(status: "pressed-app-key", outputPath: nil, detail: detail))
+    case .blinkClick:
+        let x = options.double("x", default: .nan)
+        let y = options.double("y", default: .nan)
+        guard x.isFinite, y.isFinite else {
+            throw ActionHostError.missingOption("--x/--y")
+        }
+        let detail = try ActionBlinkInput.click(
+            at: CGPoint(x: x, y: y),
+            holdMs: Int(options.double("hold-ms", default: Double(ActionBlinkInput.clickHoldMilliseconds))),
+            anyDisplay: options.bool("any-display", default: false),
+            pointerEventLogPath: options.options["pointer-event-log"]
+        )
+        try writer.write(ActionHostResponse(status: "blink-clicked", outputPath: nil, detail: detail))
+    case .blinkType:
+        let app = try resolveTargetApplication(from: options)
+        let delayMs = Int(options.double("delay-ms", default: 0))
+        let detail = try ActionBlinkInput.type(
+            try options.required("text"),
+            into: app,
+            delayMs: delayMs > 0 ? delayMs : nil,
+            anyDisplay: options.bool("any-display", default: false)
+        )
+        try writer.write(ActionHostResponse(status: "blink-typed", outputPath: nil, detail: detail))
+    case .blinkKey:
+        let app = try resolveTargetApplication(from: options)
+        let modifiers = options.options["modifiers"]?
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+        let detail = try ActionBlinkInput.press(
+            try options.required("key"),
+            modifiers: modifiers,
+            into: app,
+            anyDisplay: options.bool("any-display", default: false)
+        )
+        try writer.write(ActionHostResponse(status: "blink-key-pressed", outputPath: nil, detail: detail))
     case .pointerEventLogInit:
         // Written natively so the header's monotonic reference comes from the same clock the
         // click processes will stamp against. A JS caller cannot produce a comparable reading.
@@ -4592,6 +4645,19 @@ struct ActionHostMain {
                     let controller = try ActionDrapeController(options: options)
                     try controller.run()
                 } catch {
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
+        case .agentLayer:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionAgentLayerController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionHostResponse(status: "error", outputPath: nil, detail: error.localizedDescription))
                     FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
                     Darwin.exit(1)
                 }
