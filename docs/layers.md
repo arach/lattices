@@ -277,7 +277,7 @@ Four ways to switch:
 
 | Method               | How                                      |
 |----------------------|------------------------------------------|
-| **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3... |
+| **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3...; Cmd+Option+Left/Right step to the previous/next layer |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
 | **CLI**              | `lattices layer <name\|index>`           |
