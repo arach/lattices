@@ -24,13 +24,25 @@ enum ActionBlinkInput {
 
     // MARK: Click
 
-    static func click(at point: CGPoint, holdMs: Int, anyDisplay: Bool, pointerEventLogPath: String?) throws -> String {
+    static func click(
+        at point: CGPoint,
+        holdMs: Int,
+        accessibilityFirst: Bool,
+        anyDisplay: Bool,
+        pointerEventLogPath: String?
+    ) throws -> String {
         if !anyDisplay {
             guard ActionAgentLayerDisplay.contains(point) else {
                 throw ActionHostError.accessibilityActionFailed(
                     "blink-click refused: \(Int(point.x)),\(Int(point.y)) is not on an agent layer (open one, or pass --any-display)"
                 )
             }
+        }
+
+        // The pointer is the fallback. A pressable element under the point takes AXPress,
+        // which moves nothing and activates nothing.
+        if accessibilityFirst, let role = pressElement(at: point) {
+            return "\(Int(point.x)),\(Int(point.y)) via=ax role=\(role)"
         }
 
         let previous = frontmostPID().flatMap(NSRunningApplication.init(processIdentifier:))
@@ -58,10 +70,63 @@ enum ActionBlinkInput {
         CGAssociateMouseAndMouseCursorPosition(1)
 
         let refocused = handBackFocus(to: previous, after: target)
-        var detail = "\(Int(point.x)),\(Int(point.y)) pointer=\(Int(saved.x)),\(Int(saved.y))"
+        var detail = "\(Int(point.x)),\(Int(point.y)) via=pointer pointer=\(Int(saved.x)),\(Int(saved.y))"
         if refocused { detail += " refocused=\(previous?.bundleIdentifier ?? "pid \(previous?.processIdentifier ?? 0)")" }
         if gesture.recorded { detail += " pointerEvent=\(gesture.correlationId)" }
         return detail
+    }
+
+    /// Roles whose AXPress is the click. Containers that also advertise AXPress (groups,
+    /// web areas, rows) are left to the pointer: pressing them rarely does what a click
+    /// at that spot would.
+    private static let pressableRoles: Set<String> = [
+        kAXButtonRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole,
+        kAXMenuButtonRole, kAXMenuItemRole, kAXDisclosureTriangleRole, "AXLink", "AXTab",
+    ]
+
+    /// Presses the pressable element at `point`, climbing a few parents from the hit
+    /// element (a button's label or image is often what the hit test returns). Returns
+    /// the pressed role, or nil when nothing there takes AXPress.
+    private static func pressElement(at point: CGPoint) -> String? {
+        let systemWide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(systemWide, 0.5)
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit) == .success,
+              var element = hit else { return nil }
+
+        for _ in 0..<4 {
+            let role = stringAttribute(element, kAXRoleAttribute) ?? ""
+            if role == kAXWindowRole || role == kAXApplicationRole { return nil }
+            if pressableRoles.contains(role) {
+                guard boolAttribute(element, kAXEnabledAttribute) != false,
+                      actionNames(element).contains(kAXPressAction),
+                      AXUIElementPerformAction(element, kAXPressAction as CFString) == .success else { return nil }
+                return role
+            }
+            var parent: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parent) == .success,
+                  let parent, CFGetTypeID(parent) == AXUIElementGetTypeID() else { return nil }
+            element = parent as! AXUIElement
+        }
+        return nil
+    }
+
+    private static func stringAttribute(_ element: AXUIElement, _ name: String) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value as? String
+    }
+
+    private static func boolAttribute(_ element: AXUIElement, _ name: String) -> Bool? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return (value as? NSNumber)?.boolValue
+    }
+
+    private static func actionNames(_ element: AXUIElement) -> [String] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(element, &names) == .success else { return [] }
+        return (names as? [String]) ?? []
     }
 
     // MARK: Keys

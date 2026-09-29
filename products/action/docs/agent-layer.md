@@ -25,7 +25,9 @@ While a layer is up, `action.act.execute` routes these acts as blink acts:
 | `type` | `blink-type` | no accessibility label path applies |
 | `press-key` | `blink-key` | always |
 
-A blink act saves the cursor position and the frontmost app, performs the act, and restores both. It takes tens of milliseconds.
+Accessibility comes first. A target with a bundle id and label is pressed or set through accessibility and never blinks. `blink-click` hit-tests its point before it touches the pointer: if the element there is a button, checkbox, radio, pop-up, menu item, disclosure triangle, link or tab that takes `AXPress`, it is pressed and the result says `via=ax`. Nothing moves and focus does not change.
+
+The pointer is the fallback: no pressable element at the point, a requested `holdMs`, or `--pointer` on the host command. A pointer blink saves the cursor position and the frontmost app, clicks, and restores both within tens of milliseconds. Its result says `via=pointer`.
 
 `type` and `press-key` target `input.bundleId` or `input.pid` if given, else the layer's app. Accessibility paths (`press-accessibility-element`, `set-accessibility-value`) do not change. Drag and scroll do not blink. A click outside the layer display uses `click-point`.
 
@@ -53,6 +55,6 @@ State lives in `~/Library/Application Support/Action/agent-layer/`.
 
 - The PiP needs Screen Recording for Action. Without it the layer still works (windows move, blink acts land) and the panel stays dark; the layer's `layer.log` says `stream failed`.
 - The display touches the bottom-right-most display only at its corner. A pointer pushed exactly through that corner can still cross onto it.
-- A blink click on another app activates that app for a moment before focus goes back. The menu bar can flicker for that moment.
+- A pointer blink click on another app activates that app for a moment before focus goes back. The menu bar can flicker for that moment.
 - Blink acts refuse targets that aren't on an agent layer: a point off the layer, or an app with no window on it. `--any-display` lifts that for tests.
 - If the layer process is killed with `SIGKILL`, the display goes with it and macOS moves its windows to the main display rather than to where they were.

@@ -4270,9 +4270,13 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         guard x.isFinite, y.isFinite else {
             throw ActionHostError.missingOption("--x/--y")
         }
+        // A requested hold is a HID gesture AXPress can't express; `--pointer` forces the
+        // pointer for elements whose press action misbehaves.
+        let wantsPointer = options.options["hold-ms"] != nil || options.bool("pointer", default: false)
         let detail = try ActionBlinkInput.click(
             at: CGPoint(x: x, y: y),
             holdMs: Int(options.double("hold-ms", default: Double(ActionBlinkInput.clickHoldMilliseconds))),
+            accessibilityFirst: !wantsPointer,
             anyDisplay: options.bool("any-display", default: false),
             pointerEventLogPath: options.options["pointer-event-log"]
         )
