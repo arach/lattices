@@ -33,7 +33,7 @@ export type ToolDefinition = {
  * everything below the framing.
  */
 export type Toolset = {
-  /** Registry key, e.g. `browser`. Selectable with `lattices mcp --toolsets`. */
+  /** Registry key, e.g. `browser`. Selectable with `lats mcp --toolsets`. */
   name: string;
   title?: string;
   tools: readonly ToolDefinition[];

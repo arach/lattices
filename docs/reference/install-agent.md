@@ -12,7 +12,7 @@ Install the lattices CLI and optionally the native macOS menu bar companion app.
 
 ## DONE WHEN
 
-`lattices help` returns Usage information for lattices CLI
+`lats help` returns Usage information for lattices CLI
 
 ## TODO
 
@@ -59,19 +59,19 @@ bun link
 ## Step 3: Build and launch the menu bar app
 
 ```bash
-lattices app
+lats app
 ```
 
 ## Step 4: Create a config in your project
 
 ```bash
-cd ~/your-project && lattices init
+cd ~/your-project && lats init
 ```
 
 ## Step 5: Start your first workspace
 
 ```bash
-lattices
+lats
 ```
 
 ## EXECUTE NOW

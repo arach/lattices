@@ -789,7 +789,7 @@ export function renderWorkspaceMap(
 }
 
 export function mapUsage(): string {
-  return `Usage: lattices map [options]
+  return `Usage: lats map [options]
 
 Render the current Space of every display as one scaled map of the desktop.
 
@@ -877,7 +877,7 @@ export async function mapCommand(
       const tags = missing.map((entry) => `Display ${entry.displayIndex}`).join(", ");
       throw new Error(
         `${tags} reported no frame geometry; the running Lattices app predates the workspace map snapshot. ` +
-        `Update and restart the app (lattices app update), then retry.`
+        `Update and restart the app (lats app update), then retry.`
       );
     }
     console.log(JSON.stringify(createWorkspaceMapSnapshot(displays, windows, { display }), null, 2));

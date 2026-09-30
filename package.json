@@ -16,6 +16,7 @@
   },
   "bin": {
     "lattices": "./bin/lattices",
+    "lats": "./bin/lattices",
     "lattices-app": "./bin/lattices-app.ts"
   },
   "keywords": [

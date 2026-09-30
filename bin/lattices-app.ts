@@ -83,7 +83,7 @@ function requireBundleNotRunningForBuild(): void {
   console.error("Refusing to rebuild Lattices.app while that bundle is running.");
   console.error("Rewriting or re-signing a live Mach-O can make macOS kill it later with Code Signature Invalid.");
   console.error(`Running PID(s): ${running.map((proc) => proc.pid).join(", ")}`);
-  console.error("Use `lattices app restart` to quit, rebuild, and relaunch, or run `lattices app quit` before `lattices app build`.");
+  console.error("Use `lats app restart` to quit, rebuild, and relaunch, or run `lats app quit` before `lats app build`.");
   process.exit(1);
 }
 
@@ -354,7 +354,7 @@ function printAppStatus(): void {
 
 function relaunchIfNeeded(shouldLaunch: boolean, extraArgs: string[] = []): void {
   if (!shouldLaunch) {
-    console.log("App updated. Launch with: lattices app");
+    console.log("App updated. Launch with: lats app");
     return;
   }
   launch(extraArgs);
@@ -791,7 +791,7 @@ function runFreshHelper(args: string[]): void {
 async function upgradePackage(force: boolean): Promise<void> {
   if (isSourceCheckout()) {
     console.log(`This lattices runs from a source checkout (${cliRoot}).`);
-    console.log("Update it with: git pull && lattices app restart");
+    console.log("Update it with: git pull && lats app restart");
     return;
   }
 
@@ -819,7 +819,7 @@ async function upgradePackage(force: boolean): Promise<void> {
 
   if (!existsSync(selfScriptPath)) {
     console.log(`lattices updated, but the install moved away from ${cliRoot}.`);
-    console.log("Run `lattices app install` to re-register startup and relaunch.");
+    console.log("Run `lats app install` to re-register startup and relaunch.");
     return;
   }
 
@@ -883,7 +883,7 @@ if (cmd === "build") {
   } else if (loginAction === "status") {
     printAppStatus();
   } else {
-    console.log("Usage: lattices app login [enable|disable|status]");
+    console.log("Usage: lats app login [enable|disable|status]");
   }
 } else if (cmd === "status") {
   printAppStatus();

@@ -6,22 +6,22 @@ How to create and manage Lattices workspace layers programmatically. This guide 
 
 ```bash
 # See what's on screen
-lattices windows --json
+lats windows --json
 
 # Create a layer with tiling
-lattices layer create "Design" --json '[
+lats layer create "Design" --json '[
   {"app": "Figma", "tile": "left"},
   {"app": "Google Chrome", "title": "Tailwind", "tile": "right"}
 ]'
 
 # Snapshot current windows as a layer
-lattices layer snap "my-context"
+lats layer snap "my-context"
 
 # List / switch / delete session layers
-lattices layer session
-lattices layer session "Design"
-lattices layer delete "Design"
-lattices layer clear
+lats layer session
+lats layer session "Design"
+lats layer delete "Design"
+lats layer clear
 ```
 
 ## How It Works
@@ -40,7 +40,7 @@ There are two kinds of layers:
 ### 1. Discover what's available
 
 ```bash
-lattices windows --json
+lats windows --json
 ```
 
 Returns an array of window objects:
@@ -96,7 +96,7 @@ Full position reference:
 
 **Option A: By window ID (most reliable)**
 ```bash
-lattices layer create "Coding" --json '[
+lats layer create "Coding" --json '[
   {"wid": 1234, "tile": "left"},
   {"wid": 5678, "tile": "right"}
 ]'
@@ -104,7 +104,7 @@ lattices layer create "Coding" --json '[
 
 **Option B: By app name (survives window recreation)**
 ```bash
-lattices layer create "Research" --json '[
+lats layer create "Research" --json '[
   {"app": "Google Chrome", "title": "docs", "tile": "left"},
   {"app": "Notes", "tile": "right"}
 ]'
@@ -112,20 +112,20 @@ lattices layer create "Research" --json '[
 
 **Option C: Simple wid list (no tiling)**
 ```bash
-lattices layer create "Focus" wid:1234 wid:5678
+lats layer create "Focus" wid:1234 wid:5678
 ```
 
 **Option D: Snapshot everything visible**
 ```bash
-lattices layer snap "Current Context"
+lats layer snap "Current Context"
 ```
 
 ### 4. Switch between layers
 
 ```bash
-lattices layer session          # list all session layers
-lattices layer session "Coding" # switch to "Coding"
-lattices layer session 0        # switch by index
+lats layer session              # list all session layers
+lats layer session "Coding" # switch to "Coding"
+lats layer session 0            # switch by index
 ```
 
 ## Daemon API (Advanced)
@@ -134,22 +134,22 @@ For finer control, use raw daemon calls:
 
 ```bash
 # Create layer with window IDs
-lattices call session.layers.create '{"name":"Coding","windowIds":[1234,5678]}'
+lats call session.layers.create '{"name":"Coding","windowIds":[1234,5678]}'
 
 # Create layer with app references
-lattices call session.layers.create '{"name":"Design","windows":[{"app":"Figma"},{"app":"Google Chrome","contentHint":"Tailwind"}]}'
+lats call session.layers.create '{"name":"Design","windows":[{"app":"Figma"},{"app":"Google Chrome","contentHint":"Tailwind"}]}'
 
 # Tile a specific window
-lattices call window.place '{"wid":1234,"placement":"left"}'
+lats call window.place '{"wid":1234,"placement":"left"}'
 
 # Switch layer
-lattices call session.layers.switch '{"name":"Coding"}'
+lats call session.layers.switch '{"name":"Coding"}'
 
 # List session layers
-lattices call session.layers.list
+lats call session.layers.list
 
 # Delete
-lattices call session.layers.delete '{"name":"old-layer"}'
+lats call session.layers.delete '{"name":"old-layer"}'
 ```
 
 ## Composing Layers from Intent
@@ -204,4 +204,4 @@ Browser windows are chameleons — use `title` matching to assign them to the ri
 - Background apps (music, etc.) usually don't need to be in any layer.
 - The `snap` command is great for "save what I have now" scenarios.
 - Session layers are ephemeral — they live until the daemon restarts. For permanent layers, edit `~/.lattices/workspace.json`.
-- You can create multiple layers in sequence, then switch between them with `lattices layer session <name>`.
+- You can create multiple layers in sequence, then switch between them with `lats layer session <name>`.

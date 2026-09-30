@@ -10,29 +10,29 @@ workspace from there.
 ## Installation
 
 ```bash
-lattices app          # Build (or download) and launch
-lattices app install  # Register launch-at-login and launch now
-lattices app update   # Swap in the latest app release only
-lattices app build    # Rebuild from source
-lattices app restart  # Quit, rebuild, relaunch
-lattices app quit     # Stop the app
+lats app              # Build (or download) and launch
+lats app install      # Register launch-at-login and launch now
+lats app update       # Swap in the latest app release only
+lats app build        # Rebuild from source
+lats app restart      # Quit, rebuild, relaunch
+lats app quit         # Stop the app
 ```
 
 The first run builds from source if Swift is available, otherwise
 downloads a pre-built binary from GitHub releases.
 
-Use `lattices app install` when you want the companion to start now and
+Use `lats app install` when you want the companion to start now and
 open automatically at login. It installs a user LaunchAgent in
-`~/Library/LaunchAgents`; inspect it with `lattices app login status`
-and remove it with `lattices app login disable`.
+`~/Library/LaunchAgents`; inspect it with `lats app login status`
+and remove it with `lats app login disable`.
 
 ## Updating
 
 ```bash
-lattices update       # Update the CLI and app together
+lats update           # Update the CLI and app together
 ```
 
-`lattices update` reinstalls `@arach/lattices` with the package manager
+`lats update` reinstalls `@arach/lattices` with the package manager
 that owns your global install (npm, bun, or pnpm). It re-registers
 launch-at-login so the LaunchAgent points at the new install, and it
 relaunches the app if it was running. Pass `--force` to reinstall when
@@ -109,7 +109,7 @@ publish a static hover dashboard by exposing:
 Register and publish one:
 
 ```bash
-lattices hud register .lattices/hud/manifest.json --publish
+lats hud register .lattices/hud/manifest.json --publish
 ```
 
 The manifest points to a local `index.html`, optional icon, app activation
@@ -134,8 +134,8 @@ For each project found, the app reads:
 ## Session management
 
 The app calls the lattices CLI for session operations. Launch runs
-`lattices start` in the project directory, Sync runs `lattices sync` to
-reconcile panes, and Restart runs `lattices restart <pane>` to kill
+`lats start` in the project directory, Sync runs `lats sync` to
+reconcile panes, and Restart runs `lats restart <pane>` to kill
 and re-run a pane's process. Detach and Kill call `tmux detach-client`
 and `tmux kill-session` directly.
 
@@ -345,7 +345,7 @@ Hyper+L opens Studio; close it with Escape or `q` when the map owns keyboard
 focus, or use the window close button. Hyper+3 opens or dismisses the HUD and
 its miniature workspace map. The Scattered and Full HUD presets intentionally
 retain a faint, non-interactive ambient surface after dismissal. Neither UI is
-the read-only terminal [`lattices map`](/docs/workspace-map) command; see that
+the read-only terminal [`lats map`](/docs/workspace-map) command; see that
 page for exact side effects, full-teardown steps, and tab-stack cleanup.
 
 ### In-place window tools
@@ -374,7 +374,7 @@ labels distinguish immediate actions from staged actions before anything moves.
 **Snapshot** starts a three-second countdown, captures the complete display
 without closing or changing Hyper+G, copies the PNG to the clipboard, and saves
 the same image as a Runs artifact. The command-line equivalent is
-`lattices capture display [index] --clipboard --delay 3`.
+`lats capture display [index] --clipboard --delay 3`.
 
 ### Docs
 
@@ -470,7 +470,7 @@ quits.
 ### Checking status
 
 ```bash
-lattices daemon status
+lats daemon status
 ```
 
 Or programmatically:
