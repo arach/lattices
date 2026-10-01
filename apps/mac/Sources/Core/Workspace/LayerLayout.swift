@@ -25,6 +25,41 @@ enum LayerLayout {
             default: return nil
             }
         }
+
+        /// What a layer's `layout` stores for it.
+        var name: String {
+            switch self {
+            case .auto: return "auto"
+            case .columns: return "columns"
+            case .masterStack: return "master-stack"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .auto: return "Auto"
+            case .columns: return "Columns"
+            case .masterStack: return "Master-stack"
+            }
+        }
+    }
+
+    /// The layouts the preview's L steps through, after none.
+    static let cycle: [Kind] = [.auto, .columns, .masterStack]
+
+    /// The layout after `name`: none, auto, columns, master-stack, then none
+    /// again. A name it doesn't know goes to auto.
+    static func next(after name: String?) -> String? {
+        guard let name else { return cycle.first?.name }
+        guard let kind = Kind(name), let at = cycle.firstIndex(of: kind) else { return Kind.auto.name }
+        return at + 1 < cycle.count ? cycle[at + 1].name : nil
+    }
+
+    /// A layout as the preview names it. With none, a layer raises its
+    /// windows where they are.
+    static func title(_ name: String?) -> String {
+        guard let name else { return "In place" }
+        return Kind(name)?.title ?? name
     }
 
     enum Lane: CaseIterable {

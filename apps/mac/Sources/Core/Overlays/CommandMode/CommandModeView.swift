@@ -1909,13 +1909,27 @@ struct CommandModeView: View {
                     Spacer()
                 }
 
-                // Second row: layer chords + utility
+                // Second row: utility
                 HStack(spacing: 12) {
-                    ForEach(state.chords.dropFirst(3), id: \.key) { chord in
+                    ForEach(state.chords.dropFirst(3).filter { !$0.isLayer }, id: \.key) { chord in
                         chordHint(key: chord.key, label: chord.label)
                     }
                     chordHint(key: "esc", label: "dismiss")
                     Spacer()
+                }
+
+                // Layer chords on the ⌘⌥ pad's slots; a slot without a layer
+                // stays dim, so the rows keep their shape.
+                let layerChords = state.chords.filter(\.isLayer)
+                if !layerChords.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .leading), count: 4), alignment: .leading, spacing: 4) {
+                        ForEach(LayerSlots.ordered, id: \.self) { slot in
+                            let chord = layerChords.first { $0.key == "\(slot)" }
+                            chordHint(key: "\(slot)", label: chord?.label ?? "")
+                                .lineLimit(1)
+                                .opacity(chord == nil ? 0.35 : 1)
+                        }
+                    }
                 }
             }
         }

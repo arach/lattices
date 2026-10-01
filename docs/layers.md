@@ -314,7 +314,7 @@ Four ways to switch:
 | **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Cmd+Option+arrows move across the pad and stop at its edges |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
-| **CLI**              | `lattices layer <name\|index>`           |
+| **CLI**              | `lattices layer <name\|slot>`            |
 
 Every one of them switches the same way:
 
@@ -386,12 +386,12 @@ You can switch layers by name from the CLI:
 
 ```bash
 lattices layer hudson           # Switch to the layer named "hudson"
-lattices layer 0                # Switch to the first layer (by index)
+lattices layer 1                # Switch to the layer on ⌘⌥1
 lattices layer hudson --launch  # Start what isn't running, then tile
 ```
 
-This is useful for scripting — you don't need to know the index,
-just the layer's `id` or `label`.
+A number is a pad slot, as ⌘⌥ takes it: 1–4 and 6–9. A name is the
+layer's `id` or `label`, so scripts don't depend on the order.
 
 ### Adding and removing windows
 
@@ -420,15 +420,19 @@ slot. The new layer's slot is lit, its name sits underneath, and slots
 without a layer stay dim. The middle slot holds the Lattices pointer,
 which turns to aim at the new layer's slot.
 
-Under the name, the layer's apps are listed, one row each. A switch only
-brings windows on the desktop the main display is showing, so an app
-whose windows are elsewhere says where: Desktop 2, Left display, Full
-screen. A running app without the layer's window says No window, and an
-entry with nothing running says Not open.
+Under the name, the layer's apps are listed, one row each, then the apps
+of windows it had showing when you last left it. A switch only brings
+windows on the desktop the main display is showing, so an app whose
+windows are elsewhere says where, dimmed: Parked, Hidden, Put away,
+Desktop 2, Left display, Full screen. A running app without the layer's
+window says No window, and an entry with nothing running says Not open.
+Last, dimmed, come other layers' windows whose app kept them on screen
+when the switch tried to park them: Stayed.
 
 Cmd+Option+arrows move to the nearest layer that way on the pad, hopping
-the middle: from 4, right goes to 6. At the pad's edge, Cmd+Option+5 or
-a slot without a layer, the grid shows the layer you're on.
+the middle: from 4, right goes to 6. At the pad's edge the grid shows the
+layer you're on for a moment, its lit slot bumping the way you pushed.
+Cmd+Option+5, or a slot without a layer, shows the layer you're on too.
 
 ### Programmatic switching
 
@@ -500,6 +504,38 @@ every clause in `not` must fail.
 Hyperspace's layer piles write these clauses; Screen Map scopes its canvas
 to a layer's windows. `~/.lattices/layers.json`, the old Studio layer file,
 is no longer read.
+
+### One layer per window
+
+A window belongs to one layer at most. When entries in different layers
+match it, the strongest claim holds it: a pin, then a `match` clause, a
+tab group, a project, and last `app` and `title`, where a longer `title`
+beats a shorter one and a bare `app` comes last. Ties go to the earlier
+layer, then the earlier entry. An entry with only `launch` or `url` finds
+no windows.
+
+A window added to a layer by hand (⌘⌥T, the layer bezel, `layers.assign`)
+is saved as its `app` and `title`, with a pin:
+
+```json
+{ "app": "Safari", "title": "Docs", "saved": true, "pins": [{ "wid": 41027, "pid": 812, "app": "Safari", "title": "Docs" }] }
+```
+
+An entry saved this way (`"saved": true`) holds windows by its pins alone:
+a second window with the same title stays with the layer whose rule reads
+it. Its `app` and `title` find a pin's window again and launch one. An
+entry you write has no `saved` and holds what its `app` and `title` match,
+pins or not, so adding a window to it keeps it matching the rest, and it
+stays when that window's pin goes. Editing a saved entry's rule in
+Hyperspace makes it a written one.
+
+The pin holds the window while it lives, whatever its title turns to. A
+pin whose window closes while its app runs on is dropped, and a saved entry
+it leaves with no pins goes with it. Once the app quits, a pin whose window
+is gone takes the window with exactly its app and title, unless another
+layer's rule holds that window; a pin without a `pid`, saved before pins
+kept one, takes only a window no other layer reads. Adding a window to a
+layer takes the pins other layers had on it.
 
 ### Layer bar
 

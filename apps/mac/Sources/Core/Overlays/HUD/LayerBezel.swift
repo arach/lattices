@@ -44,19 +44,23 @@ final class LayerBezel {
     }
 
     /// Lights the slot of layer `index` among `total`, names it `label`, and
-    /// lists its `apps` underneath. A layer past the eighth has no slot, so
-    /// none lights.
-    func show(label: String, index: Int, total: Int, apps: [LayerRoster.App] = []) {
+    /// lists its `apps` underneath: here at full strength, parked, hidden,
+    /// put away or on another desktop dimmed, not open dimmer, and last the
+    /// other layers' windows that stayed on screen, dimmed. A layer past the
+    /// eighth has no slot, so none lights. `edge` is a step off the pad's
+    /// edge: the lit slot bumps that way and the bezel goes sooner.
+    func show(label: String, index: Int, total: Int, apps: [LayerRoster.App] = [], edge: LayerSlots.Direction? = nil) {
         let filled = (0..<min(total, LayerSlots.ordered.count)).compactMap(LayerSlots.slot(forIndex:))
         let rows = apps.map { app -> LayerBezelView.Row in
-            let presence: LayerBezelView.Row.Presence = switch app.place {
-            case .here: .here
-            case .noWindow, .notOpen: .absent
+            let presence: LayerBezelView.Row.Presence = switch app.spot {
+            case _ where app.stayed: .away
+            case .at(.here): .here
+            case .at(.noWindow), .at(.notOpen): .absent
             default: .away
             }
-            return LayerBezelView.Row(name: app.name, icon: LayerRoster.icon(for: app), note: app.place.note, presence: presence)
+            return LayerBezelView.Row(name: app.name, icon: LayerRoster.icon(for: app), note: app.note, presence: presence)
         }
-        present(label: label, slots: LayerBezelView.Slots(lit: LayerSlots.slot(forIndex: index), filled: Set(filled)), rows: rows)
+        present(label: label, slots: LayerBezelView.Slots(lit: LayerSlots.slot(forIndex: index), filled: Set(filled)), rows: rows, edge: edge)
     }
 
     /// Shows `label` in the bar alone.
@@ -82,7 +86,7 @@ final class LayerBezel {
         })
     }
 
-    private func present(label: String, slots: LayerBezelView.Slots?, rows: [LayerBezelView.Row] = []) {
+    private func present(label: String, slots: LayerBezelView.Slots?, rows: [LayerBezelView.Row] = [], edge: LayerSlots.Direction? = nil) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         dismissTimer?.invalidate()
         generation += 1
@@ -108,15 +112,17 @@ final class LayerBezel {
             panel.orderFrontRegardless()
         }
         // On screen first, so the pointer's turn has a display to run on.
-        view.show(label: label, slots: slots, rows: rows)
+        view.show(label: label, slots: slots, rows: rows, edge: edge)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
         }
 
-        // A list takes longer to read. Held, it stays until ⌘⌥ lifts.
+        // A list takes longer to read; a bump off the edge only says where
+        // you are. Held, it stays until ⌘⌥ lifts.
         guard !held else { return }
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: rows.isEmpty ? 1.5 : 2.5, repeats: false) { [weak self] _ in
+        let delay: TimeInterval = edge != nil ? 1.0 : rows.isEmpty ? 1.5 : 2.5
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             self?.dismiss()
         }
     }
@@ -204,6 +210,9 @@ final class LayerBezelView: NSView {
     /// The pointer's square, as a share of the middle cell, as in the matrix.
     static let pointerScale: CGFloat = 0.64
     static let turnDuration: CFTimeInterval = 0.16
+    /// How far and how long the lit slot leans toward a step off the edge.
+    static let bumpDistance: CGFloat = 4
+    static let bumpDuration: CFTimeInterval = 0.22
 
     private var label = ""
     private var slots: Slots?
@@ -216,6 +225,10 @@ final class LayerBezelView: NSView {
     private var from = LatticesPointer.Pose.rest
     private var to = LatticesPointer.Pose.rest
     private var turnStart: CFTimeInterval = 0
+    /// The way the lit slot leans while a bump runs, and how far it is now.
+    private var bumpDirection = CGVector.zero
+    private var bumpStart: CFTimeInterval = 0
+    private var lean: CGFloat = 0
     private var link: CADisplayLink?
 
     override var isOpaque: Bool { false }
@@ -233,7 +246,8 @@ final class LayerBezelView: NSView {
     /// Shows `label`, under `slots` if given and over `rows`. When the lit
     /// slot changes, the pointer turns to it from the slot it aimed at
     /// before, so a step shows which way it went. The first aim is instant.
-    func show(label: String, slots: Slots?, rows: [Row] = []) {
+    /// A step off the pad's `edge` bumps the lit slot that way and back.
+    func show(label: String, slots: Slots?, rows: [Row] = [], edge: LayerSlots.Direction? = nil) {
         self.label = label
         self.slots = slots
         self.rows = rows
@@ -249,6 +263,16 @@ final class LayerBezelView: NSView {
             hasAimed = true
             aimed = slots.lit
         }
+        if let edge, slots?.lit != nil {
+            bumpDirection = switch edge {
+            case .left: CGVector(dx: -1, dy: 0)
+            case .right: CGVector(dx: 1, dy: 0)
+            case .up: CGVector(dx: 0, dy: 1)
+            case .down: CGVector(dx: 0, dy: -1)
+            }
+            bumpStart = CACurrentMediaTime()
+            run()
+        }
         needsDisplay = true
     }
 
@@ -262,14 +286,18 @@ final class LayerBezelView: NSView {
     @objc private func step(_ link: CADisplayLink) {
         let t = min(1, max(0, (link.targetTimestamp - turnStart) / Self.turnDuration))
         pose = from.mixed(with: to, by: 1 - pow(1 - t, 3))
+        let b = min(1, max(0, (link.targetTimestamp - bumpStart) / Self.bumpDuration))
+        lean = CGFloat(sin(Double.pi * b)) * Self.bumpDistance
         needsDisplay = true
-        if t == 1 { settle() }
+        if t == 1, b == 1 { settle() }
     }
 
     private func settle() {
         link?.invalidate()
         link = nil
         pose = to
+        bumpDirection = .zero
+        lean = 0
         needsDisplay = true
     }
 
@@ -315,13 +343,13 @@ final class LayerBezelView: NSView {
         if let slots {
             for slot in 1...9 {
                 let (col, row) = ((slot - 1) % 3, (slot - 1) / 3)
+                let lit = slot == slots.lit
                 let cell = CGRect(
                     x: left + CGFloat(col) * (Self.cellSize + Self.gap),
                     y: top - CGFloat(row + 1) * Self.cellSize - CGFloat(row) * Self.gap,
                     width: Self.cellSize,
                     height: Self.cellSize
-                )
-                let lit = slot == slots.lit
+                ).offsetBy(dx: lit ? bumpDirection.dx * lean : 0, dy: lit ? bumpDirection.dy * lean : 0)
                 drawBox(cell, lit: lit)
                 if slot == LayerSlots.centre {
                     drawPointer(in: cell)

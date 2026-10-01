@@ -1519,7 +1519,7 @@ reads `desktop.snapshot` when the app is new enough).
 ```json
 {
   "frontmost": { "wid": 1234, "app": "iTerm2", "title": "…", "pid": 1 },
-  "activeLayer": { "id": "web", "index": 0 },
+  "activeLayer": { "id": "web", "label": "Web", "index": 0, "slot": 1, "active": true, "layout": null, "entries": [] },
   "displays": [ { "displayIndex": 0, "name": "Built-in", "frame": {}, "visibleFrame": {}, "currentSpaceId": 1, "spaces": [] } ],
   "currentSpaceId": 1,
   "windows": [
@@ -2002,6 +2002,7 @@ Restart a specific pane's process within a session.
 | `projects.list` | read | Discovered projects |
 | `projects.scan` | write | Re-scan project directory |
 | `layers.list` | read | Workspace layers, active index, and what switches put away |
+| `layers.members` | read | Each layer's entries and the windows they hold, on any desktop |
 | `layers.reveal` | write | Show All: put back parked windows, unhide apps a switch hid |
 | `layers.create` | write | Save windows as a new layer |
 | `layers.assign` | write | Add windows to a layer |
@@ -2075,7 +2076,52 @@ what layer switches have put away: parked windows and hidden apps.
 }
 ```
 
-Returns empty `layers` array if no workspace config is loaded.
+Returns empty `layers` array if no workspace config is loaded. `stage`
+is read as it stands: a window that closed or was dragged back since the
+last switch can still be listed until something prunes the ledger.
+
+#### `layers.members`
+
+Each layer's entries and the windows each one holds, on every desktop,
+from the same resolution a layer switch uses. A window belongs to one
+layer. `presence` says where it is: `showing` (on a desktop a display is
+showing), `elsewhere` (another desktop, or full screen), `parked` (in the
+corner a switch parks windows in) or `hidden` (its app is hidden).
+`missing` says why an entry holds nothing: `No window` when its app runs,
+`Not open` when it doesn't. Moves nothing.
+
+**Params**:
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `layer` | string | no | Layer id or label (default: every layer) |
+| `index` | int | no | Layer index |
+
+**Returns**:
+
+```json
+{
+  "active": 0,
+  "layers": [
+    {
+      "id": "web", "label": "Web", "index": 0, "slot": 1, "active": true, "layout": "auto",
+      "entries": [
+        {
+          "index": 0, "name": "Ghostty", "rule": "App contains Ghostty · Name: web", "pattern": "web",
+          "missing": null,
+          "windows": [
+            { "wid": 4812, "app": "Ghostty", "title": "mini: web · server", "presence": "parked", "where": "Parked" }
+          ]
+        },
+        { "index": 1, "name": "Figma", "rule": "App contains Figma", "pattern": null, "missing": "Not open", "windows": [] }
+      ]
+    }
+  ]
+}
+```
+
+`desktop.snapshot` reports the active layer in the same shape as
+`activeLayer`.
 
 #### `layers.reveal`
 

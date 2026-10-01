@@ -14,6 +14,26 @@ final class LayerLayoutTests: XCTestCase {
         XCTAssertNil(LayerLayout.Kind("spiral"))
     }
 
+    func testLStepsThroughTheLayoutsAndBackToNone() {
+        XCTAssertEqual(LayerLayout.next(after: nil), "auto")
+        XCTAssertEqual(LayerLayout.next(after: "auto"), "columns")
+        XCTAssertEqual(LayerLayout.next(after: "columns"), "master-stack")
+        XCTAssertNil(LayerLayout.next(after: "master-stack"))
+        // Other names for a layout step on from it; one it doesn't know starts over.
+        XCTAssertEqual(LayerLayout.next(after: "smart"), "columns")
+        XCTAssertNil(LayerLayout.next(after: "main"))
+        XCTAssertEqual(LayerLayout.next(after: "spiral"), "auto")
+        // Every name it steps through reads back as a layout.
+        XCTAssertEqual(LayerLayout.cycle.map(\.name).compactMap(LayerLayout.Kind.init), LayerLayout.cycle)
+    }
+
+    func testNamesALayoutForThePreview() {
+        XCTAssertEqual(LayerLayout.title(nil), "In place")
+        XCTAssertEqual(LayerLayout.title("columns"), "Columns")
+        XCTAssertEqual(LayerLayout.title("master"), "Master-stack")
+        XCTAssertEqual(LayerLayout.title("spiral"), "spiral")
+    }
+
     func testAutoOnAnUltrawideGivesEachLaneAColumn() {
         // Entry order: terminal, browser, editor. Lanes put the editor in the middle.
         let frames = LayerLayout.frames(.auto, types: [.terminal, .browser, .editor], aspect: ultrawide)

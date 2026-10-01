@@ -887,9 +887,13 @@ private struct MiniHomeHomePane: View {
     private func layerChips(_ layers: [Layer]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
+                let windowCounts = workspace.layerWindowCounts()
                 ForEach(Array(layers.enumerated()), id: \.offset) { index, layer in
                     let isActive = index == selectedLayer
-                    let counts = workspace.layerRunningCount(index: index)
+                    let count = windowCounts.indices.contains(index) ? windowCounts[index] : 0
+                    let verb = isActive ? "Release" : "Focus"
+                    let facts: [String?] = ["\(verb) \(layer.label)", LayerOverview.chord(forIndex: index), LayerOverview.countNote(count)]
+                    let hint = facts.compactMap { $0 }.joined(separator: " · ")
                     Button {
                         if selectedLayer == index {
                             selectedLayer = nil
@@ -901,11 +905,9 @@ private struct MiniHomeHomePane: View {
                         HStack(spacing: 4) {
                             Text(layer.label)
                                 .font(Typo.mono(9))
-                            if counts.total > 0 {
-                                Text("\(counts.running)/\(counts.total)")
-                                    .font(Typo.monoBold(8))
-                                    .foregroundColor(isActive ? Palette.bg.opacity(0.8) : Palette.textMuted)
-                            }
+                            Text("\(count)")
+                                .font(Typo.monoBold(8))
+                                .foregroundColor(isActive ? Palette.bg.opacity(0.8) : Palette.textMuted)
                         }
                         .foregroundColor(isActive ? Palette.bg : Palette.textDim)
                         .padding(.horizontal, 8)
@@ -919,7 +921,7 @@ private struct MiniHomeHomePane: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help(isActive ? "Release \(layer.label)" : "Focus \(layer.label)")
+                    .help(hint)
                     .contextMenu {
                         Button("Show All Windows") {
                             DispatchQueue.global(qos: .userInitiated).async { LayerStage.shared.showAll() }

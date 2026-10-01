@@ -571,10 +571,12 @@ struct UnifiedCommandBarView: View {
             let label = Self.suffix(of: item.title, after: ": ")
             if let layers = workspace.config?.layers,
                let index = layers.firstIndex(where: { $0.label == label }) {
-                let counts = workspace.layerRunningCount(index: index)
+                let overview = workspace.overviews(in: DesktopModel.shared.allWindows()).first { $0.index == index }
+                let count = overview?.windows.count ?? 0
+                let showing = overview?.showingIds.count ?? 0
                 p.facts = [("Layer", label),
-                           ("Projects", String(layers[index].projects.count)),
-                           ("Running", "\(counts.running)/\(counts.total)")]
+                           ("Key", LayerOverview.chord(forIndex: index) ?? "None"),
+                           ("Windows", count == 0 ? "0" : "\(count) · \(showing) showing")]
             } else {
                 p.facts = [("Layer", label)]
             }

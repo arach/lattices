@@ -9,7 +9,42 @@ enum LayerRoster {
         let name: String
         /// A process to take the icon from, when the app is running.
         let pid: Int32?
-        let place: Place
+        /// Where its nearest window is (`LayerOverview.Spot`): on a desktop,
+        /// parked in the stage's corner, or its app hidden.
+        let spot: LayerOverview.Spot
+        /// Kept put away in the layer (`LayerStage.tucked`).
+        var tucked = false
+        /// Not an entry's: a window the layer had showing when it was last
+        /// left (`LayerStage.scene`), which a switch to it shows again.
+        var extra = false
+        /// Not the layer's: a window the switch parked that its app kept on
+        /// screen (`LayerStage.Outcome.stayed`).
+        var stayed = false
+
+        init(name: String, pid: Int32?, spot: LayerOverview.Spot, tucked: Bool = false, extra: Bool = false, stayed: Bool = false) {
+            self.name = name
+            self.pid = pid
+            self.spot = spot
+            self.tucked = tucked
+            self.extra = extra
+            self.stayed = stayed
+        }
+
+        init(name: String, pid: Int32?, place: Place) {
+            self.init(name: name, pid: pid, spot: .at(place))
+        }
+
+        /// Its desktop, nil when it's parked or its app is hidden.
+        var place: Place? {
+            if case .at(let place) = spot { return place }
+            return nil
+        }
+
+        /// What the bezel writes beside it, nil when it's here.
+        var note: String? {
+            if stayed { return "Stayed" }
+            return tucked && !spot.isShowing ? "Put away" : spot.note
+        }
     }
 
     enum Place: Equatable {
@@ -127,6 +162,91 @@ enum LayerRoster {
         return sides
     }
 
+    /// The layer's apps from the windows it holds, `members`: one per app,
+    /// in entry order, at the nearest spot any of its windows is, then the
+    /// apps of `extras`, the windows it had showing beyond them. `place`
+    /// reads a window's Spaces and `spot` where it is from that; a window
+    /// with no spot is left out. `tucked` are the members it keeps put away.
+    /// `missing` names what an entry holding no window with a spot points at.
+    /// Last come the apps of `stayed`, windows of other layers the switch
+    /// couldn't put away, one row per app and never merged into the layer's.
+    static func apps(
+        of layer: Layer,
+        members: [LayerMembership.Member],
+        place: ([Int]) -> Place?,
+        missing: (LayerProject) -> App?,
+        spot: (WindowEntry, Place?) -> LayerOverview.Spot? = { _, place in place.map { LayerOverview.Spot.at($0) } },
+        tucked: Set<UInt32> = [],
+        extras: [WindowEntry] = [],
+        stayed: [WindowEntry] = []
+    ) -> [App] {
+        var apps: [App] = []
+        func add(_ app: App) {
+            guard let i = apps.firstIndex(where: { $0.name.caseInsensitiveCompare(app.name) == .orderedSame }) else {
+                apps.append(app)
+                return
+            }
+            var row = apps[i]
+            if rank(of: app.spot) < rank(of: row.spot) {
+                row = App(name: row.name, pid: row.pid ?? app.pid, spot: app.spot, tucked: app.tucked, extra: row.extra)
+            }
+            row.extra = row.extra && app.extra
+            apps[i] = row
+        }
+        for (index, project) in layer.projects.enumerated() {
+            var held = false
+            for member in members where member.project == index {
+                let entry = member.entry
+                guard let at = spot(entry, place(entry.spaceIds)) else { continue }
+                held = true
+                add(App(name: entry.app, pid: entry.pid, spot: at, tucked: tucked.contains(entry.wid)))
+            }
+            if !held, let app = missing(project) {
+                add(app)
+            }
+        }
+        for entry in extras {
+            guard let at = spot(entry, place(entry.spaceIds)) else { continue }
+            add(App(name: entry.app, pid: entry.pid, spot: at, extra: true))
+        }
+        var others: [App] = []
+        for entry in stayed {
+            guard !others.contains(where: { $0.name.caseInsensitiveCompare(entry.app) == .orderedSame }) else { continue }
+            others.append(App(name: entry.app, pid: entry.pid, spot: spot(entry, place(entry.spaceIds)) ?? .at(.here), stayed: true))
+        }
+        return apps + others
+    }
+
+    /// Nearest first, in `Place.rank`'s order. A window parked on the
+    /// showing desktop, or whose app is hidden, is one step from here: after
+    /// the showing desktops, before the other ones.
+    static func rank(of spot: LayerOverview.Spot) -> Int {
+        switch spot {
+        case .at(let place): return place.rank * 2
+        case .parked(nil), .hidden: return 3
+        case .parked: return 5
+        }
+    }
+
+    /// Where a window is once `outcome` has landed: what the stage just did
+    /// wins over the inventory, which an app's hide reaches only later.
+    /// Otherwise as `LayerOverview.spot` reads it, `main` being the main
+    /// display's bounds.
+    static func spot(
+        of entry: WindowEntry,
+        place: Place?,
+        main: CGRect,
+        outcome: LayerStage.Outcome? = nil
+    ) -> LayerOverview.Spot? {
+        if let outcome {
+            if outcome.hidden.contains(entry.wid) { return .hidden }
+            if outcome.parked.contains(entry.wid) || outcome.missing.contains(entry.wid) { return .parked(desktop: nil) }
+            if outcome.shown.contains(entry.wid) { return .at(.here) }
+        }
+        let frame = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
+        return LayerOverview.spot(place: place, frame: frame, appHidden: entry.appHidden, main: main)
+    }
+
     /// The app's icon: its process's, else an app of that name in the usual
     /// folders.
     static func icon(for app: App) -> NSImage? {
@@ -143,52 +263,53 @@ enum LayerRoster {
 }
 
 extension WorkspaceManager {
-    /// Shows the layer bezel on layer `index` of `layers`, listing its apps.
-    func showBezel(for index: Int, in layers: [Layer], windows: [WindowEntry]? = nil) {
+    /// Shows the layer bezel on layer `index` of `layers`, listing its apps
+    /// from `windows`, and after a switch from what its stage did (`outcome`).
+    /// `edge` is a step off the pad's edge: the lit slot bumps that way and
+    /// the bezel goes sooner.
+    func showBezel(
+        for index: Int,
+        in layers: [Layer],
+        windows: [WindowEntry]? = nil,
+        outcome: LayerStage.Outcome? = nil,
+        edge: LayerSlots.Direction? = nil
+    ) {
         let layer = layers[index]
-        let apps = roster(of: layer, in: windows ?? DesktopModel.shared.allWindows())
-        LayerBezel.shared.show(label: layer.label, index: index, total: layers.count, apps: apps)
+        let apps = roster(of: layer, in: windows ?? DesktopModel.shared.allWindows(), outcome: outcome)
+        LayerBezel.shared.show(label: layer.label, index: index, total: layers.count, apps: apps, edge: edge)
     }
 
-    /// The layer's apps for the bezel (`LayerRoster`), placed from `windows`.
-    func roster(of layer: Layer, in windows: [WindowEntry]) -> [LayerRoster.App] {
+    /// The layer's apps for the bezel (`LayerRoster`): the windows it holds
+    /// in `windows`, then the ones it had showing beyond them when it was
+    /// last left (`LayerStage.scene`) that no layer holds, each where it is
+    /// once `outcome` has landed, then the windows the stage couldn't put
+    /// away (`outcome.stayed`). The members it keeps put away are marked.
+    func roster(of layer: Layer, in windows: [WindowEntry], outcome: LayerStage.Outcome? = nil) -> [LayerRoster.App] {
         let context = LayerRoster.Context.current()
-        let members = listedMembers(of: layer, in: windows)
         let running = NSWorkspace.shared.runningApplications
-
-        var apps: [LayerRoster.App] = []
-        func add(_ name: String, pid: Int32?, place: LayerRoster.Place) {
-            guard let i = apps.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
-                apps.append(LayerRoster.App(name: name, pid: pid, place: place))
-                return
-            }
-            if place.rank < apps[i].place.rank {
-                apps[i] = LayerRoster.App(name: apps[i].name, pid: apps[i].pid ?? pid, place: place)
-            }
+        let main = CGDisplayBounds(CGMainDisplayID())
+        let resolution = layerMembership(in: windows)
+        let members = resolution.ids.contains(layer.id)
+            ? resolution.members(of: layer.id)
+            : memberWindows(of: layer, in: windows)
+        let byWid = Dictionary(windows.map { ($0.wid, $0) }, uniquingKeysWith: { first, _ in first })
+        let extras = LayerStage.shared.scene(for: layer).compactMap { wid -> WindowEntry? in
+            resolution.owners[wid] == nil ? byWid[wid] : nil
         }
-        for (index, project) in layer.projects.enumerated() {
-            let matched = members.compactMap { member -> (entry: WindowEntry, place: LayerRoster.Place)? in
-                guard member.project == index, let place = context.place(of: member.entry.spaceIds) else { return nil }
-                return (member.entry, place)
-            }
-            for member in matched {
-                add(member.entry.app, pid: member.entry.pid, place: member.place)
-            }
-            if matched.isEmpty, let missing = missingApp(for: project, running: running) {
-                add(missing.name, pid: missing.pid, place: missing.place)
-            }
+        let listed = Set(members.map { $0.entry.wid }).union(extras.map(\.wid))
+        let stayed = (outcome?.stayed ?? []).sorted().compactMap { wid -> WindowEntry? in
+            listed.contains(wid) ? nil : byWid[wid]
         }
-        return apps
-    }
-
-    /// The layer's windows as the stage counts them (`memberWindows`). Apps
-    /// keep untitled helper surfaces, and those sit on the desktop too.
-    func listedMembers(of layer: Layer, in windows: [WindowEntry]) -> [(entry: WindowEntry, placed: Bool, project: Int)] {
-        let me = getpid()
-        return memberWindows(of: layer, in: windows).filter {
-            $0.entry.axVerified && !$0.entry.title.isEmpty && $0.entry.pid != me
-                && $0.entry.frame.w >= 120 && $0.entry.frame.h >= 120
-        }
+        return LayerRoster.apps(
+            of: layer,
+            members: members,
+            place: context.place(of:),
+            missing: { self.missingApp(for: $0, running: running) },
+            spot: { LayerRoster.spot(of: $0, place: $1, main: main, outcome: outcome) },
+            tucked: LayerStage.shared.tucked(layer.id),
+            extras: extras,
+            stayed: stayed
+        )
     }
 
     /// What an entry names when no window matches it: `.noWindow` when that

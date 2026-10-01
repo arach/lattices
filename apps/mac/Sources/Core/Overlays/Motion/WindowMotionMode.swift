@@ -1826,6 +1826,17 @@ private final class MotionPanel: NSPanel {
         WorkspaceManager.shared.memberWindows(of: layer, in: DesktopModel.shared.allWindows()).map(\.entry)
     }
 
+    /// Every ⌘⌥ layer with the windows it holds, on any display, from one
+    /// resolution (`LayerMembership`).
+    private func resolvedLayers() -> [(layer: Layer, members: [LayerMembership.Member])] {
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        let resolution = workspace.layerMembership(in: DesktopModel.shared.allWindows())
+        return layers.enumerated().map { index, layer in
+            (layer, resolution.layers.indices.contains(index) ? resolution.layers[index] : [])
+        }
+    }
+
     /// The entries a pile shows as rules, with each one's index in the layer.
     /// Tab groups and project folders aren't rules and stay out of it.
     private static func ruleEntries(_ layer: Layer) -> [(index: Int, clause: StudioLayerClause)] {
@@ -1859,8 +1870,8 @@ private final class MotionPanel: NSPanel {
     /// holds a pending join to it.
     private func layerPiles(on screen: NSScreen) -> [ExposeView.LayerPile] {
         let screenAX = MotionPanel.axRect(of: screen)
-        var piles = WorkspaceManager.shared.layers.map { layer -> ExposeView.LayerPile in
-            let onScreen = layerMembers(layer).filter { entry($0, isOn: screen) }
+        var piles = resolvedLayers().map { layer, held -> ExposeView.LayerPile in
+            let onScreen = held.map(\.entry).filter { entry($0, isOn: screen) }
             let members = onScreen.map { w -> ExposeView.LayerMember in
                 ExposeView.LayerMember(
                     id: w.wid,
@@ -1869,10 +1880,15 @@ private final class MotionPanel: NSPanel {
                     image: inPlaceMode ? nil : thumbs[w.wid])
             }
             let stagedCount = stagedIntents.values.filter { $0.layers.contains(layer.id) }.count
-            let rules = Self.ruleEntries(layer).map(\.clause)
+            let ruleEntries = Self.ruleEntries(layer)
+            let rules = ruleEntries.map(\.clause)
             return ExposeView.LayerPile(id: layer.id, name: layer.label, count: onScreen.count,
                                         members: members, rule: rules.map(\.summary).joined(separator: " + "),
                                         clauses: rules,
+                                        held: held.map(\.entry),
+                                        ruleWindows: ruleEntries.map { rule in
+                                            held.filter { $0.project == rule.index }.map(\.entry)
+                                        },
                                         isNew: false, staged: stagedCount > 0, stagedCount: stagedCount)
         }
         let newCount = stagedIntents.values.filter { $0.newLayer }.count
@@ -3004,9 +3020,9 @@ private final class MotionPanel: NSPanel {
             HyperspaceCommandModel.GroupItem(cid: cluster.id, name: cluster.name,
                                              hint: hintFor[cluster.id] ?? "", members: cluster.members.map(\.wid))
         }
-        let layers = WorkspaceManager.shared.layers.map { layer in
+        let layers = resolvedLayers().map { layer, held in
             HyperspaceCommandModel.LayerItem(lid: layer.id, name: layer.label,
-                                             members: layerMembers(layer).filter { self.entry($0, isOn: screen) }.map(\.wid))
+                                             members: held.map(\.entry).filter { self.entry($0, isOn: screen) }.map(\.wid))
         }
         let model = HyperspaceCommandModel(windows: windows, groups: groups, layers: layers)
         model.onPluckWindow = { [weak self] wid in self?.exposeToggle(wid, on: screen) }
@@ -4310,6 +4326,8 @@ struct ExposeView: View {
         var members: [LayerMember] = []      // for the screen-map preview
         var rule: String = ""                // human-readable match rule, e.g. "Chrome · ~dev"
         var clauses: [StudioLayerClause] = []// structured rules, for edit-mode removal
+        var held: [WindowEntry] = []         // every window the layer holds, on any display
+        var ruleWindows: [[WindowEntry]] = []// each rule's windows, beside `clauses`
         var isNew: Bool = false
         var staged: Bool = false
         var stagedCount: Int = 0             // how many windows are staged to join this pile
@@ -6072,7 +6090,7 @@ struct ExposeView: View {
                 Text("No rules")
             } else {
                 ForEach(Array(pile.clauses.enumerated()), id: \.offset) { idx, clause in
-                    let matches = DesktopModel.shared.allWindows().filter { clause.matches($0) }
+                    let matches = pile.ruleWindows.indices.contains(idx) ? pile.ruleWindows[idx] : []
                     Menu("\(clauseTitle(clause))  ·  \(matches.count)") {
                         if matches.isEmpty {
                             Text("No live windows match")
@@ -6124,8 +6142,7 @@ struct ExposeView: View {
     // committed ⌘⌥ layer rules — editable in place (remove), the live source of truth.
     @ViewBuilder
     private func layerInspector(_ pile: LayerPile) -> some View {
-        let allWindows = DesktopModel.shared.allWindows()
-        let windows = allWindows.filter { w in pile.clauses.contains { $0.matches(w) } }
+        let windows = pile.held
         GeometryReader { geo in
             let panelW = min(760, max(440, geo.size.width * 0.55))
             let panelH = min(440, max(260, geo.size.height * 0.52))
@@ -6134,7 +6151,7 @@ struct ExposeView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { drag.selectedLayer = nil }
-                inspectorPanel(pile, windows: windows, allWindows: allWindows)
+                inspectorPanel(pile, windows: windows)
                     .frame(width: panelW, height: panelH)
                     .padding(.top, max(24, geo.size.height * 0.12))
             }
@@ -6142,7 +6159,7 @@ struct ExposeView: View {
         }
     }
 
-    private func inspectorPanel(_ pile: LayerPile, windows: [WindowEntry], allWindows: [WindowEntry]) -> some View {
+    private func inspectorPanel(_ pile: LayerPile, windows: [WindowEntry]) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "square.stack.3d.up")
@@ -6180,7 +6197,7 @@ struct ExposeView: View {
             inspectorSummary(pile, windows: windows)
             Rectangle().fill(Palette.border).frame(height: 0.5)
             HStack(alignment: .top, spacing: 0) {
-                inspectorRules(pile, allWindows: allWindows).frame(width: 240)
+                inspectorRules(pile).frame(width: 240)
                 Rectangle().fill(Palette.border).frame(width: 0.5)
                 inspectorWindows(windows).frame(maxWidth: .infinity)
             }
@@ -6226,7 +6243,7 @@ struct ExposeView: View {
     }
 
     // Left column: the layer's match rules, each removable.
-    private func inspectorRules(_ pile: LayerPile, allWindows: [WindowEntry]) -> some View {
+    private func inspectorRules(_ pile: LayerPile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text("RULES").font(Typo.monoBold(9)).foregroundColor(.white.opacity(0.4)).tracking(0.5)
@@ -6251,7 +6268,7 @@ struct ExposeView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(pile.clauses.enumerated()), id: \.offset) { idx, clause in
-                        inspectorRuleRow(clause, count: allWindows.filter { clause.matches($0) }.count) {
+                        inspectorRuleRow(clause, count: pile.ruleWindows.indices.contains(idx) ? pile.ruleWindows[idx].count : 0) {
                             onEditClause(pile.id, idx, clause)
                         } remove: {
                             onRemoveClause(pile.id, idx)

@@ -88,7 +88,7 @@ subscribe to events (`windows.changed`, `tmux.changed`, `layer.switched`).
 | **Ctrl+Option+G** | Show the 4x4 grid placement target |
 | **Ctrl+Option+V** | Fill the least-occupied 3x2 grid cell with the frontmost window |
 | `lattices tile <position>` | Tile the focused window (CLI) |
-| `lattices layer [name\|index]` | Switch workspace layer (CLI) |
+| `lattices layer [name\|slot]` | Switch workspace layer (CLI) |
 | **Ctrl+B** then `D` / `Z` / arrows | tmux: detach / zoom / move pane (inside a session) |
 
 Tiling and grid hotkeys are user-configurable — for the live set, point the user to
@@ -99,7 +99,7 @@ the defaults as guaranteed.
 
 `lattices` · `lattices init` · `lattices sync` · `lattices start` ·
 `lattices restart [pane]` · `lattices tile <position>` · `lattices group [id]` ·
-`lattices layer [name|index]` · `lattices windows --json` ·
+`lattices layer [name|slot]` · `lattices windows --json` ·
 `lattices search <query> [--deep|--all] [--json] [--wid]` · `lattices place <query> [position]` ·
 `lattices app restart`. Full flags: [Configuration](/docs/config).
 

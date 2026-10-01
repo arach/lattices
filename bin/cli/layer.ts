@@ -1,6 +1,12 @@
 import { withDaemon, type DaemonClient } from "./daemon.ts";
 
 export async function layerCommand(sub?: string, ...rest: string[]): Promise<void> {
+  // A digit names a pad slot; a bad one fails before the daemon is asked.
+  const target = sub ? layerTarget(sub) : undefined;
+  if (target && "error" in target) {
+    console.error(target.error);
+    process.exit(1);
+  }
   await withDaemon(async (client) => {
     const { daemonCall } = client;
 
@@ -57,10 +63,11 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
         console.log("No layers configured.");
         return;
       }
+      // Window counts as Studio and the bezel count them; entries without.
+      const members = await daemonCall("layers.members").catch(() => null) as any;
       console.log("Layers:\n");
-      for (const layer of result.layers) {
-        const active = layer.index === result.active ? " \x1b[32m● active\x1b[0m" : "";
-        console.log(`  [${layer.index}] ${layer.label}  (${layer.projectCount} projects)${active}`);
+      for (const line of layerListLines(result.layers, result.active, members ? layerWindowCounts(members) : undefined)) {
+        console.log(line);
       }
       const parked = result.stage?.parked?.length ?? 0;
       const hidden: string[] = result.stage?.hidden ?? [];
@@ -75,12 +82,74 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
     // As ⌘⌥ switches; --tile lays the windows out again, --launch starts
     // what isn't running first.
     const mode = rest.includes("--launch") ? "launch" : rest.includes("--tile") ? "tile" : "focus";
-    const idx = parseInt(sub, 10);
-    const target = isNaN(idx) ? { name: sub } : { index: idx };
-    await daemonCall("layer.activate", { ...target, mode });
-    const name = isNaN(idx) ? `"${sub}"` : `${idx}`;
+    if (!target || "error" in target) return;
+    if ("index" in target) {
+      const list = await daemonCall("layers.list") as any;
+      if (target.index >= (list.layers?.length ?? 0)) {
+        console.error(`No layer on ⌘⌥${target.slot}.`);
+        process.exit(1);
+      }
+    }
+    await daemonCall("layer.activate", "index" in target ? { index: target.index, mode } : { name: target.name, mode });
+    const name = "index" in target ? `⌘⌥${target.slot}` : `"${target.name}"`;
     console.log(mode === "focus" ? `Switched to layer ${name}` : `Switched to layer ${name} (${mode})`);
   });
+}
+
+/** The ⌘⌥ pad's slots in layer order; 5 is the pad's centre. */
+export const PAD_SLOTS = [1, 2, 3, 4, 6, 7, 8, 9];
+
+/** Layer `index`'s pad slot digit, undefined past the eighth layer. */
+export function padSlot(index: number): number | undefined {
+  return PAD_SLOTS[index];
+}
+
+export type LayerTarget =
+  | { index: number; slot: number }
+  | { name: string }
+  | { error: string };
+
+/** What `lattices layer <arg>` switches to: a digit is a pad slot, as ⌘⌥
+ *  takes it; anything else is a layer id or label. */
+export function layerTarget(arg: string): LayerTarget {
+  if (!/^\d+$/.test(arg)) return { name: arg };
+  const slot = Number(arg);
+  const index = PAD_SLOTS.indexOf(slot);
+  if (index !== -1) return { index, slot };
+  return slot === 5
+    ? { error: "5 is the pad's centre; layers sit on 1-4 and 6-9." }
+    : { error: `No slot ${arg}; layers sit on 1-4 and 6-9.` };
+}
+
+/** Each layer's window count from a `layers.members` result, by index. */
+export function layerWindowCounts(members: { layers?: Array<{ index: number; entries?: Array<{ windows?: unknown[] }> }> }): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const layer of members.layers ?? []) {
+    counts.set(layer.index, (layer.entries ?? []).reduce((n, entry) => n + (entry.windows?.length ?? 0), 0));
+  }
+  return counts;
+}
+
+/** The `lattices layer` list: each layer by its pad slot, with its window
+ *  count, or its entry count when `counts` is missing. */
+export function layerListLines(
+  layers: Array<{ index: number; label: string; projectCount?: number }>,
+  active: number,
+  counts?: Map<number, number>,
+): string[] {
+  const width = Math.max(0, ...layers.map((layer) => layer.label.length));
+  return layers.map((layer) => {
+    const slot = padSlot(layer.index) ?? "·";
+    const count = counts
+      ? countNote(counts.get(layer.index) ?? 0, "window")
+      : countNote(layer.projectCount ?? 0, "entry", "entries");
+    const mark = layer.index === active ? "  \x1b[32m● active\x1b[0m" : "";
+    return `  [${slot}] ${layer.label.padEnd(width)}  ${count}${mark}`;
+  });
+}
+
+function countNote(count: number, one: string, many = `${one}s`): string {
+  return `${count === 0 ? "No" : count} ${count === 1 ? one : many}`;
 }
 
 // ── Layer create: save windows as a new ⌘⌥ layer in workspace.json ──
@@ -133,11 +202,8 @@ export async function layerCreateCommand(client: DaemonClient, args: string[]): 
   console.log(`Saved layer "${result.label}"${slotNote(result.index)} with ${result.count} window(s).`);
 }
 
-/** The ⌘⌥ pad's slots in layer order; 5 is the pad's centre. */
-const PAD_SLOTS = [1, 2, 3, 4, 6, 7, 8, 9];
-
 function slotNote(index: number): string {
-  const slot = PAD_SLOTS[index];
+  const slot = padSlot(index);
   return slot ? ` on ⌘⌥${slot}` : "";
 }
 

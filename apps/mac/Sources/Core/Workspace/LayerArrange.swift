@@ -5,9 +5,10 @@ extension WorkspaceManager {
     /// display, and raises them with the layer's first window in front and
     /// its app active. Like staging, it only takes windows on the desktop the
     /// main display is showing, parked ones included. Entries that set their
-    /// own `tile` or `display` keep their place. Returns whether it moved any.
+    /// own `tile` or `display` keep their place, and the windows in `except`
+    /// (the ones it keeps put away) are left out. Returns whether it moved any.
     @discardableResult
-    func arrangeLayer(_ layer: Layer, windows: [WindowEntry]) -> Bool {
+    func arrangeLayer(_ layer: Layer, windows: [WindowEntry], except: Set<UInt32> = []) -> Bool {
         guard let name = layer.layout else { return false }
         let diag = DiagnosticLog.shared
         guard let kind = LayerLayout.Kind(name) else {
@@ -20,13 +21,13 @@ extension WorkspaceManager {
               display.spaces.contains(where: { $0.id == display.currentSpaceId }) else { return false }
         let bounds = CGDisplayBounds(main)
         let others = Self.displayBounds(except: main)
-        let me = getpid()
 
-        // The stage's test: centred on the main display, or hanging off its
-        // bottom-right corner where parked windows wait.
+        // The layer's windows (`memberWindows`, content only) with a title,
+        // by the stage's test: centred on the main display, or hanging off
+        // its bottom-right corner where parked windows wait.
         let candidates = memberWindows(of: layer, in: windows).compactMap { member -> WindowEntry? in
             let entry = member.entry
-            guard !member.placed, entry.axVerified, !entry.title.isEmpty, entry.pid != me,
+            guard !member.placed, !except.contains(entry.wid), entry.hasTitle,
                   entry.spaceIds.contains(display.currentSpaceId) else { return nil }
             let rect = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
             let centre = CGPoint(x: rect.midX, y: rect.midY)

@@ -48,6 +48,61 @@ final class LayerRosterTests: XCTestCase {
         XCTAssertEqual(LayerRoster.Place.notOpen.note, "Not open")
     }
 
+    // MARK: A layer's apps
+
+    private func window(_ wid: UInt32, _ app: String, space: Int, pid: Int32 = 1) -> WindowEntry {
+        WindowEntry(
+            wid: wid, app: app, pid: pid, title: "\(app) \(wid)", frame: WindowFrame(x: 0, y: 0, w: 800, h: 600),
+            spaceIds: [space], isOnScreen: space == 3, latticesSession: nil
+        )
+    }
+
+    private func app(_ app: String) -> LayerProject {
+        LayerProject(path: nil, group: nil, tile: nil, display: nil, app: app, title: nil, url: nil, launch: nil)
+    }
+
+    private func apps(_ layer: Layer, _ members: [LayerMembership.Member], missing: [String: LayerRoster.App] = [:]) -> [LayerRoster.App] {
+        LayerRoster.apps(of: layer, members: members, place: place, missing: { $0.app.flatMap { missing[$0] } })
+    }
+
+    func testAnAppIsListedOnceAtItsNearestWindow() {
+        let layer = Layer(id: "tideline", label: "Tideline", projects: [app("Ghostty"), app("Google Chrome")])
+        let members: [LayerMembership.Member] = [
+            (window(1, "Ghostty", space: 1, pid: 7), false, 0),
+            (window(2, "Ghostty", space: 3, pid: 7), false, 0),
+            (window(3, "Google Chrome", space: 1060, pid: 8), false, 1),
+        ]
+        XCTAssertEqual(apps(layer, members), [
+            LayerRoster.App(name: "Ghostty", pid: 7, place: .here),
+            LayerRoster.App(name: "Google Chrome", pid: 8, place: .display(.left, desktop: 2)),
+        ])
+    }
+
+    func testAnEntryHoldingNothingPlacedListsWhatItPointsAt() {
+        let layer = Layer(id: "tideline", label: "Tideline", projects: [app("Ghostty"), app("Figma"), app("Safari")])
+        let members: [LayerMembership.Member] = [
+            (window(1, "Ghostty", space: 4), false, 0),
+            // Spaces can't place it, so the entry counts as holding nothing.
+            (window(2, "Safari", space: 77, pid: 9), false, 2),
+        ]
+        let missing = [
+            "Figma": LayerRoster.App(name: "Figma", pid: nil, place: .notOpen),
+            "Safari": LayerRoster.App(name: "Safari", pid: 9, place: .noWindow),
+        ]
+        XCTAssertEqual(apps(layer, members, missing: missing), [
+            LayerRoster.App(name: "Ghostty", pid: 1, place: .desktop(3)),
+            LayerRoster.App(name: "Figma", pid: nil, place: .notOpen),
+            LayerRoster.App(name: "Safari", pid: 9, place: .noWindow),
+        ])
+    }
+
+    func testTwoEntriesForOneAppShareARow() {
+        let layer = Layer(id: "tideline", label: "Tideline", projects: [app("Ghostty"), app("ghostty")])
+        let members: [LayerMembership.Member] = [(window(1, "Ghostty", space: 1, pid: 7), false, 0)]
+        let missing = ["ghostty": LayerRoster.App(name: "ghostty", pid: 7, place: .noWindow)]
+        XCTAssertEqual(apps(layer, members, missing: missing), [LayerRoster.App(name: "Ghostty", pid: 7, place: .desktop(1))])
+    }
+
     func testSides() {
         let main = CGRect(x: 0, y: 0, width: 3440, height: 1440)
         XCTAssertEqual(LayerRoster.side(of: CGRect(x: -3840, y: -396, width: 3840, height: 2160), from: main), .left)

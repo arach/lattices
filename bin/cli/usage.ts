@@ -86,7 +86,7 @@ Usage:
   lattices window place <wid> <slot> [--display <n>]
                          Snap a window into a named or grid placement slot
   lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
-  lattices layer [name|index] [--tile|--launch]  List layers, or switch as ⌘⌥ does (daemon required)
+  lattices layer [name|slot] [--tile|--launch]  List layers, or switch as ⌘⌥ does; slots are the pad's 1-4, 6-9 (daemon required)
   lattices layer reveal        Show All: put back parked windows, unhide apps a switch hid
   lattices layer create <name> [wid:N ...] [--json '<specs>']  Save windows (default: on screen) as a new layer
   lattices layer snap [name]   Save the windows on screen as a new layer

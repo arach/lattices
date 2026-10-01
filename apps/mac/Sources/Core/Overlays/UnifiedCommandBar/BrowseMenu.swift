@@ -88,26 +88,28 @@ enum BrowseMenu {
         let workspace = WorkspaceManager.shared
         guard let layers = workspace.config?.layers else { return [] }
         var out: [OmniResult] = []
+        let windowCounts = workspace.layerWindowCounts()
         for (index, layer) in layers.enumerated() {
             let i = index
-            let counts = workspace.layerRunningCount(index: i)
+            let count = windowCounts.indices.contains(i) ? windowCounts[i] : 0
             let isActive = i == workspace.activeLayerIndex
-            if counts.running > 0 {
+            let facts: [String?] = [LayerOverview.chord(forIndex: i), LayerOverview.countNote(count), isActive ? "active" : nil]
+            let subtitle = facts.compactMap { $0 }.joined(separator: " · ")
+            if count > 0 {
                 out.append(OmniResult(
                     kind: .layer,
                     title: "Focus Layer: \(layer.label)",
-                    subtitle: "\(counts.running)/\(counts.total) running" + (isActive ? " · active" : ""),
+                    subtitle: subtitle,
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {
                     workspace.focusLayer(index: i)
-                    EventBus.shared.post(.layerSwitched(index: i))
                 })
             } else {
                 out.append(OmniResult(
                     kind: .layer,
                     title: "Launch Layer: \(layer.label)",
-                    subtitle: "Start all \(layer.projects.count) project\(layer.projects.count == 1 ? "" : "s")",
+                    subtitle: subtitle,
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {

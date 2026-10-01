@@ -645,7 +645,14 @@ private extension LatticesDeckHost {
             )
         }
 
-        if let raw = itemID.stripPrefix("workspace-layer:"), let index = Int(raw) {
+        if itemID.hasPrefix("workspace-layer:") {
+            // The layer's id, or its index from a deck a release behind.
+            let index = try MainActorSync.run {
+                guard let index = LayerOverview.layerIndex(fromScope: itemID, in: WorkspaceManager.shared.layers) else {
+                    throw LatticesDeckHostError.invalidSwitcherItem(itemID)
+                }
+                return index
+            }
             let result = try callAPI("layer.activate", params: [
                 "index": .int(index),
                 "mode": .string("focus")
@@ -1088,11 +1095,15 @@ private extension LatticesDeckHost {
         var items: [DeckSwitcherItem] = []
 
         if let layers = WorkspaceManager.shared.config?.layers {
+            // Resolved on every desktop, not just the windows passed in.
+            let counts = WorkspaceManager.shared.layerWindowCounts()
             for (index, layer) in layers.enumerated() {
+                let count = counts.indices.contains(index) ? counts[index] : 0
+                let facts: [String?] = [LayerOverview.chord(forIndex: index), LayerOverview.countNote(count)]
                 items.append(DeckSwitcherItem(
-                    id: "workspace-layer:\(index)",
+                    id: LayerOverview.scopeId(for: layer.id),
                     title: layer.label,
-                    subtitle: "\(layer.projects.count) project target(s)",
+                    subtitle: facts.compactMap { $0 }.joined(separator: " · "),
                     iconToken: "workspace-layer",
                     kind: .task,
                     isFrontmost: WorkspaceManager.shared.activeLayerIndex == index

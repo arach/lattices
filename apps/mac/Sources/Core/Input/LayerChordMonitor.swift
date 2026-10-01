@@ -54,7 +54,7 @@ final class LayerChordMonitor {
         // Space works from the first moment, not once the pad shows.
         LayerPreview.shared.arm()
         let show = DispatchWorkItem { [weak self] in
-            guard let self, self.holding, !self.flipped, !LayerPreview.shared.isFrozen else { return }
+            guard let self, self.holding, !self.flipped, !LayerPreview.shared.holdsKeys() else { return }
             HotkeyBootstrap.showCurrentLayer()
         }
         pending = show

@@ -11,9 +11,9 @@ struct StudioLayerClause: Codable, Equatable {
     var app: String? = nil              // app name contains (case-insensitive)
     var appEquals: String? = nil        // app name exactly equals (case-insensitive)
     var appRegex: String? = nil         // app name matches regex (case-insensitive)
-    var titleContains: String? = nil    // window title contains (case-insensitive)
-    var titleEquals: String? = nil      // window title exactly equals (case-insensitive)
-    var titleRegex: String? = nil       // window title matches regex (case-insensitive)
+    var titleContains: String? = nil    // window title contains (case-insensitive); CG or AX title
+    var titleEquals: String? = nil      // window title exactly equals (case-insensitive); CG or AX title
+    var titleRegex: String? = nil       // window title matches regex (case-insensitive); CG or AX title
     var session: String? = nil          // lattices session exactly equals (case-insensitive)
     var sessionContains: String? = nil  // lattices session contains (case-insensitive)
     var isOnScreen: Bool? = nil         // visible on current Space
@@ -26,6 +26,16 @@ struct StudioLayerClause: Codable, Equatable {
             return false
         }
         return true
+    }
+
+    /// The length of its longest app criterion when it looks at nothing
+    /// but the app; nil when it also looks at the title, session, Space or
+    /// screen, or not at the app.
+    var appOnly: Int? {
+        let apps = [app, appEquals, appRegex].compactMap(trimmed)
+        let others = [titleContains, titleEquals, titleRegex, session, sessionContains].compactMap(trimmed)
+        guard !apps.isEmpty, others.isEmpty, isOnScreen == nil, spaceId == nil else { return nil }
+        return apps.map(\.count).max()
     }
 
     var summary: String {
@@ -70,15 +80,17 @@ struct StudioLayerClause: Codable, Equatable {
             matched = true
         }
         if let titleContains = trimmed(titleContains) {
-            guard e.title.localizedCaseInsensitiveContains(titleContains) else { return false }
+            guard e.titleContains(titleContains) else { return false }
             matched = true
         }
         if let titleEquals = trimmed(titleEquals) {
-            guard e.title.localizedCaseInsensitiveCompare(titleEquals) == .orderedSame else { return false }
+            guard Self.titles(of: e).contains(where: {
+                $0.localizedCaseInsensitiveCompare(titleEquals) == .orderedSame
+            }) else { return false }
             matched = true
         }
         if let titleRegex = trimmed(titleRegex) {
-            guard Self.regex(titleRegex, matches: e.title) else { return false }
+            guard Self.titles(of: e).contains(where: { Self.regex(titleRegex, matches: $0) }) else { return false }
             matched = true
         }
         if let session = trimmed(session) {
@@ -99,6 +111,11 @@ struct StudioLayerClause: Codable, Equatable {
         }
 
         return matched
+    }
+
+    /// The window's title as CG gives it, and whole from AX when AX has it.
+    private static func titles(of e: WindowEntry) -> [String] {
+        [e.title] + (e.fullTitle.map { [$0] } ?? [])
     }
 
     private static func regex(_ pattern: String, matches value: String) -> Bool {

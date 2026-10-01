@@ -125,7 +125,7 @@ lattices layer snap "Current Context"
 ```bash
 lattices layer           # list layers
 lattices layer "Coding"  # switch to "Coding"
-lattices layer 0         # switch by index
+lattices layer 1         # switch to the layer on ⌘⌥1
 ```
 
 Or press ⌘⌥ and the layer's slot number.

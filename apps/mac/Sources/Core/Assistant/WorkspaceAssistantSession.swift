@@ -1930,7 +1930,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 "lattices restart [pane]",
                 "lattices tile <position>",
                 "lattices group [id]",
-                "lattices layer [name|index]",
+                "lattices layer [name|slot]",
                 "lattices windows --json",
                 "lattices search <query>",
                 "lattices app restart",

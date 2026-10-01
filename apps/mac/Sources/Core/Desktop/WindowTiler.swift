@@ -588,6 +588,13 @@ private enum CGS {
         return unsafeBitCast(sym, to: SetCurrentSpaceFunc.self)
     }()
 
+    typealias GetWindowBoundsFunc = @convention(c) (Int32, UInt32, UnsafeMutablePointer<CGRect>) -> Int32
+
+    static let getWindowBounds: GetWindowBoundsFunc? = {
+        guard let h = handle, let sym = dlsym(h, "SLSGetWindowBounds") ?? dlsym(h, "CGSGetWindowBounds") else { return nil }
+        return unsafeBitCast(sym, to: GetWindowBoundsFunc.self)
+    }()
+
     // Screen-update freeze used to hide the Dock-swipe transition.
     typealias UpdateFunc = @convention(c) (Int32) -> Int32
 
@@ -1228,6 +1235,17 @@ enum WindowTiler {
         let arr = [NSNumber(value: wid)] as CFArray
         guard let result = copySpaces(cid, 0x7, arr) as? [NSNumber] else { return [] }
         return result.map { $0.intValue }
+    }
+
+    /// A window's frame as the WindowServer keeps it, CG coordinates.
+    /// CGWindowList collapses a hidden app's windows to 1×1 on macOS 27;
+    /// this still has the real frame.
+    static func trueBounds(of wid: UInt32) -> CGRect? {
+        guard let mainConn = CGS.mainConnectionID,
+              let getBounds = CGS.getWindowBounds else { return nil }
+        var rect = CGRect.zero
+        guard getBounds(mainConn(), wid, &rect) == 0, !rect.isEmpty else { return nil }
+        return rect
     }
 
     /// Switch a display to a specific Space.

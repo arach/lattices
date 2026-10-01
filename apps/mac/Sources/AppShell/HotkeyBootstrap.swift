@@ -73,7 +73,6 @@ enum HotkeyBootstrap {
         }
         workspace.focusLayer(index: index)
         LayerPreview.shared.arm()
-        EventBus.shared.post(.layerSwitched(index: index))
     }
 
     /// Shows the bezel on the layer you're on, without switching.
@@ -87,7 +86,8 @@ enum HotkeyBootstrap {
     }
 
     /// Cmd+Opt+arrows move across the pad the way they point. They hop the
-    /// middle and don't wrap: at the pad's edge, the bezel shows where you are.
+    /// middle and don't wrap: at the pad's edge, the bezel shows where you are
+    /// briefly, its lit slot bumping the way you pushed.
     private static func stepLayer(_ direction: LayerSlots.Direction) {
         // Frozen on a preview (Space mid-flip), its tap browses instead.
         if LayerPreview.shared.step(direction) { return }
@@ -96,11 +96,10 @@ enum HotkeyBootstrap {
         guard !layers.isEmpty else { return }
         let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
         guard let index = LayerSlots.neighbour(of: current, direction, count: layers.count) else {
-            workspace.showBezel(for: current, in: layers)
+            workspace.showBezel(for: current, in: layers, edge: direction)
             return
         }
         workspace.focusLayer(index: index)
-        EventBus.shared.post(.layerSwitched(index: index))
         LayerPreview.shared.arm()
     }
 

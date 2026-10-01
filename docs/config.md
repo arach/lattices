@@ -148,7 +148,7 @@ Run `lattices init` in your project directory to generate a starter
 | `lattices app update`        | Swap in the latest app release only (not the CLI) |
 | `lattices app build`         | Rebuild the menu bar app from source              |
 | `lattices app restart`       | Rebuild and relaunch the menu bar app             |
-| `lattices layer [name\|index]` | Switch to a workspace layer by name or index      |
+| `lattices layer [name\|slot]` | Switch to a workspace layer by name or pad slot (1-4, 6-9) |
 | `lattices windows [--json]`  | List all visible windows                          |
 | [`lattices map [--json]`](/docs/workspace-map) | Read-only current-Space terminal/JSON map |
 | `lattices layer add wid:N --to <layer>` | Add a window to a layer               |

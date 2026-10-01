@@ -107,6 +107,15 @@ final class DesktopModel: ObservableObject {
         return entry.pid != getpid()   // never target Lattices' own panels
     }
 
+    /// A window a layer holds: another app's, not ruled out by AX, big
+    /// enough to be content, with a title, or a Space and AX has listed it.
+    /// Hidden apps' windows and windows on other desktops count.
+    static func isContent(_ entry: WindowEntry) -> Bool {
+        entry.pid != getpid() && entry.axVerified
+            && entry.frame.w >= minTargetSide && entry.frame.h >= minTargetSide
+            && (entry.hasTitle || (entry.axListed && !entry.spaceIds.isEmpty))
+    }
+
     /// The Space showing on each display right now.
     static func currentSpaceIds() -> Set<Int> {
         Set(WindowTiler.getDisplaySpaces().map(\.currentSpaceId))
@@ -190,7 +199,8 @@ final class DesktopModel: ObservableObject {
         }
     }
 
-    /// Find a window by app name and optional title substring (case-insensitive).
+    /// Find a window by app name and optional title substring (case-insensitive),
+    /// in the CG title or AX's whole one.
     /// `currentSpaceOnly` skips windows on desktops that aren't showing —
     /// raising or tiling one of those would switch Spaces.
     func windowForApp(app: String, title: String?, currentSpaceOnly: Bool = false) -> WindowEntry? {
@@ -200,7 +210,7 @@ final class DesktopModel: ObservableObject {
                 && (!currentSpaceOnly || Self.isOnCurrentSpace($0, current: current))
         }
         if let title {
-            return bestAppWindow(matches.filter { $0.title.localizedCaseInsensitiveContains(title) })
+            return bestAppWindow(matches.filter { $0.titleContains(title) })
         }
         return bestAppWindow(matches)
     }
@@ -290,14 +300,17 @@ final class DesktopModel: ObservableObject {
     /// Which windows live on which Space, straight from the WindowServer —
     /// ~10ms, no Accessibility pass and nothing published. Space membership
     /// doesn't change when the user switches Spaces, so this is safe to
-    /// read before a switch lands. Safe off the main thread.
+    /// read before a switch lands. Safe off the main thread. Collapsed
+    /// windows, a hidden app's, are left out: they aren't drawn.
     func spaceMembershipSnapshot() -> [WindowEntry] {
-        (collectCGWindows() ?? [:]).values.sorted { $0.zIndex < $1.zIndex }
+        guard let list = Self.cgWindowList() else { return [] }
+        return Self.sweep(list, sources: .live, recoverCollapsed: false)
+            .entries.values.sorted { $0.zIndex < $1.zIndex }
     }
 
     @discardableResult
     private func performPoll() -> [WindowEntry] {
-        guard var fresh = collectCGWindows() else {
+        guard let list = Self.cgWindowList() else {
             if Thread.isMainThread {
                 lastPollTime = Date()
                 return allWindows()
@@ -307,20 +320,88 @@ final class DesktopModel: ObservableObject {
                 return allWindows()
             }
         }
+        var sweep = Self.sweep(list, sources: .live, recoverCollapsed: true)
 
-        // AX reconciliation: check which CG windows actually exist in Accessibility
-        reconcileWithAX(&fresh)
-        return finishPoll(fresh)
+        // AX reconciliation: which windows on showing desktops AX lists
+        var asked: Set<Int32> = []
+        let axFrames = Self.reconcile(&sweep.entries, current: Self.currentSpaceIds()) { pid, candidates in
+            asked.insert(pid)
+            return self.axWindows(pid: pid, candidates: candidates)
+        }
+
+        cacheLock.lock()
+        let lastFrames = self.lastFrames
+        let fullTitles = self.fullTitles
+        let axListed = self.axListed
+        cacheLock.unlock()
+
+        Self.resolveCollapsed(&sweep, axFrames: axFrames, lastFrames: lastFrames)
+        Self.carryFullTitles(&sweep.entries, known: fullTitles)
+        for wid in axListed where sweep.entries[wid] != nil {
+            sweep.entries[wid]?.axListed = true
+        }
+        Self.dropProxies(&sweep.entries, facts: sweep.facts)
+        remember(sweep.entries, asked: asked)
+        return finishPoll(sweep.entries)
     }
 
-    /// The CG half of a poll: every real window with its Space IDs.
-    private func collectCGWindows() -> [UInt32: WindowEntry]? {
-        guard let list = CGWindowListCopyWindowInfo(
-            [.optionAll, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] else { return nil }
+    private static func cgWindowList() -> [[String: Any]]? {
+        CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+    }
 
-        var fresh: [UInt32: WindowEntry] = [:]
+    // MARK: - Inventory
+
+    /// What the inventory reads from a window's app, once per app per sweep.
+    struct AppFacts: Equatable {
+        var bundleId: String? = nil
+        var isHidden = false
+        /// A regular app, one with a Dock icon.
+        var isRegular = true
+    }
+
+    /// What CGWindowList leaves out. Tests pass fixtures.
+    struct InventorySources {
+        var appFacts: (Int32) -> AppFacts
+        var spaces: (UInt32) -> [Int]
+        var trueBounds: (UInt32) -> CGRect?
+
+        static let live = InventorySources(
+            appFacts: { pid in
+                guard let app = NSRunningApplication(processIdentifier: pid) else { return AppFacts() }
+                return AppFacts(
+                    bundleId: app.bundleIdentifier,
+                    isHidden: app.isHidden,
+                    isRegular: app.activationPolicy == .regular
+                )
+            },
+            spaces: { WindowTiler.getSpacesForWindow($0) },
+            trueBounds: { WindowTiler.trueBounds(of: $0) }
+        )
+    }
+
+    /// The CG half of a poll.
+    struct Sweep {
+        var entries: [UInt32: WindowEntry] = [:]
+        /// Collapsed windows the WindowServer gave no true frame for. They
+        /// hold the collapsed frame until AX or a past poll gives one.
+        var unresolved: Set<UInt32> = []
+        var facts: [Int32: AppFacts] = [:]
+    }
+
+    /// One window as AX lists it.
+    struct AXWindow: Equatable {
+        var title: String
+        var frame: CGRect?
+    }
+
+    /// Smallest side a window keeps. Below it sit menu extras and status items.
+    static let minWindowSide: CGFloat = 50
+
+    /// Every real window in `list`, CGWindowList rows front to back, with its
+    /// Space IDs. A collapsed window that is titled, or whose app is hidden,
+    /// keeps its true frame when `recoverCollapsed`, and is dropped otherwise.
+    static func sweep(_ list: [[String: Any]], sources: InventorySources, recoverCollapsed: Bool) -> Sweep {
+        var sweep = Sweep()
         var zCounter = 0
 
         for info in list {
@@ -330,10 +411,8 @@ final class DesktopModel: ObservableObject {
                   let boundsDict = info[kCGWindowBounds as String] as? NSDictionary
             else { continue }
 
-            // Skip tiny windows (menu extras, status items)
             var rect = CGRect.zero
-            guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect),
-                  rect.width >= 50, rect.height >= 50 else { continue }
+            guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { continue }
 
             let title = info[kCGWindowName as String] as? String ?? ""
             let layer = info[kCGWindowLayer as String] as? Int ?? 0
@@ -343,44 +422,238 @@ final class DesktopModel: ObservableObject {
             guard layer == 0 else { continue }
 
             // Skip system helper processes (autofill, credential providers, etc.)
-            if Self.systemHelperProcesses.contains(ownerName) { continue }
+            if systemHelperProcesses.contains(ownerName) { continue }
 
             // Skip processes whose name ends with common helper suffixes
             // (e.g. "CursorUIViewService", "AutoFillPanelService", "SecurityAgent")
             // but not known real apps that happen to have these words
-            let isHelperByName = Self.helperSuffixes.contains(where: { ownerName.hasSuffix($0) })
-                && !Self.knownRealApps.contains(ownerName)
+            let isHelperByName = helperSuffixes.contains(where: { ownerName.hasSuffix($0) })
+                && !knownRealApps.contains(ownerName)
             if isHelperByName { continue }
 
             // Skip windows with no title from processes containing "com.apple."
             if ownerName.hasPrefix("com.apple.") && title.isEmpty { continue }
 
-            let frame = WindowFrame(
-                x: Double(rect.origin.x),
-                y: Double(rect.origin.y),
-                w: Double(rect.width),
-                h: Double(rect.height)
-            )
+            let facts: AppFacts
+            if let known = sweep.facts[pid] {
+                facts = known
+            } else {
+                facts = sources.appFacts(pid)
+                sweep.facts[pid] = facts
+            }
 
-            let spaceIds = WindowTiler.getSpacesForWindow(wid)
-
-            let latticesSession = SessionWindowLocator.extractSessionName(from: title)
+            // Skip tiny windows (menu extras, status items), but recover a
+            // real window CG collapsed: a hidden app's report 1×1.
+            var collapsed = false
+            if !isWindowSized(rect) {
+                guard recoverCollapsed, !title.isEmpty || facts.isHidden else { continue }
+                collapsed = true
+                if let bounds = sources.trueBounds(wid), isWindowSized(bounds) {
+                    rect = bounds
+                } else {
+                    sweep.unresolved.insert(wid)
+                }
+            }
 
             var entry = WindowEntry(
                 wid: wid,
                 app: ownerName,
                 pid: pid,
                 title: title,
-                frame: frame,
-                spaceIds: spaceIds,
+                frame: frame(rect),
+                spaceIds: sources.spaces(wid),
                 isOnScreen: isOnScreen,
-                latticesSession: latticesSession
+                latticesSession: SessionWindowLocator.extractSessionName(from: title)
             )
             entry.zIndex = zCounter
+            entry.bundleId = facts.bundleId
+            entry.appHidden = facts.isHidden
+            entry.collapsed = collapsed
             zCounter += 1
-            fresh[wid] = entry
+            sweep.entries[wid] = entry
         }
-        return fresh
+        return sweep
+    }
+
+    /// Checks the windows on showing desktops against AX by window number,
+    /// with one `listing` per app: `candidates` maps its windows there to
+    /// their CG titles, and it returns AX's windows by number, or nil when AX
+    /// doesn't answer. A window AX lists is verified and listed, and takes
+    /// AX's whole title; one it doesn't list isn't verified. AX can't see
+    /// other desktops, so their windows keep `axVerified`, as do a hidden
+    /// app's when AX lists nothing for it. Returns AX's frames by window
+    /// number.
+    static func reconcile(
+        _ entries: inout [UInt32: WindowEntry],
+        current: Set<Int>,
+        me: Int32 = getpid(),
+        listing: (_ pid: Int32, _ candidates: [UInt32: String]) -> [UInt32: AXWindow]?
+    ) -> [UInt32: CGRect] {
+        var byPid: [Int32: [UInt32: String]] = [:]
+        for (wid, entry) in entries where entry.pid != me && isOnCurrentSpace(entry, current: current) {
+            byPid[entry.pid, default: [:]][wid] = entry.title
+        }
+
+        var frames: [UInt32: CGRect] = [:]
+        for (pid, candidates) in byPid {
+            guard let listed = listing(pid, candidates) else { continue }
+            let hidden = candidates.keys.contains { entries[$0]?.appHidden == true }
+            for wid in candidates.keys {
+                if let window = listed[wid] {
+                    entries[wid]?.axVerified = true
+                    entries[wid]?.axListed = true
+                    if !window.title.isEmpty { entries[wid]?.fullTitle = window.title }
+                    if let frame = window.frame { frames[wid] = frame }
+                } else if !(hidden && listed.isEmpty) {
+                    entries[wid]?.axVerified = false
+                }
+            }
+        }
+        return frames
+    }
+
+    /// Gives each unresolved collapsed window AX's frame, else its frame
+    /// from a past poll, and drops the ones with neither.
+    static func resolveCollapsed(_ sweep: inout Sweep, axFrames: [UInt32: CGRect], lastFrames: [UInt32: WindowFrame]) {
+        for wid in sweep.unresolved {
+            if let rect = axFrames[wid], isWindowSized(rect) {
+                sweep.entries[wid]?.frame = frame(rect)
+            } else if let known = lastFrames[wid] {
+                sweep.entries[wid]?.frame = known
+            } else {
+                sweep.entries[wid] = nil
+            }
+        }
+        sweep.unresolved = []
+    }
+
+    /// Gives a window AX didn't see this poll the whole title AX gave it
+    /// before, while its CG title is unchanged.
+    static func carryFullTitles(_ entries: inout [UInt32: WindowEntry], known: [UInt32: (cg: String, ax: String)]) {
+        for (wid, entry) in entries where entry.fullTitle == nil {
+            if let seen = known[wid], seen.cg == entry.title {
+                entries[wid]?.fullTitle = seen.ax
+            }
+        }
+    }
+
+    /// Drops untitled stand-ins that sit exactly over another app's window,
+    /// like the remote view System Settings shows Login Items through.
+    static func dropProxies(_ entries: inout [UInt32: WindowEntry], facts: [Int32: AppFacts]) {
+        let owners = entries.values.filter { $0.hasTitle && $0.axVerified }
+        for (wid, entry) in entries where !entry.hasTitle {
+            guard entry.spaceIds.isEmpty || facts[entry.pid]?.isRegular == false else { continue }
+            if owners.contains(where: { $0.pid != entry.pid && sameFrame($0.frame, entry.frame) }) {
+                entries[wid] = nil
+            }
+        }
+    }
+
+    private static func isWindowSized(_ rect: CGRect) -> Bool {
+        rect.width >= minWindowSide && rect.height >= minWindowSide
+    }
+
+    private static func frame(_ rect: CGRect) -> WindowFrame {
+        WindowFrame(x: Double(rect.origin.x), y: Double(rect.origin.y), w: Double(rect.width), h: Double(rect.height))
+    }
+
+    private static func sameFrame(_ a: WindowFrame, _ b: WindowFrame) -> Bool {
+        abs(a.x - b.x) <= 2 && abs(a.y - b.y) <= 2 && abs(a.w - b.w) <= 2 && abs(a.h - b.h) <= 2
+    }
+
+    // MARK: - Poll caches
+
+    /// Caches kept between polls. Polls run on main and on the switch queue,
+    /// so these are read and written under `cacheLock`.
+    private let cacheLock = NSLock()
+    /// Each app's last AX answer.
+    private var axAnswers: [Int32: AXAnswer] = [:]
+    /// Each window's frame last poll, for a collapsed window with no other.
+    private var lastFrames: [UInt32: WindowFrame] = [:]
+    /// Each window's whole AX title, with the CG title it had then.
+    private var fullTitles: [UInt32: (cg: String, ax: String)] = [:]
+    /// The windows AX has listed, for while they're on a desktop it can't see.
+    private var axListed: Set<UInt32> = []
+
+    /// How many times AX is asked about the same candidates before an
+    /// unverified window stays so. AX can list a new window a beat after CG.
+    private static let axAsks = 3
+
+    private struct AXAnswer {
+        let candidates: [UInt32: String]
+        let windows: [UInt32: AXWindow]?
+        let asks: Int
+
+        /// Every candidate verified, or asked enough.
+        var settled: Bool {
+            if asks >= DesktopModel.axAsks { return true }
+            guard let windows else { return false }
+            return candidates.keys.allSatisfy { windows[$0] != nil }
+        }
+    }
+
+    /// AX's windows for `pid`, asked again only when its candidates change
+    /// or the last answer hasn't settled.
+    private func axWindows(pid: Int32, candidates: [UInt32: String]) -> [UInt32: AXWindow]? {
+        cacheLock.lock()
+        let last = axAnswers[pid]
+        cacheLock.unlock()
+        if let last, last.candidates == candidates, last.settled { return last.windows }
+
+        let windows = Self.queryAXWindows(pid: pid)
+        let asks = last.map { $0.candidates == candidates ? $0.asks + 1 : 1 } ?? 1
+        cacheLock.lock()
+        axAnswers[pid] = AXAnswer(candidates: candidates, windows: windows, asks: asks)
+        cacheLock.unlock()
+        return windows
+    }
+
+    /// Keeps this poll's frames, whole titles and AX listings for the next,
+    /// and forgets windows and apps that are gone.
+    private func remember(_ entries: [UInt32: WindowEntry], asked: Set<Int32>) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        lastFrames = entries.mapValues(\.frame)
+        fullTitles = entries.compactMapValues { entry in
+            entry.fullTitle.map { (cg: entry.title, ax: $0) }
+        }
+        axListed = Set(entries.values.filter(\.axListed).map(\.wid))
+        axAnswers = axAnswers.filter { asked.contains($0.key) }
+    }
+
+    /// The windows AX lists for `pid` by window number, or nil when AX
+    /// doesn't answer. Any subrole counts: Calculator's and System Settings'
+    /// main windows are AXDialog.
+    private static func queryAXWindows(pid: Int32) -> [UInt32: AXWindow]? {
+        let app = AXUIElementCreateApplication(pid)
+        // Set a timeout so unresponsive apps (video calls, etc.) don't block the poll
+        AXUIElementSetMessagingTimeout(app, 0.3)
+
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let axWindows = windowsRef as? [AXUIElement] else { return nil }
+
+        let attributes = [kAXTitleAttribute, kAXPositionAttribute, kAXSizeAttribute] as CFArray
+        var windows: [UInt32: AXWindow] = [:]
+        for axWindow in axWindows {
+            var wid: CGWindowID = 0
+            guard _AXUIElementGetWindow(axWindow, &wid) == .success, wid != 0 else { continue }
+            AXUIElementSetMessagingTimeout(axWindow, 0.3)
+
+            var valuesRef: CFArray?
+            AXUIElementCopyMultipleAttributeValues(axWindow, attributes, AXCopyMultipleAttributeOptions(), &valuesRef)
+            let values = valuesRef as? [AnyObject] ?? []
+            var origin = CGPoint.zero
+            var size = CGSize.zero
+            var frame: CGRect?
+            if values.count == 3,
+               CFGetTypeID(values[1]) == AXValueGetTypeID(), AXValueGetValue(values[1] as! AXValue, .cgPoint, &origin),
+               CFGetTypeID(values[2]) == AXValueGetTypeID(), AXValueGetValue(values[2] as! AXValue, .cgSize, &size) {
+                frame = CGRect(origin: origin, size: size)
+            }
+            windows[wid] = AXWindow(title: values.first as? String ?? "", frame: frame)
+        }
+        return windows
     }
 
     private func finishPoll(_ fresh: [UInt32: WindowEntry]) -> [WindowEntry] {
@@ -466,65 +739,5 @@ final class DesktopModel: ObservableObject {
 
         let id = UInt32(wid)
         return windows[id] == nil ? nil : id
-    }
-
-    private func reconcileWithAX(_ fresh: inout [UInt32: WindowEntry]) {
-        // Get currently active Space IDs — AX only returns windows on these
-        let currentSpaceIds = Set(WindowTiler.getDisplaySpaces().map(\.currentSpaceId))
-        guard !currentSpaceIds.isEmpty else { return }
-
-        // Group CG windows by PID — only titled windows on current Spaces
-        var byPid: [Int32: [UInt32]] = [:]
-        for (wid, entry) in fresh where !entry.title.isEmpty {
-            let onCurrentSpace = entry.spaceIds.contains { currentSpaceIds.contains($0) }
-            if onCurrentSpace {
-                byPid[entry.pid, default: []].append(wid)
-            }
-        }
-
-        for (pid, wids) in byPid {
-            let axApp = AXUIElementCreateApplication(pid)
-
-            // Set a timeout so unresponsive apps (video calls, etc.) don't block the poll
-            AXUIElementSetMessagingTimeout(axApp, 0.3)
-
-            var axWindowsRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &axWindowsRef) == .success,
-                  let axWindows = axWindowsRef as? [AXUIElement] else { continue }
-
-            // Collect AX window titles
-            var axTitles: [String] = []
-            for axWin in axWindows {
-                var titleRef: CFTypeRef?
-                AXUIElementCopyAttributeValue(axWin, kAXTitleAttribute as CFString, &titleRef)
-                if let title = titleRef as? String, !title.isEmpty {
-                    axTitles.append(title)
-                }
-            }
-
-            // Mark CG windows that have no matching AX title.
-            // AX titles often have suffixes like " - Google Chrome - Profile"
-            // so check if any AX title starts with the CG title (stripped of emoji).
-            for wid in wids {
-                guard let entry = fresh[wid], !entry.title.isEmpty else { continue }
-                let cgClean = stripForMatch(entry.title)
-                let matched = axTitles.contains { axTitle in
-                    let axClean = stripForMatch(axTitle)
-                    return axClean.hasPrefix(cgClean) || axClean.contains(cgClean) || cgClean.hasPrefix(axClean)
-                }
-                if !matched {
-                    fresh[wid]?.axVerified = false
-                }
-            }
-        }
-    }
-
-    private func stripForMatch(_ text: String) -> String {
-        // Remove emoji and non-ASCII symbols, lowercase, collapse whitespace
-        let scalar = text.unicodeScalars.filter { scalar in
-            scalar.isASCII || CharacterSet.letters.contains(scalar)
-        }
-        return String(scalar).lowercased()
-            .split(separator: " ").joined(separator: " ")
     }
 }

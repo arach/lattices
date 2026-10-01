@@ -1794,7 +1794,7 @@ struct ScreenMapView: View {
                             .foregroundColor(Palette.textDim)
                     }
                     .buttonStyle(.plain)
-                    .help("Defrag layers (c)")
+                    .help("Defrag depths (c)")
                 }
             }
             .padding(.bottom, 8)
@@ -2114,7 +2114,7 @@ struct ScreenMapView: View {
     private func finishSidebarWindowDrag(_ win: ScreenMapWindowEntry, editor: ScreenMapEditorState) {
         if let targetLayer = dropTargetLayer {
             editor.reassignLayer(windowId: win.id, toLayer: targetLayer, fitToAvailable: true)
-            controller.flash("Moved to L\(targetLayer)")
+            controller.flash("Moved to D\(targetLayer)")
         }
         sidebarDragWindowId = nil
         sidebarDragOffset = .zero
@@ -4084,7 +4084,7 @@ struct ScreenMapView: View {
         let currentLayer = win.layer
 
         let menu = NSMenu()
-        let header = NSMenuItem(title: "\(win.app) — Layer \(currentLayer)", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: "\(win.app) — Depth \(currentLayer)", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
         menu.addItem(.separator())
@@ -4111,8 +4111,8 @@ struct ScreenMapView: View {
             menu.addItem(.separator())
         }
 
-        // Move to Layer → submenu
-        let moveItem = NSMenuItem(title: "Move to Layer", action: nil, keyEquivalent: "")
+        // Move to Depth → submenu
+        let moveItem = NSMenuItem(title: "Move to Depth", action: nil, keyEquivalent: "")
         let layerSubmenu = NSMenu()
 
         for layer in editor.effectiveLayers where layer != currentLayer {
@@ -4126,7 +4126,7 @@ struct ScreenMapView: View {
         }
 
         layerSubmenu.addItem(.separator())
-        let newLayerItem = NSMenuItem(title: "New Layer", action: nil, keyEquivalent: "")
+        let newLayerItem = NSMenuItem(title: "New Depth", action: nil, keyEquivalent: "")
         newLayerItem.representedObject = ScreenMapLayerMenuAction(windowId: windowId, targetLayer: editor.layerCount, editor: editor, controller: controller)
         newLayerItem.action = #selector(ScreenMapMenuTarget.performLayerMove(_:))
         newLayerItem.target = ScreenMapMenuTarget.shared
@@ -4221,7 +4221,7 @@ struct ScreenMapPreviewOverlay: View {
                                 .foregroundColor(color.opacity(0.7))
                         }
                         if win.hasEdits && h > 80 {
-                            Text("L\(win.layer)")
+                            Text("D\(win.layer)")
                                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                                 .foregroundColor(color.opacity(0.5))
                         }

@@ -608,7 +608,7 @@ final class LatticesApi {
                 var matches: [JSON] = []
                 for entry in DesktopModel.shared.allWindows() {
                     let matchesApp = entry.app.lowercased().contains(query)
-                    let matchesTitle = entry.title.lowercased().contains(query)
+                    let matchesTitle = entry.titleContains(query)
                     let matchesSession = entry.latticesSession?.lowercased().contains(query) ?? false
                     let ocrText = includeOcr ? ocrResults[entry.wid]?.fullText : nil
                     let matchesOcrContent = ocrText?.lowercased().contains(query) ?? false
@@ -777,7 +777,7 @@ final class LatticesApi {
                         var matchSources: [String] = []
                         var ocrSnippet: String? = nil
 
-                        if checkTitles && entry.title.lowercased().contains(query) { score += 3; matchSources.append("title") }
+                        if checkTitles && entry.titleContains(query) { score += 3; matchSources.append("title") }
                         if checkApps && entry.app.lowercased().contains(query) { score += 2; matchSources.append("app") }
                         if checkSessions && entry.latticesSession?.lowercased().contains(query) == true { score += 3; matchSources.append("session") }
 
@@ -950,7 +950,7 @@ final class LatticesApi {
             description: "List all workspace layers and the active index",
             access: .read,
             params: [],
-            returns: .custom("Object with 'layers' array of Layer and 'active' index"),
+            returns: .custom("Object with 'layers' array (id, label, index, slot: the ⌘⌥ pad digit or null, projectCount) and 'active' index"),
             handler: { _ in
                 let wm = WorkspaceManager.shared
                 guard let config = wm.config, let layers = config.layers else {
@@ -965,12 +965,39 @@ final class LatticesApi {
                             "id": .string(layer.id),
                             "label": .string(layer.label),
                             "index": .int(i),
+                            "slot": LayerSlots.slot(forIndex: i).map { JSON.int($0) } ?? .null,
                             "projectCount": .int(layer.projects.count)
                         ])
                     }),
                     "active": .int(wm.activeLayerIndex),
                     "stage": Self.layerStageStatus()
                 ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "layers.members",
+            description: "Each workspace layer's entries and the windows each one holds, on any desktop, with where each window is. Read-only",
+            access: .read,
+            params: [
+                Param(name: "layer", type: "string", required: false, description: "Layer id or label (default: every layer)"),
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+            ],
+            returns: .custom("Object with 'active' index and 'layers': each with id, label, index, slot, active, layout and 'entries' {index, name, rule, pattern, missing, windows {wid, app, title, presence, where}}. presence is showing, elsewhere, parked or hidden"),
+            handler: { params in
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    var only: Int?
+                    if params?["index"] != nil || params?["layer"] != nil {
+                        only = try Self.layerIndex(params, default: nil)
+                    }
+                    let overviews = wm.overviews(in: DesktopModel.shared.allWindows())
+                        .filter { only == nil || $0.index == only }
+                    return .object([
+                        "active": .int(wm.activeLayerIndex),
+                        "layers": .array(overviews.map { wm.layerMembersJSON($0) }),
+                    ])
+                }
             }
         ))
 
@@ -984,10 +1011,10 @@ final class LatticesApi {
                 let outcome = LayerStage.shared.showAll()
                 return .object([
                     "ok": .bool(true),
-                    "unparked": .int(outcome.unparked),
+                    "unparked": .int(outcome.unparked.count),
                     "stillParked": .int(outcome.stillParked),
                     "rescued": .int(outcome.rescued),
-                    "unhidden": .array(outcome.unhidden.map { .string($0) }),
+                    "unhidden": .array(outcome.unhiddenApps.map { .string($0) }),
                     "stage": Self.layerStageStatus()
                 ])
             }
@@ -3162,7 +3189,7 @@ final class LatticesApi {
 
         // ── Layer edits ───────────────────────────────────────────
         // The ⌘⌥ layers in workspace.json. A window is saved as its app and
-        // current title, and stays pinned in while it lives.
+        // current title, pinned by wid, and lives in one layer at a time.
 
         api.register(Endpoint(
             method: "layers.create",
@@ -4705,21 +4732,17 @@ private extension LatticesApi {
 
         let mode = try parseLayerActivationMode(params?["mode"]?.stringValue)
         let layer = layers[index]
-        let previousIndex = wm.activeLayerIndex
         trace.append(.string("activation mode \(mode)"))
 
+        // Every mode runs the one switch, which posts `.layerSwitched`.
         DispatchQueue.main.async {
             switch mode {
             case "focus":
                 wm.focusLayer(index: index)
             case "tile":
-                wm.tileLayer(index: index, launch: false, force: true)
+                wm.tileLayer(index: index)
             default:
-                wm.tileLayer(index: index, launch: true, force: true)
-            }
-
-            if previousIndex != index || mode != "focus" {
-                EventBus.shared.post(.layerSwitched(index: index))
+                wm.tileLayer(index: index, launch: true)
             }
         }
 
@@ -4734,8 +4757,8 @@ private extension LatticesApi {
     }
 
     /// What layer switches have put away: parked windows and hidden apps.
-    static func layerStageStatus() -> JSON {
-        let status = LayerStage.shared.status()
+    /// `status` only reads: it drops what's gone from the answer, not the ledger.
+    static func layerStageStatus(_ status: LayerStage.Status = LayerStage.shared.status()) -> JSON {
         return .object([
             "parked": .array(status.parked.map { window in
                 .object([
@@ -4867,7 +4890,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 $0.app.localizedCaseInsensitiveCompare(app) == .orderedSame &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         case "type":
@@ -4882,7 +4905,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 AppTypeClassifier.matches($0.app, type: appType) &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         case "active-app", "frontmost-app", "current-app":
@@ -4897,7 +4920,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 $0.app.localizedCaseInsensitiveCompare(activeApp) == .orderedSame &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         case "active-type", "frontmost-type", "current-type":
@@ -4913,7 +4936,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 AppTypeClassifier.matches($0.app, grouping: grouping) &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         default:
@@ -5086,10 +5109,18 @@ enum Encoders {
             ]),
             "spaceIds": .array(w.spaceIds.map { .int($0) }),
             "isOnScreen": .bool(w.isOnScreen),
-            "axVerified": .bool(w.axVerified)
+            "axVerified": .bool(w.axVerified),
+            "appHidden": .bool(w.appHidden),
+            "collapsed": .bool(w.collapsed)
         ]
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)
+        }
+        if let bundleId = w.bundleId {
+            obj["bundleId"] = .string(bundleId)
+        }
+        if let fullTitle = w.fullTitle {
+            obj["fullTitle"] = .string(fullTitle)
         }
         return .object(obj)
     }

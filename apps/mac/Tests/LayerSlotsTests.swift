@@ -34,4 +34,17 @@ final class LayerSlotsTests: XCTestCase {
         // Slot 4 down: slot 7 is empty, so it runs off the pad.
         XCTAssertNil(LayerSlots.neighbour(of: 3, .down, count: 5))
     }
+
+    func testCommandModeKeysEveryLayerByItsSlot() {
+        XCTAssertEqual(Chord.layerKeys(count: 3).map { $0.slot }, [1, 2, 3])
+        XCTAssertEqual(Chord.layerKeys(count: 5).map { $0.slot }, [1, 2, 3, 4, 6])
+        XCTAssertEqual(Chord.layerKeys(count: 5).map { $0.index }, [0, 1, 2, 3, 4])
+        // Past the eighth layer there's no slot, so no key.
+        let keys = Chord.layerKeys(count: 10)
+        XCTAssertEqual(keys.map { $0.slot }, LayerSlots.ordered)
+        XCTAssertEqual(keys.last?.index, 7)
+        XCTAssertEqual(keys.last?.keyCode, 25)
+        XCTAssertEqual(keys.first?.keyCode, 18)
+        XCTAssertTrue(Chord.layerKeys(count: 0).isEmpty)
+    }
 }

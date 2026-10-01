@@ -38,7 +38,15 @@ enum AssistantSnapshotBuilder {
         var layerInfo: [String: Any]?
         let workspace = WorkspaceManager.shared
         if let current = workspace.activeLayer {
-            layerInfo = ["name": current.label, "index": workspace.activeLayerIndex]
+            var info: [String: Any] = ["name": current.label, "index": workspace.activeLayerIndex]
+            // The windows the layer holds, on any desktop, and where each is.
+            if let overview = workspace.overviews(in: allWindows).first(where: \.isActive) {
+                let payload = workspace.layerContextPayload(overview)
+                info["id"] = payload["id"]
+                info["slot"] = payload["slot"]
+                info["entries"] = payload["entries"]
+            }
+            layerInfo = info
         }
 
         let terminals = ProcessModel.shared.synthesizeTerminals()
