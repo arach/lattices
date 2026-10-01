@@ -905,9 +905,8 @@ async function windowsCommand(jsonFlag: boolean): Promise<void> {
     console.log(`Windows (${windows.length}):\n`);
     for (const w of windows) {
       const session = w.latticesSession ? `  \x1b[36m[lattices:${w.latticesSession}]\x1b[0m` : "";
-      const layer = w.layerTag ? `  \x1b[33m[layer:${w.layerTag}]\x1b[0m` : "";
       const spaces = w.spaceIds.length ? ` space:${w.spaceIds.join(",")}` : "";
-      console.log(`  \x1b[1m${w.app}\x1b[0m  wid:${w.wid}${spaces}${session}${layer}`);
+      console.log(`  \x1b[1m${w.app}\x1b[0m  wid:${w.wid}${spaces}${session}`);
       console.log(`    "${w.title}"`);
       console.log(`    ${Math.round(w.frame.w)}×${Math.round(w.frame.h)} at (${Math.round(w.frame.x)},${Math.round(w.frame.y)})`);
       console.log();
@@ -915,33 +914,15 @@ async function windowsCommand(jsonFlag: boolean): Promise<void> {
   });
 }
 
-async function windowAssignCommand(wid?: string, layerId?: string): Promise<void> {
-  if (!wid || !layerId) {
-    console.log("Usage: lattices window assign <wid> <layer-id>");
+/** The old tag command: now puts the window in the ⌘⌥ layer. */
+async function windowAssignCommand(wid?: string, layer?: string): Promise<void> {
+  if (!wid || !layer) {
+    console.log("Usage: lattices layer add wid:N --to <layer>");
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
-    await daemonCall("window.assignLayer", { wid: parseInt(wid), layer: layerId });
-    console.log(`Tagged wid:${wid} → layer:${layerId}`);
-  });
-}
-
-async function windowLayerMapCommand(jsonFlag: boolean): Promise<void> {
-  await withDaemon(async ({ daemonCall }) => {
-    const map = await daemonCall("window.layerMap") as any;
-    if (jsonFlag) {
-      console.log(JSON.stringify(map, null, 2));
-      return;
-    }
-    const entries = Object.entries(map);
-    if (!entries.length) {
-      console.log("No layer tags assigned.");
-      return;
-    }
-    console.log("Window → Layer map:\n");
-    for (const [wid, layer] of entries) {
-      console.log(`  wid:${wid} → ${layer}`);
-    }
+    const result = await daemonCall("layers.assign", { wid: parseInt(wid), layer }) as any;
+    console.log(result.added ? `Added wid:${wid} to ${layer}` : `${layer} already holds wid:${wid}`);
   });
 }
 
@@ -3211,8 +3192,6 @@ switch (command) {
   case "window":
     if (args[1] === "assign") {
       await windowAssignCommand(args[2], args[3]);
-    } else if (args[1] === "map") {
-      await windowLayerMapCommand(args[2] === "--json");
     } else if (args[1] === "move" || args[1] === "place") {
       const method = args[1];
       const { parseWindowMoveArgs, parseWindowPlaceArgs, runWindowMovement, windowMoveUsage } =
@@ -3237,8 +3216,7 @@ switch (command) {
       console.log("Usage:");
       console.log("  lattices window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]");
       console.log("  lattices window place <wid> <slot> [--display <n>] [--dry-run] [--json]");
-      console.log("  lattices window assign <wid> <layer-id>   Tag a window to a layer");
-      console.log("  lattices window map [--json]               Show all layer tags");
+      console.log("  lattices window assign <wid> <layer>      Same as: lattices layer add wid:N --to <layer>");
       console.log("");
       console.log(windowMoveUsage());
     }

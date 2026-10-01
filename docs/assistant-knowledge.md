@@ -41,10 +41,9 @@ canonical `grid:CxR:c,r` starts at 0 for APIs. → [Tiling reference](/docs/tili
 
 ### Workspace layers & tab groups
 Group projects into named **layers** you can switch between, and tab-group related
-windows. `workspace.json` layers launch/focus/tile projects. Studio layers are
-rule-backed live window sets persisted in `~/.lattices/layers.json`; their clauses
-support app/title/session exact, substring, regex, Space, visibility, and exclusion
-matches. For an ephemeral cross-app stack, select windows in Hyperspace and press
+windows. Layers live in `workspace.json`; ⌘⌥ switches to one (focus), with tile
+and launch as extras. An entry can carry a `match` clause (app/title/session exact,
+substring, regex, Space, visibility, and exclusion matches). For an ephemeral cross-app stack, select windows in Hyperspace and press
 Cmd+T or say “stack these as tabs” / “add these up”; use the HUD grid button to fan
 them out. Agents call `tabStacks.create`, `tabStacks.add`, `tabStacks.select`, and
 `tabStacks.layout`. → [Layers](/docs/layers).
@@ -89,7 +88,7 @@ subscribe to events (`windows.changed`, `tmux.changed`, `layer.switched`).
 | **Ctrl+Option+G** | Show the 4x4 grid placement target |
 | **Ctrl+Option+V** | Fill the least-occupied 3x2 grid cell with the frontmost window |
 | `lattices tile <position>` | Tile the focused window (CLI) |
-| `lattices layer [name\|index]` | Switch workspace layer (CLI) |
+| `lattices layer [name\|slot]` | Switch workspace layer (CLI) |
 | **Ctrl+B** then `D` / `Z` / arrows | tmux: detach / zoom / move pane (inside a session) |
 
 Tiling and grid hotkeys are user-configurable — for the live set, point the user to
@@ -100,14 +99,14 @@ the defaults as guaranteed.
 
 `lattices` · `lattices init` · `lattices sync` · `lattices start` ·
 `lattices restart [pane]` · `lattices tile <position>` · `lattices group [id]` ·
-`lattices layer [name|index]` · `lattices windows --json` ·
+`lattices layer [name|slot]` · `lattices windows --json` ·
 `lattices search <query> [--deep|--all] [--json] [--wid]` · `lattices place <query> [position]` ·
 `lattices app restart`. Full flags: [Configuration](/docs/config).
 
 ## Config & file locations
 
 - **Per project:** `.lattices.json` in the project root (panes, commands, layout, ensure/prefill).
-- **User config (`~/.lattices/`):** `workspace.json`, `layers.json`, `mouse-shortcuts.json`,
+- **User config (`~/.lattices/`):** `workspace.json`, `mouse-shortcuts.json`,
   `snap-zones.json`, `clusters.json`, `ocr.db`, `lattices.log`.
 - **Defaults domain:** `dev.lattices.app` (read/write app settings via `defaults`).
 

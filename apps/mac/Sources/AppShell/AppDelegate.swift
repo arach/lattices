@@ -51,6 +51,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
+        // A crash can leave layer-parked windows in the corner; put them back.
+        DispatchQueue.global(qos: .userInitiated).async {
+            LayerStage.shared.restoreParked(reason: "launch")
+        }
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -128,6 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global(qos: .userInitiated))
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
+                LayerStage.shared.restoreParked(reason: "signal \(sig)")
                 exit(128 + sig)
             }
             source.resume()
@@ -136,6 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()
         removeSystemInputBoundaryObservers()
         SecureEventInputMonitor.shared.stop()

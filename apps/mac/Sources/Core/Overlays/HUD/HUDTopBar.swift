@@ -246,6 +246,10 @@ struct HUDTopBar: View {
                             .fill(isActive ? Palette.running : Palette.textMuted.opacity(0.3))
                             .frame(width: 5, height: 5)
 
+                        Text(LayerSlots.slot(forIndex: idx).map(String.init) ?? "·")
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textDim)
+
                         Text(layer.label)
                             .font(Typo.monoBold(9))
                             .foregroundColor(isActive ? Palette.text : Palette.textMuted)

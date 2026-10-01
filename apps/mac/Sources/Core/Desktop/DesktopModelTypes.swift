@@ -5,14 +5,35 @@ struct WindowEntry: Codable, Identifiable, Equatable {
     let app: String
     let pid: Int32
     let title: String
-    let frame: WindowFrame
+    var frame: WindowFrame
     let spaceIds: [Int]
     let isOnScreen: Bool
     let latticesSession: String?
     var axVerified: Bool = true
     var zIndex: Int = 0 // 0 = frontmost, from CGWindowList order
+    var bundleId: String? = nil
+    /// The app is hidden. Its windows keep their Space and, via `collapsed`,
+    /// their frame.
+    var appHidden: Bool = false
+    /// CGWindowList gave a collapsed frame (1×1 for a hidden app on macOS
+    /// 27); `frame` is the true one, from the WindowServer, AX or a past poll.
+    var collapsed: Bool = false
+    /// The title as AX gives it, when AX has seen the window. CG elides long
+    /// titles in the middle; this one is whole.
+    var fullTitle: String? = nil
+    /// AX has listed it, this poll or an earlier one. AX can't see other
+    /// desktops, so `axVerified` alone doesn't say a window is real.
+    var axListed: Bool = false
 
     var id: UInt32 { wid }
+
+    var hasTitle: Bool { !title.isEmpty || !(fullTitle ?? "").isEmpty }
+
+    /// `title` or `fullTitle` contains `needle`, ignoring case.
+    func titleContains(_ needle: String) -> Bool {
+        title.localizedCaseInsensitiveContains(needle)
+            || (fullTitle?.localizedCaseInsensitiveContains(needle) ?? false)
+    }
 }
 
 struct WindowFrame: Codable, Equatable {

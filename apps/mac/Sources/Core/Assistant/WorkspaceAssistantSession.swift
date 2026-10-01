@@ -196,9 +196,13 @@ final class WorkspaceAssistantSession: ObservableObject {
     private static let selectedProviderDefaultsKey = "HudsonAISelectedProvider"
     private static let scoutBindingRefDefaultsKey = "ScoutWorkspaceAssistantBindingRef"
     private static let preferredHarnessDefaultsKey = "LatticesAssistantPreferredHarness"
+    private static let preferredModelDefaultsKey = "LatticesAssistantPreferredModel"
+    private static let preferredEffortDefaultsKey = "LatticesAssistantPreferredEffort"
 
     /// Last successful agent-runtime harness id (for status chrome).
     @Published private(set) var agentRuntimeHarnessLabel: String?
+    /// Model the harness reported for the last successful turn.
+    @Published private(set) var agentRuntimeModel: String?
     private static let voiceInferenceTimeout: TimeInterval = 45
     private static let voiceAppendSystemPrompt = """
         You are the Workspace Assistant for Lattices voice surfaces.
@@ -320,6 +324,30 @@ final class WorkspaceAssistantSession: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: Self.preferredHarnessDefaultsKey)
             }
             objectWillChange.send()
+        }
+    }
+
+    /// The composer picker's harness / model / effort. The harness is the saved
+    /// preference, else whatever answered last, else the runtime's first choice.
+    /// Model and effort are saved per pick and only sent to the harness they
+    /// were picked for.
+    var runtimeSelection: HudRuntimeSelection {
+        get {
+            let defaults = UserDefaults.standard
+            let harness = preferredAgentHarness
+                ?? agentRuntimeHarnessLabel
+                ?? AgentRuntimeTransport.defaultHarnessPreference[0]
+            return HudRuntimeSelection(
+                harnessId: harness,
+                modelId: defaults.string(forKey: Self.preferredModelDefaultsKey) ?? "",
+                effortId: defaults.string(forKey: Self.preferredEffortDefaultsKey) ?? HudRuntimeEffort.autoId
+            )
+        }
+        set {
+            let defaults = UserDefaults.standard
+            defaults.set(newValue.modelId, forKey: Self.preferredModelDefaultsKey)
+            defaults.set(newValue.effortId, forKey: Self.preferredEffortDefaultsKey)
+            preferredAgentHarness = newValue.harnessId
         }
     }
 
@@ -476,6 +504,14 @@ final class WorkspaceAssistantSession: ObservableObject {
         let system = chatSystemPrompt(attachments: attachments)
         let projectPath = scoutProjectPath()
         let preferredHarness = UserDefaults.standard.string(forKey: Self.preferredHarnessDefaultsKey)
+        let selection = runtimeSelection
+        let launch = MainActor.assumeIsolated {
+            AgentRuntimeLaunch(
+                harness: selection.harnessId,
+                model: AssistantRuntimeCatalog.shared.launchModel(for: selection),
+                effort: AssistantRuntimeCatalog.shared.launchEffort(for: selection)
+            )
+        }
         let canUseAPI = hasSelectedCredential
         let providerName = currentProvider.name
         streamingTask = Task { [weak self] in
@@ -488,6 +524,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                     systemPrompt: system,
                     cwd: projectPath,
                     preferredHarness: preferredHarness,
+                    launch: launch,
                     messageID: messageID,
                     generation: turnGen,
                     inferenceTimer: timer,
@@ -534,6 +571,7 @@ final class WorkspaceAssistantSession: ObservableObject {
         systemPrompt: String,
         cwd: String,
         preferredHarness: String?,
+        launch: AgentRuntimeLaunch,
         messageID: UUID,
         generation: Int,
         inferenceTimer: DiagnosticLog.TimedAction,
@@ -547,6 +585,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 systemPrompt: systemPrompt,
                 cwd: cwd,
                 preferredHarness: preferredHarness,
+                launch: launch,
                 onDelta: { [weak self] snapshot in
                     Task { @MainActor in
                         guard let self, self.turnGeneration == generation else { return }
@@ -567,6 +606,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 self.isSending = false
                 self.statusText = "idle"
                 self.agentRuntimeHarnessLabel = reply.harness
+                if let model = reply.model { self.agentRuntimeModel = model }
                 DiagnosticLog.shared.finish(inferenceTimer)
                 DiagnosticLog.shared.info("Assistant · agent-runtime \(reply.harness) completed")
                 self.commitStreamingText(reply.text)
@@ -1585,6 +1625,11 @@ final class WorkspaceAssistantSession: ObservableObject {
         .joined(separator: "\n\n")
     }
 
+    /// Folder name of the directory new turns run in, for status chrome.
+    var workingDirectoryName: String {
+        URL(fileURLWithPath: scoutProjectPath()).lastPathComponent
+    }
+
     private func scoutProjectPath() -> String {
         let fileManager = FileManager.default
         let current = fileManager.currentDirectoryPath
@@ -1826,7 +1871,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                     "deepScanBudget": prefs.ocrDeepBudget,
                 ],
                 "mouseShortcuts": mouseShortcutContextPayload(),
-                "studioLayers": StudioLayerStore.shared.assistantContextPayload(),
+                "layers": WorkspaceManager.shared.layersContextPayload(),
                 "liveTabGroups": LiveTabGroupStore.shared.assistantContextPayload(),
             ],
             "settingsCatalog": [
@@ -1872,7 +1917,6 @@ final class WorkspaceAssistantSession: ObservableObject {
             ],
             "settingsFiles": [
                 "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
-                "studioLayers": StudioLayerStore.shared.configFilePath,
                 "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
                 "mouseShortcutsHistory": MouseShortcutStore.shared.historyDirectoryURL.path,
                 "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",
@@ -1886,7 +1930,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 "lattices restart [pane]",
                 "lattices tile <position>",
                 "lattices group [id]",
-                "lattices layer [name|index]",
+                "lattices layer [name|slot]",
                 "lattices windows --json",
                 "lattices search <query>",
                 "lattices app restart",

@@ -1,22 +1,42 @@
 import AppKit
 import SwiftUI
+import HudsonUI
 
 struct WorkspaceAssistantView: View {
     @StateObject private var session = WorkspaceAssistantSession.shared
+    @StateObject private var runtimes = AssistantRuntimeCatalog.shared
     @FocusState private var composerFocused: Bool
+    @State private var pickingRuntime = false
+    @AppStorage(AssistantAppearance.defaultsKey) private var appearance = AssistantAppearance.dark.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
             header
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-
             WorkspaceAssistantTranscript(session: session, style: .workspace)
-            WorkspaceAssistantComposer(session: session, style: .workspace, focus: $composerFocused)
+            WorkspaceAssistantComposer(
+                session: session,
+                style: .workspace,
+                focus: $composerFocused,
+                runtimePicking: $pickingRuntime
+            )
         }
-        .background(Palette.bg)
+        .hudRuntimePicker(
+            isPresented: $pickingRuntime,
+            harnesses: runtimes.harnesses,
+            efforts: runtimes.efforts,
+            selection: Binding(
+                get: { session.runtimeSelection },
+                set: { session.runtimeSelection = $0 }
+            )
+        )
+        .environment(\.hudTheme, .latticesAssistant)
+        .onAppear { runtimes.refresh() }
+        .onChange(of: pickingRuntime) { _, open in
+            if !open { composerFocused = true }
+        }
+        .background(WorkspaceAssistantSurface())
+        // Inks are read from defaults, so a theme flip rebuilds the page.
+        .id(appearance)
         .background(WorkspaceFocusActivator())
         .onReceive(NotificationCenter.default.publisher(for: .workspaceComposerFocus)) { _ in
             // Fired exactly when the hosting window becomes key, so setting the
@@ -28,113 +48,53 @@ struct WorkspaceAssistantView: View {
         }
     }
 
+    /// On the transcript's column, so the status line, every turn and the
+    /// composer share one left edge. A one-pixel rule is the hard edge the
+    /// transcript scrolls under.
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Workspace Assistant")
-                    .font(Typo.title(14))
-                    .foregroundColor(Palette.text)
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 2) {
+                WorkspaceAssistantStatusLine(session: session)
 
-                Text(headerSubtitle)
-                    .font(Typo.caption(11))
-                    .foregroundColor(Palette.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                WorkspaceAssistantModelChip(session: session)
+                Spacer(minLength: 12)
 
                 if session.hasConversationHistory {
-                    headerIconButton(symbol: "doc.on.doc", help: "Copy chat") {
+                    HudSquareIconButton(symbol: "doc.on.doc", help: "Copy chat") {
                         session.copyConversationToClipboard()
                     }
-                }
-
-                headerIconButton(symbol: "gearshape", help: "Assistant settings") {
-                    SettingsWindowController.shared.showAssistant()
-                }
-
-                if session.hasConversationHistory {
-                    headerTextButton("Clear") {
+                    HudSquareIconButton(symbol: "square.and.pencil", help: "New chat") {
                         session.clearConversation()
                     }
                 }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 10)
-        .padding(.bottom, 14)
-    }
-
-    private var headerSubtitle: String {
-        "Local agent runtime chat for settings, layout help, planning, and debugging."
-    }
-
-    private var statusPill: some View {
-        let tint: Color = {
-            switch session.statusText {
-            case "error": return Palette.kill
-            case "setup ai", "streaming...": return Palette.detach
-            default:
-                if session.statusText.hasPrefix("tool:") { return Palette.detach }
-                return session.isSending ? Palette.detach : Palette.running
-            }
-        }()
-
-        let label: String = {
-            if session.isSending {
-                if session.statusText == "streaming..." { return "Streaming" }
-                if session.statusText.hasPrefix("tool:") {
-                    return session.statusText.replacingOccurrences(of: "tool: ", with: "Tool · ")
+                HudSquareIconButton(
+                    symbol: appearance == AssistantAppearance.light.rawValue ? "moon" : "sun.max",
+                    help: appearance == AssistantAppearance.light.rawValue ? "Dark page" : "Light page"
+                ) {
+                    appearance = appearance == AssistantAppearance.light.rawValue
+                        ? AssistantAppearance.dark.rawValue
+                        : AssistantAppearance.light.rawValue
                 }
-                return "Thinking"
+                HudSquareIconButton(symbol: "slider.horizontal.3", help: "Assistant settings") {
+                    SettingsWindowController.shared.showAssistant()
+                }
+                .padding(.trailing, -7)
             }
-            if session.statusText == "idle" { return "Ready" }
-            return session.statusText.capitalized
-        }()
+            .frame(maxWidth: WorkspaceAssistantStyle.workspace.maxContentWidth)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, WorkspaceAssistantStyle.workspace.horizontalPadding)
+            .frame(height: 40)
 
-        return Text(label)
-            .font(Typo.geistMonoBold(9))
-            .foregroundColor(tint.opacity(0.95))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(tint.opacity(0.12))
-                    .overlay(Capsule().strokeBorder(tint.opacity(0.24), lineWidth: 0.5))
-            )
-    }
-
-    private func headerIconButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Palette.textMuted)
-                .frame(width: 30, height: 30)
-                .background(
-                    Circle()
-                        .fill(Color.white.opacity(0.04))
-                        .overlay(Circle().strokeBorder(Palette.border, lineWidth: 0.5))
-                )
+            HudRule(color: HudTheme.latticesAssistant.hairline.subtle)
         }
-        .buttonStyle(.plain)
-        .help(help)
     }
+}
 
-    private func headerTextButton(_ title: String, tint: Color = Palette.textMuted, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(Typo.caption(11))
-            .foregroundColor(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.04))
-                    .overlay(Capsule().strokeBorder(Palette.border, lineWidth: 0.5))
-            )
+/// The page surface: one flat, opaque colour, the same ground every text
+/// view paints under its glyphs. No backdrop blur and no tint layers.
+struct WorkspaceAssistantSurface: View {
+    var body: some View {
+        Color(nsColor: AssistantInk.page)
+            .ignoresSafeArea()
     }
 }
 

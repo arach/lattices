@@ -289,15 +289,15 @@ struct HomeDashboardView: View {
     private var asideColumn: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(title: "Layouts")
+            let counts = workspace.layerWindowCounts()
             ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
-                layoutRow(layer, index: index)
+                layoutRow(layer, index: index, windows: counts.indices.contains(index) ? counts[index] : 0)
             }
         }
     }
 
-    private func layoutRow(_ layer: Layer, index: Int) -> some View {
-        let counts = workspace.layerRunningCount(index: index)
-        return Button {
+    private func layoutRow(_ layer: Layer, index: Int, windows: Int) -> some View {
+        Button {
             workspace.focusLayer(index: index)
         } label: {
             HStack(spacing: 10) {
@@ -307,9 +307,9 @@ struct HomeDashboardView: View {
                     .foregroundColor(Palette.text)
                     .lineLimit(1)
                 Spacer(minLength: 6)
-                Text("\(counts.running)/\(counts.total)")
+                Text(LayerOverview.countNote(windows))
                     .font(Typo.mono(10))
-                    .foregroundColor(counts.running > 0 ? Palette.running : Palette.textMuted)
+                    .foregroundColor(windows > 0 ? Palette.textDim : Palette.textMuted)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 7)

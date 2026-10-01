@@ -88,21 +88,21 @@ public struct LatticesWindows: Sendable {
         return try await call("window.resolve", params: .object(fields))
     }
 
+    /// Adds the window to a ⌘⌥ layer, by id or label.
     @discardableResult
     public func assignLayer(wid: Int, layer: String) async throws -> JSONValue {
         try await call(
-            "window.assignLayer",
+            "layers.assign",
             params: jsonObject(("wid", .int(wid)), ("layer", .string(layer)))
         )
     }
 
+    /// Takes the window out of a ⌘⌥ layer (default: the active one).
     @discardableResult
-    public func removeLayer(wid: Int) async throws -> JSONValue {
-        try await call("window.removeLayer", params: jsonObject(("wid", .int(wid))))
-    }
-
-    public func layerMap() async throws -> JSONValue {
-        try await call("window.layerMap")
+    public func removeLayer(wid: Int, layer: String? = nil) async throws -> JSONValue {
+        var fields: [String: JSONValue] = ["wid": .int(wid)]
+        if let layer { fields["layer"] = .string(layer) }
+        return try await call("layers.unassign", params: .object(fields))
     }
 
     private func call(_ method: String, params: JSONValue? = nil, timeout: TimeInterval? = nil) async throws -> JSONValue {
@@ -175,17 +175,17 @@ public struct LatticesSessions: Sendable {
     }
 
     public func layers() async throws -> JSONValue {
-        try await transport.call("session.layers.list", params: nil, timeout: nil)
+        try await transport.call("layers.list", params: nil, timeout: nil)
     }
 
     @discardableResult
     public func switchLayer(index: Int) async throws -> JSONValue {
-        try await transport.call("session.layers.switch", params: jsonObject(("index", .int(index))), timeout: 15)
+        try await transport.call("layer.switch", params: jsonObject(("index", .int(index))), timeout: 15)
     }
 
     @discardableResult
     public func switchLayer(name: String) async throws -> JSONValue {
-        try await transport.call("session.layers.switch", params: jsonObject(("name", .string(name))), timeout: 15)
+        try await transport.call("layer.switch", params: jsonObject(("name", .string(name))), timeout: 15)
     }
 }
 

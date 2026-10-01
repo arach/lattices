@@ -361,7 +361,7 @@ private extension LatticesDeckHost {
             if let name = request.payload["name"]?.stringValue {
                 params["name"] = .string(name)
             }
-            params["mode"] = .string(request.payload["mode"]?.stringValue ?? "launch")
+            params["mode"] = .string(request.payload["mode"]?.stringValue ?? "focus")
             let result = try callAPI("layer.activate", params: params)
             let label = result["label"]?.stringValue ?? params["name"]?.stringValue ?? "layer"
             return ActionOutcome(
@@ -645,7 +645,14 @@ private extension LatticesDeckHost {
             )
         }
 
-        if let raw = itemID.stripPrefix("workspace-layer:"), let index = Int(raw) {
+        if itemID.hasPrefix("workspace-layer:") {
+            // The layer's id, or its index from a deck a release behind.
+            let index = try MainActorSync.run {
+                guard let index = LayerOverview.layerIndex(fromScope: itemID, in: WorkspaceManager.shared.layers) else {
+                    throw LatticesDeckHostError.invalidSwitcherItem(itemID)
+                }
+                return index
+            }
             let result = try callAPI("layer.activate", params: [
                 "index": .int(index),
                 "mode": .string("focus")
@@ -654,23 +661,6 @@ private extension LatticesDeckHost {
             return ActionOutcome(
                 summary: "Switched to \(label)",
                 detail: "Focused the workspace layer's windows.",
-                suggestedActions: []
-            )
-        }
-
-        if let layerID = itemID.stripPrefix("session-layer:") {
-            let layerName = try MainActorSync.run {
-                guard let layer = SessionLayerStore.shared.layerById(layerID) else {
-                    throw LatticesDeckHostError.invalidSwitcherItem(itemID)
-                }
-                return layer.name
-            }
-            _ = try callAPI("session.layers.switch", params: [
-                "name": .string(layerName)
-            ])
-            return ActionOutcome(
-                summary: "Switched to \(layerName)",
-                detail: "Raised the tagged windows for that session layer.",
                 suggestedActions: []
             )
         }
@@ -1034,16 +1024,8 @@ private extension LatticesDeckHost {
     @MainActor
     func activeLayerName() -> String? {
         let workspace = WorkspaceManager.shared
-        if let label = workspace.activeLayer?.label, !label.isEmpty {
-            return label
-        }
-
-        let sessionLayers = SessionLayerStore.shared
-        guard sessionLayers.activeIndex >= 0,
-              sessionLayers.activeIndex < sessionLayers.layers.count else {
-            return nil
-        }
-        return sessionLayers.layers[sessionLayers.activeIndex].name
+        guard let label = workspace.activeLayer?.label, !label.isEmpty else { return nil }
+        return label
     }
 
     @MainActor
@@ -1113,28 +1095,20 @@ private extension LatticesDeckHost {
         var items: [DeckSwitcherItem] = []
 
         if let layers = WorkspaceManager.shared.config?.layers {
+            // Resolved on every desktop, not just the windows passed in.
+            let counts = WorkspaceManager.shared.layerWindowCounts()
             for (index, layer) in layers.enumerated() {
+                let count = counts.indices.contains(index) ? counts[index] : 0
+                let facts: [String?] = [LayerOverview.chord(forIndex: index), LayerOverview.countNote(count)]
                 items.append(DeckSwitcherItem(
-                    id: "workspace-layer:\(index)",
+                    id: LayerOverview.scopeId(for: layer.id),
                     title: layer.label,
-                    subtitle: "\(layer.projects.count) project target(s)",
+                    subtitle: facts.compactMap { $0 }.joined(separator: " · "),
                     iconToken: "workspace-layer",
                     kind: .task,
                     isFrontmost: WorkspaceManager.shared.activeLayerIndex == index
                 ))
             }
-        }
-
-        let sessionLayerStore = SessionLayerStore.shared
-        for (index, layer) in sessionLayerStore.layers.enumerated() {
-            items.append(DeckSwitcherItem(
-                id: "session-layer:\(layer.id)",
-                title: layer.name,
-                subtitle: "\(layer.windows.count) tagged window(s)",
-                iconToken: "session-layer",
-                kind: .task,
-                isFrontmost: sessionLayerStore.activeIndex == index
-            ))
         }
 
         var seenApps = Set<String>()
@@ -1685,18 +1659,9 @@ private extension LatticesDeckHost {
         return (title, detail.isEmpty ? nil : detail, kind)
     }
 
-    @MainActor
+    /// Desktops keep their macOS numbering; layers don't own one.
     func spaceName(for index: Int) -> String {
-        if let layers = WorkspaceManager.shared.config?.layers,
-           layers.indices.contains(index - 1) {
-            return layers[index - 1].label
-        }
-
-        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
-        if defaults.indices.contains(index - 1) {
-            return defaults[index - 1]
-        }
-        return "space \(index)"
+        "Desktop \(index)"
     }
 
     func appCategory(for appName: String) -> String {

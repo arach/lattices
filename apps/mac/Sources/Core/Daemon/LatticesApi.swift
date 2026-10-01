@@ -608,7 +608,7 @@ final class LatticesApi {
                 var matches: [JSON] = []
                 for entry in DesktopModel.shared.allWindows() {
                     let matchesApp = entry.app.lowercased().contains(query)
-                    let matchesTitle = entry.title.lowercased().contains(query)
+                    let matchesTitle = entry.titleContains(query)
                     let matchesSession = entry.latticesSession?.lowercased().contains(query) ?? false
                     let ocrText = includeOcr ? ocrResults[entry.wid]?.fullText : nil
                     let matchesOcrContent = ocrText?.lowercased().contains(query) ?? false
@@ -777,7 +777,7 @@ final class LatticesApi {
                         var matchSources: [String] = []
                         var ocrSnippet: String? = nil
 
-                        if checkTitles && entry.title.lowercased().contains(query) { score += 3; matchSources.append("title") }
+                        if checkTitles && entry.titleContains(query) { score += 3; matchSources.append("title") }
                         if checkApps && entry.app.lowercased().contains(query) { score += 2; matchSources.append("app") }
                         if checkSessions && entry.latticesSession?.lowercased().contains(query) == true { score += 3; matchSources.append("session") }
 
@@ -895,62 +895,6 @@ final class LatticesApi {
             }
         ))
 
-        // MARK: - Window Layer Tags
-
-        api.register(Endpoint(
-            method: "window.assignLayer",
-            description: "Tag a window with a layer id (in-memory only)",
-            access: .mutate,
-            params: [
-                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
-                Param(name: "layer", type: "string", required: true, description: "Layer id (e.g. 'lattices', 'vox')")
-            ],
-            returns: .ok,
-            handler: { params in
-                guard let wid = params?["wid"]?.uint32Value else {
-                    throw RouterError.missingParam("wid")
-                }
-                guard let layerId = params?["layer"]?.stringValue, !layerId.isEmpty else {
-                    throw RouterError.missingParam("layer")
-                }
-                DesktopModel.shared.assignLayer(wid: wid, layerId: layerId)
-                return .object(["ok": .bool(true), "wid": .int(Int(wid)), "layer": .string(layerId)])
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "window.removeLayer",
-            description: "Remove layer tag from a window",
-            access: .mutate,
-            params: [
-                Param(name: "wid", type: "uint32", required: true, description: "Window ID")
-            ],
-            returns: .ok,
-            handler: { params in
-                guard let wid = params?["wid"]?.uint32Value else {
-                    throw RouterError.missingParam("wid")
-                }
-                DesktopModel.shared.removeLayerTag(wid: wid)
-                return .object(["ok": .bool(true)])
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "window.layerMap",
-            description: "Get all window-to-layer assignments",
-            access: .read,
-            params: [],
-            returns: .custom("{ [wid]: layerId }"),
-            handler: { _ in
-                let tags = DesktopModel.shared.windowLayerTags
-                var obj: [String: JSON] = [:]
-                for (wid, layerId) in tags {
-                    obj[String(wid)] = .string(layerId)
-                }
-                return .object(obj)
-            }
-        ))
-
         api.register(Endpoint(
             method: "tmux.sessions",
             description: "List all tmux sessions with child process enrichment",
@@ -1006,7 +950,7 @@ final class LatticesApi {
             description: "List all workspace layers and the active index",
             access: .read,
             params: [],
-            returns: .custom("Object with 'layers' array of Layer and 'active' index"),
+            returns: .custom("Object with 'layers' array (id, label, index, slot: the ⌘⌥ pad digit or null, projectCount) and 'active' index"),
             handler: { _ in
                 let wm = WorkspaceManager.shared
                 guard let config = wm.config, let layers = config.layers else {
@@ -1021,10 +965,57 @@ final class LatticesApi {
                             "id": .string(layer.id),
                             "label": .string(layer.label),
                             "index": .int(i),
+                            "slot": LayerSlots.slot(forIndex: i).map { JSON.int($0) } ?? .null,
                             "projectCount": .int(layer.projects.count)
                         ])
                     }),
-                    "active": .int(wm.activeLayerIndex)
+                    "active": .int(wm.activeLayerIndex),
+                    "stage": Self.layerStageStatus()
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "layers.members",
+            description: "Each workspace layer's entries and the windows each one holds, on any desktop, with where each window is. Read-only",
+            access: .read,
+            params: [
+                Param(name: "layer", type: "string", required: false, description: "Layer id or label (default: every layer)"),
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+            ],
+            returns: .custom("Object with 'active' index and 'layers': each with id, label, index, slot, active, layout and 'entries' {index, name, rule, pattern, missing, windows {wid, app, title, presence, where}}. presence is showing, elsewhere, parked or hidden"),
+            handler: { params in
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    var only: Int?
+                    if params?["index"] != nil || params?["layer"] != nil {
+                        only = try Self.layerIndex(params, default: nil)
+                    }
+                    let overviews = wm.overviews(in: DesktopModel.shared.allWindows())
+                        .filter { only == nil || $0.index == only }
+                    return .object([
+                        "active": .int(wm.activeLayerIndex),
+                        "layers": .array(overviews.map { wm.layerMembersJSON($0) }),
+                    ])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "layers.reveal",
+            description: "Show All: put back every window a layer switch parked and unhide every app it hid",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with 'unparked', 'stillParked' and 'rescued' counts, 'unhidden' app names, and the resulting 'stage'"),
+            handler: { _ in
+                let outcome = LayerStage.shared.showAll()
+                return .object([
+                    "ok": .bool(true),
+                    "unparked": .int(outcome.unparked.count),
+                    "stillParked": .int(outcome.stillParked),
+                    "rescued": .int(outcome.rescued),
+                    "unhidden": .array(outcome.unhiddenApps.map { .string($0) }),
+                    "stage": Self.layerStageStatus()
                 ])
             }
         ))
@@ -2652,6 +2643,20 @@ final class LatticesApi {
                 guard let entry = DesktopModel.shared.windows[wid] else {
                     throw RouterError.notFound("window \(wid)")
                 }
+                // Bring it to this Space first: CGS if macOS allows it, else
+                // carry it across by its title bar. present() then finds it
+                // already here.
+                let spaces = WindowTiler.getSpacesForWindow(wid)
+                let current = WindowTiler.getCurrentSpace()
+                if current != 0, !spaces.isEmpty, !spaces.contains(current), !Thread.isMainThread {
+                    let cgs = Self.syncOnMain {
+                        WindowTiler.moveViaCGS(wid: wid, fromSpaces: spaces, toSpace: current, switchOnDenial: false)
+                    }
+                    if case .success = cgs {
+                    } else if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: entry.pid, to: current) {
+                        DiagnosticLog.shared.warn("window.present: couldn't bring wid \(wid) here: \(reason)")
+                    }
+                }
 
                 // Resolve position to fractional rect
                 var fractions: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil
@@ -2772,17 +2777,31 @@ final class LatticesApi {
                                 "targetResolution": .string("wid"),
                             ])
                         }
+                        // CGS first (instant, but refused for other apps'
+                        // windows since macOS 14.5), then carry the window
+                        // by its title bar across the switch.
                         let result = Self.syncOnMain {
-                            WindowTiler.moveViaCGS(wid: wid, fromSpaces: fromSpaces, toSpace: spaceId)
+                            WindowTiler.moveViaCGS(wid: wid, fromSpaces: fromSpaces, toSpace: spaceId, switchOnDenial: false)
                         }
-                        guard let result, case .success(let method, _) = result else {
-                            throw RouterError.custom("Space moves are unavailable: CGS APIs could not be loaded")
+                        var method = "CGS"
+                        if case .success = result {
+                        } else {
+                            guard let pid = DesktopModel.shared.windows[wid]?.pid else {
+                                throw RouterError.notFound("window \(wid)")
+                            }
+                            guard !Thread.isMainThread else {
+                                throw RouterError.custom("CGS refused the move and the carry can't run on the main thread")
+                            }
+                            if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: spaceId) {
+                                throw RouterError.custom("couldn't move window \(wid) to Space \(spaceId): \(reason)")
+                            }
+                            method = "carry"
                         }
                         return .object([
                             "ok": .bool(true),
                             "wid": .int(Int(wid)),
                             "spaceId": .int(spaceId),
-                            "moved": .bool(method == "CGS"),
+                            "moved": .bool(true),
                             "method": .string(method),
                             "fromSpaceIds": .array(fromSpaces.map { .int($0) }),
                             "targetResolution": .string("wid"),
@@ -2910,7 +2929,7 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "layer.switch",
-            description: "Switch to a workspace layer by index or name",
+            description: "Switch to a workspace layer by index or name, as ⌘⌥ does (mode focus unless given)",
             access: .mutate,
             params: [
                 Param(name: "index", type: "int", required: false, description: "Layer index"),
@@ -2922,7 +2941,6 @@ final class LatticesApi {
                 if case .object(let obj) = params {
                     dict = obj
                 }
-                dict["mode"] = dict["mode"] ?? .string("launch")
                 return try Self.executeLayerActivation(params: .object(dict))
             }
         ))
@@ -2934,7 +2952,7 @@ final class LatticesApi {
             params: [
                 Param(name: "index", type: "int", required: false, description: "Layer index"),
                 Param(name: "name", type: "string", required: false, description: "Layer id or label (case-insensitive)"),
-                Param(name: "mode", type: "string", required: false, description: "Activation mode: launch, focus, or retile"),
+                Param(name: "mode", type: "string", required: false, description: "focus (the default, as ⌘⌥ switches), tile (focus, then lay the windows out again) or launch (start what isn't running, then tile)"),
             ],
             returns: .custom("Execution receipt with resolved layer, activation mode, and trace"),
             handler: { params in
@@ -3169,259 +3187,144 @@ final class LatticesApi {
             }
         ))
 
-        // ── Session Layers ────────────────────────────────────────
-
-        api.model(ApiModel(name: "WindowRef", fields: [
-            Field(name: "id", type: "string", required: true, description: "Stable UUID for this ref"),
-            Field(name: "app", type: "string", required: true, description: "Application name"),
-            Field(name: "contentHint", type: "string", required: false, description: "Title substring hint for matching"),
-            Field(name: "tile", type: "string", required: false, description: "Intended tile position"),
-            Field(name: "display", type: "int", required: false, description: "Intended display index"),
-            Field(name: "wid", type: "int", required: false, description: "Resolved CGWindowID"),
-            Field(name: "pid", type: "int", required: false, description: "Resolved process ID"),
-            Field(name: "title", type: "string", required: false, description: "Resolved window title"),
-            Field(name: "frame", type: "Frame", required: false, description: "Resolved window frame"),
-        ]))
-
-        api.model(ApiModel(name: "SessionLayer", fields: [
-            Field(name: "id", type: "string", required: true, description: "Layer UUID"),
-            Field(name: "name", type: "string", required: true, description: "Layer display name"),
-            Field(name: "windows", type: "[WindowRef]", required: true, description: "Window references in this layer"),
-        ]))
+        // ── Layer edits ───────────────────────────────────────────
+        // The ⌘⌥ layers in workspace.json. A window is saved as its app and
+        // current title, pinned by wid, and lives in one layer at a time.
 
         api.register(Endpoint(
-            method: "session.layers.create",
-            description: "Create a named session layer with optional window references",
+            method: "layers.create",
+            description: "Save windows as a new workspace layer, after the others",
             access: .mutate,
             params: [
-                Param(name: "name", type: "string", required: true, description: "Layer name"),
-                Param(name: "windowIds", type: "[uint32]", required: false, description: "Window IDs to include"),
-                Param(name: "windows", type: "[object]", required: false, description: "Window refs as {app, contentHint}"),
+                Param(name: "name", type: "string", required: true, description: "Layer label"),
+                Param(name: "windowIds", type: "[uint32]", required: false, description: "Windows to include"),
+                Param(name: "windows", type: "[object]", required: false, description: "Windows to include as {wid, tile?}; a tile is saved with the window's entry"),
+                Param(name: "visible", type: "bool", required: false, description: "Include every window on screen (default when no windowIds or windows)"),
             ],
-            returns: .object(model: "SessionLayer"),
+            returns: .custom("Object with the new layer's 'index', 'id', 'label' and window 'count'"),
             handler: { params in
                 guard let name = params?["name"]?.stringValue, !name.isEmpty else {
                     throw RouterError.missingParam("name")
                 }
-                var refs: [WindowRef] = []
-
-                // Build refs from windowIds
-                if case .array(let ids) = params?["windowIds"] {
-                    for idJson in ids {
-                        if let wid = idJson.uint32Value, let entry = DesktopModel.shared.windows[wid] {
-                            refs.append(WindowRef(
-                                app: entry.app, contentHint: entry.title,
-                                wid: entry.wid, pid: entry.pid, title: entry.title, frame: entry.frame
-                            ))
+                return try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    var windows: [WindowEntry] = []
+                    var tiles: [UInt32: String] = [:]
+                    if case .array(let specs) = params?["windows"], !specs.isEmpty {
+                        for spec in specs {
+                            guard let wid = spec["wid"]?.uint32Value, let entry = DesktopModel.shared.windows[wid] else { continue }
+                            windows.append(entry)
+                            if let tile = spec["tile"]?.stringValue { tiles[wid] = tile }
                         }
+                    } else if case .array(let ids) = params?["windowIds"], !ids.isEmpty {
+                        windows = ids.compactMap { $0.uint32Value.flatMap { DesktopModel.shared.windows[$0] } }
+                    } else if params?["visible"]?.boolValue != false {
+                        windows = wm.saveableWindows()
                     }
+                    let index = try wm.createLayer(label: name, windows: windows, tiles: tiles)
+                    let layer = wm.layers[index]
+                    return .object([
+                        "ok": .bool(true),
+                        "index": .int(index),
+                        "id": .string(layer.id),
+                        "label": .string(layer.label),
+                        "count": .int(layer.projects.count),
+                    ])
                 }
-
-                // Build refs from windows array
-                if case .array(let winSpecs) = params?["windows"] {
-                    for spec in winSpecs {
-                        guard let app = spec["app"]?.stringValue else { continue }
-                        let hint = spec["contentHint"]?.stringValue
-                        var ref = WindowRef(app: app, contentHint: hint)
-                        // Try to resolve immediately
-                        if let entry = DesktopModel.shared.windowForApp(app: app, title: hint) {
-                            ref.wid = entry.wid
-                            ref.pid = entry.pid
-                            ref.title = entry.title
-                            ref.frame = entry.frame
-                        }
-                        refs.append(ref)
-                    }
-                }
-
-                let layer = SessionLayerStore.shared.create(name: name, windows: refs)
-                // Update layer tags
-                for ref in refs {
-                    if let wid = ref.wid {
-                        DesktopModel.shared.assignLayer(wid: wid, layerId: name)
-                    }
-                }
-                return Encoders.sessionLayer(layer)
             }
         ))
 
         api.register(Endpoint(
-            method: "session.layers.delete",
-            description: "Delete a session layer by id or name",
+            method: "layers.assign",
+            description: "Add windows to a workspace layer",
             access: .mutate,
             params: [
-                Param(name: "id", type: "string", required: false, description: "Layer UUID"),
-                Param(name: "name", type: "string", required: false, description: "Layer name"),
-            ],
-            returns: .ok,
-            handler: { params in
-                let store = SessionLayerStore.shared
-                if let id = params?["id"]?.stringValue {
-                    store.delete(id: id)
-                } else if let name = params?["name"]?.stringValue, let layer = store.layerByName(name) {
-                    store.delete(id: layer.id)
-                } else {
-                    throw RouterError.missingParam("id or name")
-                }
-                return .object(["ok": .bool(true)])
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "session.layers.list",
-            description: "List all session layers with resolved window info",
-            access: .read,
-            params: [],
-            returns: .custom("Object with 'layers' array and 'activeIndex'"),
-            handler: { _ in
-                let store = SessionLayerStore.shared
-                return .object([
-                    "layers": .array(store.layers.map { Encoders.sessionLayer($0) }),
-                    "activeIndex": .int(store.activeIndex)
-                ])
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "session.layers.assign",
-            description: "Add window ref(s) to a session layer",
-            access: .mutate,
-            params: [
-                Param(name: "layerId", type: "string", required: false, description: "Layer UUID"),
-                Param(name: "layerName", type: "string", required: false, description: "Layer name"),
-                Param(name: "wid", type: "uint32", required: false, description: "Single window ID to add"),
-                Param(name: "windowIds", type: "[uint32]", required: false, description: "Multiple window IDs to add"),
-                Param(name: "window", type: "object", required: false, description: "Window ref as {app, contentHint}"),
-            ],
-            returns: .ok,
-            handler: { params in
-                let store = SessionLayerStore.shared
-                let layerId: String
-                if let id = params?["layerId"]?.stringValue {
-                    layerId = id
-                } else if let name = params?["layerName"]?.stringValue, let layer = store.layerByName(name) {
-                    layerId = layer.id
-                } else {
-                    throw RouterError.missingParam("layerId or layerName")
-                }
-
-                if let wid = params?["wid"]?.uint32Value {
-                    store.assignByWid(wid, toLayerId: layerId)
-                }
-                if case .array(let ids) = params?["windowIds"] {
-                    for idJson in ids {
-                        if let wid = idJson.uint32Value {
-                            store.assignByWid(wid, toLayerId: layerId)
-                        }
-                    }
-                }
-                if let spec = params?["window"] {
-                    if let app = spec["app"]?.stringValue {
-                        let hint = spec["contentHint"]?.stringValue
-                        var ref = WindowRef(app: app, contentHint: hint)
-                        if let entry = DesktopModel.shared.windowForApp(app: app, title: hint) {
-                            ref.wid = entry.wid
-                            ref.pid = entry.pid
-                            ref.title = entry.title
-                            ref.frame = entry.frame
-                        }
-                        store.assign(ref: ref, toLayerId: layerId)
-                    }
-                }
-                return .object(["ok": .bool(true)])
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "session.layers.remove",
-            description: "Remove window ref(s) from a session layer",
-            access: .mutate,
-            params: [
-                Param(name: "layerId", type: "string", required: false, description: "Layer UUID"),
-                Param(name: "layerName", type: "string", required: false, description: "Layer name"),
-                Param(name: "refId", type: "string", required: true, description: "WindowRef ID to remove"),
-            ],
-            returns: .ok,
-            handler: { params in
-                let store = SessionLayerStore.shared
-                let layerId: String
-                if let id = params?["layerId"]?.stringValue {
-                    layerId = id
-                } else if let name = params?["layerName"]?.stringValue, let layer = store.layerByName(name) {
-                    layerId = layer.id
-                } else {
-                    throw RouterError.missingParam("layerId or layerName")
-                }
-                guard let refId = params?["refId"]?.stringValue else {
-                    throw RouterError.missingParam("refId")
-                }
-                store.remove(refId: refId, fromLayerId: layerId)
-                return .object(["ok": .bool(true)])
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "session.layers.switch",
-            description: "Switch to a session layer by index or name",
-            access: .mutate,
-            params: [
+                Param(name: "layer", type: "string", required: false, description: "Layer id or label (default: the active layer)"),
                 Param(name: "index", type: "int", required: false, description: "Layer index"),
-                Param(name: "name", type: "string", required: false, description: "Layer name"),
+                Param(name: "wid", type: "uint32", required: false, description: "Window to add"),
+                Param(name: "windowIds", type: "[uint32]", required: false, description: "Windows to add"),
             ],
-            returns: .ok,
+            returns: .custom("Object with the layer's 'index' and the number of windows 'added'"),
             handler: { params in
-                let store = SessionLayerStore.shared
-                let index: Int
-                if let i = params?["index"]?.intValue {
-                    index = i
-                } else if let name = params?["name"]?.stringValue,
-                          let i = store.layers.firstIndex(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
-                    index = i
-                } else {
-                    throw RouterError.missingParam("index or name")
+                var wids: [UInt32] = []
+                if let wid = params?["wid"]?.uint32Value { wids.append(wid) }
+                if case .array(let ids) = params?["windowIds"] { wids += ids.compactMap(\.uint32Value) }
+                guard !wids.isEmpty else { throw RouterError.missingParam("wid or windowIds") }
+                return try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    let index = try Self.layerIndex(params, default: wm.activeLayerIndex)
+                    let windows = wids.compactMap { DesktopModel.shared.windows[$0] }
+                    guard !windows.isEmpty else { throw RouterError.notFound("window \(wids.map(String.init).joined(separator: ", "))") }
+                    let added = try wm.addWindows(windows, toLayer: index)
+                    return .object(["ok": .bool(true), "index": .int(index), "added": .int(added)])
                 }
-                DispatchQueue.main.async {
-                    store.switchTo(index: index)
-                }
-                return .object(["ok": .bool(true)])
             }
         ))
 
         api.register(Endpoint(
-            method: "session.layers.rename",
-            description: "Rename a session layer",
+            method: "layers.unassign",
+            description: "Take windows out of a workspace layer by dropping the entries that hold only them",
             access: .mutate,
             params: [
-                Param(name: "id", type: "string", required: false, description: "Layer UUID"),
-                Param(name: "oldName", type: "string", required: false, description: "Current layer name"),
-                Param(name: "name", type: "string", required: true, description: "New layer name"),
+                Param(name: "layer", type: "string", required: false, description: "Layer id or label (default: the active layer)"),
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+                Param(name: "wid", type: "uint32", required: false, description: "Window to take out"),
+                Param(name: "windowIds", type: "[uint32]", required: false, description: "Windows to take out"),
             ],
-            returns: .ok,
+            returns: .custom("Object with the layer's 'index', the windows 'removed', and 'held': those an entry matching other windows still holds"),
             handler: { params in
-                let store = SessionLayerStore.shared
-                guard let newName = params?["name"]?.stringValue, !newName.isEmpty else {
-                    throw RouterError.missingParam("name")
+                var wids: [UInt32] = []
+                if let wid = params?["wid"]?.uint32Value { wids.append(wid) }
+                if case .array(let ids) = params?["windowIds"] { wids += ids.compactMap(\.uint32Value) }
+                guard !wids.isEmpty else { throw RouterError.missingParam("wid or windowIds") }
+                return try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    let index = try Self.layerIndex(params, default: wm.activeLayerIndex)
+                    var removed: [JSON] = [], held: [JSON] = []
+                    for wid in wids {
+                        if try wm.removeWindow(wid, fromLayer: index) { removed.append(.int(Int(wid))) } else { held.append(.int(Int(wid))) }
+                    }
+                    return .object(["ok": .bool(true), "index": .int(index), "removed": .array(removed), "held": .array(held)])
                 }
-                if let id = params?["id"]?.stringValue {
-                    store.rename(id: id, name: newName)
-                } else if let oldName = params?["oldName"]?.stringValue, let layer = store.layerByName(oldName) {
-                    store.rename(id: layer.id, name: newName)
-                } else {
-                    throw RouterError.missingParam("id or oldName")
-                }
-                return .object(["ok": .bool(true)])
             }
         ))
 
         api.register(Endpoint(
-            method: "session.layers.clear",
-            description: "Clear all session layers",
+            method: "layers.rename",
+            description: "Rename a workspace layer",
             access: .mutate,
-            params: [],
+            params: [
+                Param(name: "layer", type: "string", required: false, description: "Layer id or label"),
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+                Param(name: "name", type: "string", required: true, description: "New label"),
+            ],
             returns: .ok,
-            handler: { _ in
-                SessionLayerStore.shared.clear()
-                return .object(["ok": .bool(true)])
+            handler: { params in
+                guard let name = params?["name"]?.stringValue else { throw RouterError.missingParam("name") }
+                return try Self.onMain {
+                    try WorkspaceManager.shared.renameLayer(try Self.layerIndex(params, default: nil), to: name)
+                    return .object(["ok": .bool(true)])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "layers.delete",
+            description: "Delete a workspace layer",
+            access: .mutate,
+            params: [
+                Param(name: "layer", type: "string", required: false, description: "Layer id or label"),
+                Param(name: "index", type: "int", required: false, description: "Layer index"),
+            ],
+            returns: .ok,
+            handler: { params in
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    let index = try Self.layerIndex(params, default: nil)
+                    let label = wm.layers[index].label
+                    try wm.deleteLayer(index)
+                    return .object(["ok": .bool(true), "label": .string(label)])
+                }
             }
         ))
 
@@ -4261,6 +4164,24 @@ private extension LatticesApi {
         )
     }
 
+    /// The layer `params` names by `index` or by id or label in `layer`,
+    /// else `fallback`.
+    static func layerIndex(_ params: JSON?, default fallback: Int?) throws -> Int {
+        let wm = WorkspaceManager.shared
+        let index: Int?
+        if let value = params?["index"]?.intValue {
+            index = value
+        } else if let name = params?["layer"]?.stringValue {
+            guard let value = wm.layerIndex(named: name) else { throw RouterError.notFound("layer \(name)") }
+            index = value
+        } else {
+            index = fallback
+        }
+        guard let index else { throw RouterError.missingParam("layer or index") }
+        guard wm.layers.indices.contains(index) else { throw RouterError.notFound("layer \(index)") }
+        return index
+    }
+
     static func runOnMain(_ work: @escaping () -> Void) {
         if Thread.isMainThread {
             work()
@@ -4811,21 +4732,17 @@ private extension LatticesApi {
 
         let mode = try parseLayerActivationMode(params?["mode"]?.stringValue)
         let layer = layers[index]
-        let previousIndex = wm.activeLayerIndex
         trace.append(.string("activation mode \(mode)"))
 
+        // Every mode runs the one switch, which posts `.layerSwitched`.
         DispatchQueue.main.async {
             switch mode {
             case "focus":
                 wm.focusLayer(index: index)
-            case "retile":
-                wm.tileLayer(index: index, launch: false, force: true)
+            case "tile":
+                wm.tileLayer(index: index)
             default:
-                wm.tileLayer(index: index, launch: true, force: true)
-            }
-
-            if previousIndex != index || mode != "focus" {
-                EventBus.shared.post(.layerSwitched(index: index))
+                wm.tileLayer(index: index, launch: true)
             }
         }
 
@@ -4839,17 +4756,25 @@ private extension LatticesApi {
         ])
     }
 
-    static func defaultSpaceName(for index: Int) -> String {
-        if let layers = WorkspaceManager.shared.config?.layers,
-           layers.indices.contains(index - 1) {
-            return layers[index - 1].label
-        }
+    /// What layer switches have put away: parked windows and hidden apps.
+    /// `status` only reads: it drops what's gone from the answer, not the ledger.
+    static func layerStageStatus(_ status: LayerStage.Status = LayerStage.shared.status()) -> JSON {
+        return .object([
+            "parked": .array(status.parked.map { window in
+                .object([
+                    "wid": .int(Int(window.wid)),
+                    "app": .string(window.app),
+                    "title": .string(window.title)
+                ])
+            }),
+            "hidden": .array(status.hiddenApps.map { .string($0) })
+        ])
+    }
 
-        let defaults = ["main", "code", "chat", "review", "media", "notes", "ops", "admin", "scratch"]
-        if defaults.indices.contains(index - 1) {
-            return defaults[index - 1]
-        }
-        return "space \(index)"
+    /// Desktops are macOS Spaces and keep their own numbering; layers are
+    /// virtual and don't own one, so a desktop never takes a layer's name.
+    static func defaultSpaceName(for index: Int) -> String {
+        "Desktop \(index)"
     }
 
     static func executeSpaceOptimization(params: JSON?) throws -> JSON {
@@ -4901,10 +4826,12 @@ private extension LatticesApi {
     }
 
     static func parseLayerActivationMode(_ raw: String?) throws -> String {
-        let mode = normalizeToken(raw ?? "launch")
+        let mode = normalizeToken(raw ?? "focus")
         switch mode {
-        case "launch", "focus", "retile":
+        case "launch", "focus", "tile":
             return mode
+        case "retile":
+            return "tile"
         default:
             throw RouterError.custom("Unsupported layer activation mode: \(raw ?? mode)")
         }
@@ -4963,7 +4890,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 $0.app.localizedCaseInsensitiveCompare(app) == .orderedSame &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         case "type":
@@ -4978,7 +4905,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 AppTypeClassifier.matches($0.app, type: appType) &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         case "active-app", "frontmost-app", "current-app":
@@ -4993,7 +4920,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 $0.app.localizedCaseInsensitiveCompare(activeApp) == .orderedSame &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         case "active-type", "frontmost-type", "current-type":
@@ -5009,7 +4936,7 @@ private extension LatticesApi {
             }
             return dedupeWindows(visible.filter {
                 AppTypeClassifier.matches($0.app, grouping: grouping) &&
-                (titleFilter == nil || $0.title.localizedCaseInsensitiveContains(titleFilter!))
+                (titleFilter == nil || $0.titleContains(titleFilter!))
             })
 
         default:
@@ -5162,9 +5089,6 @@ enum Encoders {
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)
         }
-        if let layerTag = DesktopModel.shared.windowLayerTags[w.wid] {
-            obj["layerTag"] = .string(layerTag)
-        }
         if let date = DesktopModel.shared.lastInteractionDate(for: w.wid) {
             obj["lastInteraction"] = .string(ISO8601DateFormatter().string(from: date))
         }
@@ -5185,13 +5109,18 @@ enum Encoders {
             ]),
             "spaceIds": .array(w.spaceIds.map { .int($0) }),
             "isOnScreen": .bool(w.isOnScreen),
-            "axVerified": .bool(w.axVerified)
+            "axVerified": .bool(w.axVerified),
+            "appHidden": .bool(w.appHidden),
+            "collapsed": .bool(w.collapsed)
         ]
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)
         }
-        if let layerTag = DesktopModel.shared.windowLayerTags[w.wid] {
-            obj["layerTag"] = .string(layerTag)
+        if let bundleId = w.bundleId {
+            obj["bundleId"] = .string(bundleId)
+        }
+        if let fullTitle = w.fullTitle {
+            obj["fullTitle"] = .string(fullTitle)
         }
         return .object(obj)
     }
@@ -5356,34 +5285,6 @@ enum Encoders {
         if let cmd = p.devCommand { obj["devCommand"] = .string(cmd) }
         if let pm = p.packageManager { obj["packageManager"] = .string(pm) }
         return .object(obj)
-    }
-
-    static func windowRef(_ ref: WindowRef) -> JSON {
-        var obj: [String: JSON] = [
-            "id": .string(ref.id),
-            "app": .string(ref.app),
-        ]
-        if let hint = ref.contentHint { obj["contentHint"] = .string(hint) }
-        if let tile = ref.tile { obj["tile"] = .string(tile) }
-        if let display = ref.display { obj["display"] = .int(display) }
-        if let wid = ref.wid { obj["wid"] = .int(Int(wid)) }
-        if let pid = ref.pid { obj["pid"] = .int(Int(pid)) }
-        if let title = ref.title { obj["title"] = .string(title) }
-        if let frame = ref.frame {
-            obj["frame"] = .object([
-                "x": .double(frame.x), "y": .double(frame.y),
-                "w": .double(frame.w), "h": .double(frame.h)
-            ])
-        }
-        return .object(obj)
-    }
-
-    static func sessionLayer(_ layer: SessionLayer) -> JSON {
-        .object([
-            "id": .string(layer.id),
-            "name": .string(layer.name),
-            "windows": .array(layer.windows.map { windowRef($0) })
-        ])
     }
 }
 

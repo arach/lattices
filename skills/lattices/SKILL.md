@@ -42,7 +42,7 @@ Use `daemonCall` from `@arach/lattices` only in scripts.
 | Launch or attach this repo | `lattices start` |
 | Screen text | `lattices scan` |
 | Search screen text | `lattices scan search "<query>"` |
-| Switch a layer | `lattices layer <name-or-index>` |
+| Switch a layer | `lattices layer <name-or-slot>` (slots 1-4, 6-9 as ⌘⌥ takes them) |
 | Say something out loud | `lattices voice say "<text>"` (`voice stop` stops speaking) |
 | Raw RPC | `lattices call <method> '<json>'` |
 | Method catalog | `lattices call api.schema` |
@@ -58,11 +58,10 @@ Use these action identifiers. Legacy names still exist as wrappers.
 | Action | Use for |
 | --- | --- |
 | `window.place` | Place a window or session with a typed placement |
-| `layer.activate` | Bring up a workspace layer |
+| `layer.activate` | Switch layers as ⌘⌥ does; `mode: "launch"` starts what isn't running |
 | `space.optimize` | Rebalance windows with an explicit scope and strategy |
 
-`window.tile` is `window.place`. `layer.switch` is `layer.activate` with
-`mode=launch`. `layout.distribute` is `space.optimize` with
+`window.tile` is `window.place`. `layer.switch` is `layer.activate`. `layout.distribute` is `space.optimize` with
 `scope=visible` and `strategy=balanced`.
 
 Resolve before mutating when the target identity matters:
@@ -117,7 +116,7 @@ fresh snapshot. Results are tagged `AX` or `OCR`. Each window has a `wid` for
 
 ```bash
 lattices layer
-lattices layer 0
+lattices layer 1
 lattices layer web
 ```
 

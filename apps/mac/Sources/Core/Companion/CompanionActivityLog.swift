@@ -54,7 +54,8 @@ private extension CompanionActivityLog {
             record(tag: "TMUX", tint: "green", text: "\(sessions.count) tmux sessions indexed")
 
         case .layerSwitched(let index):
-            record(tag: "LAYER", tint: "violet", text: "Switched workspace layer \(index + 1)")
+            let name = LayerOverview.chord(forIndex: index) ?? "workspace layer \(index + 1)"
+            record(tag: "LAYER", tint: "violet", text: "Switched to \(name)")
 
         case .processesChanged(let interesting):
             record(tag: "PROC", tint: "amber", text: "\(interesting.count) terminal processes changed")

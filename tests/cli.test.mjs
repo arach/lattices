@@ -35,6 +35,9 @@ const {
   parseWindowMoveArgs,
   parseWindowPlaceArgs,
 } = await import(pathToFileURL(path.join(repoRoot, "bin/cli/window.ts")).href);
+const { layerListLines, layerTarget, layerWindowCounts, padSlot } = await import(
+  pathToFileURL(path.join(repoRoot, "bin/cli/layer.ts")).href
+);
 
 /** @type {boolean} */
 let daemonRunning = false;
@@ -769,6 +772,54 @@ test("window move --help: lists slots without a running daemon", () => {
   assert.match(out, /lattices window move <wid> --display <n>/);
   assert.match(out, /grid:CxR:c,r/);
   assert.match(out, /bottom-right/);
+});
+
+// ── layer ────────────────────────────────────────────────────────────
+
+test("layer slots: layers fill the pad round its centre", () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7].map(padSlot), [1, 2, 3, 4, 6, 7, 8, 9]);
+  assert.equal(padSlot(8), undefined);
+});
+
+test("layer target: a digit is a pad slot, anything else a name", () => {
+  assert.deepEqual(layerTarget("1"), { index: 0, slot: 1 });
+  assert.deepEqual(layerTarget("6"), { index: 4, slot: 6 });
+  assert.deepEqual(layerTarget("9"), { index: 7, slot: 9 });
+  assert.deepEqual(layerTarget("web"), { name: "web" });
+  assert.match(layerTarget("5").error, /centre/);
+  assert.match(layerTarget("0").error, /1-4 and 6-9/);
+  assert.match(layerTarget("12").error, /1-4 and 6-9/);
+});
+
+test("layer list: slot digits and resolver window counts", () => {
+  const layers = [
+    { index: 0, label: "Web", projectCount: 3 },
+    { index: 4, label: "Docs", projectCount: 1 },
+    { index: 8, label: "Spare", projectCount: 2 },
+  ];
+  const counts = layerWindowCounts({
+    layers: [
+      { index: 0, entries: [{ windows: [{}, {}] }, { windows: [{}] }] },
+      { index: 4, entries: [{ windows: [] }] },
+      { index: 8, entries: [{ windows: [{}] }] },
+    ],
+  });
+  assert.deepEqual([...counts], [[0, 3], [4, 0], [8, 1]]);
+  const lines = layerListLines(layers, 4, counts).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+  assert.deepEqual(lines, [
+    "  [1] Web    3 windows",
+    "  [6] Docs   No windows  ● active",
+    "  [·] Spare  1 window",
+  ]);
+  assert.match(layerListLines(layers, 0)[0], /3 entries/);
+});
+
+test("layer switch: the pad's centre fails without touching the daemon", () => {
+  const { status, stdout, stderr } = runCliRaw(["layer", "5"]);
+  const combined = `${stdout}\n${stderr}`;
+  assert.equal(status, 1, `expected exit 1, got ${status}: ${combined}`);
+  assert.match(combined, /pad's centre/);
+  assert.doesNotMatch(combined, /Daemon not running|Switched/);
 });
 
 // ── search --deep ────────────────────────────────────────────────────

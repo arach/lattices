@@ -588,6 +588,13 @@ private enum CGS {
         return unsafeBitCast(sym, to: SetCurrentSpaceFunc.self)
     }()
 
+    typealias GetWindowBoundsFunc = @convention(c) (Int32, UInt32, UnsafeMutablePointer<CGRect>) -> Int32
+
+    static let getWindowBounds: GetWindowBoundsFunc? = {
+        guard let h = handle, let sym = dlsym(h, "SLSGetWindowBounds") ?? dlsym(h, "CGSGetWindowBounds") else { return nil }
+        return unsafeBitCast(sym, to: GetWindowBoundsFunc.self)
+    }()
+
     // Screen-update freeze used to hide the Dock-swipe transition.
     typealias UpdateFunc = @convention(c) (Int32) -> Int32
 
@@ -1230,6 +1237,17 @@ enum WindowTiler {
         return result.map { $0.intValue }
     }
 
+    /// A window's frame as the WindowServer keeps it, CG coordinates.
+    /// CGWindowList collapses a hidden app's windows to 1×1 on macOS 27;
+    /// this still has the real frame.
+    static func trueBounds(of wid: UInt32) -> CGRect? {
+        guard let mainConn = CGS.mainConnectionID,
+              let getBounds = CGS.getWindowBounds else { return nil }
+        var rect = CGRect.zero
+        guard getBounds(mainConn(), wid, &rect) == 0, !rect.isEmpty else { return nil }
+        return rect
+    }
+
     /// Switch a display to a specific Space.
     /// Returns true once the requested Space becomes current.
     @discardableResult
@@ -1428,7 +1446,7 @@ enum WindowTiler {
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
     /// Move a window between spaces via CGS private APIs. Internal — used by present() and moveWindowToSpace().
-    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
+    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int, switchOnDenial: Bool = true) -> MoveResult? {
         let diag = DiagnosticLog.shared
         guard let mainConn = CGS.mainConnectionID,
               let addToSpaces = CGS.addWindowsToSpaces,
@@ -1453,7 +1471,12 @@ enum WindowTiler {
             return .success(method: "CGS", wid: wid)
         }
 
-        // CGS was silently denied — switch the view instead
+        // CGS was silently denied. Callers that can carry the window
+        // (WindowSpaceCarry) ask for the refusal; the rest switch the view.
+        guard switchOnDenial else {
+            diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction)")
+            return .failed(reason: "denied")
+        }
         diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction) — switching view")
         switchToSpace(spaceId: toSpace)
         return .success(method: "switch-view", wid: wid)
@@ -3031,7 +3054,7 @@ enum WindowTiler {
     /// The SkyLight Space list for a CG display, matched by UUID — SkyLight's
     /// order is not NSScreen's. With "Displays have separate Spaces" off
     /// there is a single shared list, which owns every screen.
-    private static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
+    static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
         if all.count == 1 { return all[0] }
         let id = displayID ?? CGMainDisplayID()
         guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }

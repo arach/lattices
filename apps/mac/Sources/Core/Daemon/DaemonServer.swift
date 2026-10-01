@@ -35,6 +35,9 @@ final class DaemonServer: ObservableObject {
     private static let blockingMethods: Set<String> = [
         "window.pick.start",
         "session.launch",
+        // Carrying a window across Spaces takes about a second per Space.
+        "window.move",
+        "window.present",
     ]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()

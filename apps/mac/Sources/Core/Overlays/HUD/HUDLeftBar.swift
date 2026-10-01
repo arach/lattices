@@ -804,9 +804,10 @@ struct HUDLeftBar: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
 
+            let windowCounts = workspace.layerWindowCounts()
             ForEach(Array(layers.enumerated()), id: \.element.id) { idx, layer in
                 let isActive = idx == workspace.activeLayerIndex
-                let counts = workspace.layerRunningCount(index: idx)
+                let count = windowCounts.indices.contains(idx) ? windowCounts[idx] : 0
                 let isHovered = hoveredLayerID == layer.id
 
                 Button {
@@ -823,14 +824,14 @@ struct HUDLeftBar: View {
                             .foregroundColor(isActive ? Palette.text : Palette.textMuted)
                                 .lineLimit(1)
 
-                            Text("\(counts.running)/\(counts.total) projects")
+                            Text(LayerOverview.countNote(count))
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(Palette.textDim)
                         }
 
                         Spacer()
 
-                        Text("\(idx + 1)")
+                        Text(LayerSlots.slot(forIndex: idx).map(String.init) ?? "·")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(isActive ? Palette.text : Palette.textDim)
                             .frame(width: 18, height: 18)
