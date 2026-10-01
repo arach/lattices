@@ -147,6 +147,13 @@ struct ScreenMapView: View {
     @ObservedObject var controller: ScreenMapController
     @Binding var studioLayerScopeId: String?
     var onNavigate: ((AppPage) -> Void)? = nil
+    /// Set when Overview hosts this as its canvas: the canvas and its header
+    /// only, drawing Overview's scoped windows and outlines.
+    var hosted: OverviewCanvasHost? = nil
+    /// Runs an Overview plan for a hosted canvas key.
+    var onHostedCommand: ((OverviewCommand) -> Void)? = nil
+    /// An outline was clicked; the Bool is ⌘ (extend).
+    var onOutlineClick: ((UInt32, Bool) -> Void)? = nil
     @ObservedObject private var daemon = DaemonServer.shared
     @ObservedObject private var handsOff = HandsOffSession.shared
     @ObservedObject private var diagnosticLog = DiagnosticLog.shared
@@ -186,6 +193,10 @@ struct ScreenMapView: View {
     @State private var canvasTransitionOffset: CGFloat = 0
     @State private var canvasTransitionOpacity: Double = 1.0
     @State private var isSpaceHeld: Bool = false
+    /// Hosted, whether the canvas has keyboard focus: only then do its keys
+    /// go to the canvas. A click on it asks for focus; Tab, or a click on
+    /// the list or any control, moves focus on and clears it.
+    @FocusState private var hostedCanvasFocused: Bool
     @State private var canvasPanStart: NSPoint? = nil
     @State private var canvasPanStartOffset: CGPoint = .zero
     @State private var searchOverlayFrame: CGRect = .zero
@@ -194,7 +205,7 @@ struct ScreenMapView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                if let editor = controller.editor {
+                if hosted == nil, let editor = controller.editor {
                     layerSidebar(editor: editor)
                     panelResizeHandle(isActive: $isDraggingSidebar, width: $sidebarWidth,
                                       range: 140...320, edge: .trailing)
@@ -204,6 +215,9 @@ struct ScreenMapView: View {
                     VStack(spacing: 0) {
                         canvasHeaderBezel
                         screenMapCanvas(editor: controller.editor)
+                            .focusable(hosted != nil)
+                            .focusEffectDisabled()
+                            .focused($hostedCanvasFocused)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 8)
@@ -226,35 +240,34 @@ struct ScreenMapView: View {
                     }
                     // Viewport controls removed — accessible via keyboard shortcuts
                 }
-                if let editor = controller.editor {
+                if hosted == nil, let editor = controller.editor {
                     panelResizeHandle(isActive: $isDraggingInspector, width: $inspectorWidth,
                                       range: 220...480, edge: .leading)
                     inspectorPane(editor: editor)
                 }
             }
-            if assistantChat.isVisible {
-                WorkspaceAssistantDock(session: assistantChat)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            if hosted == nil {
+                if assistantChat.isVisible {
+                    WorkspaceAssistantDock(session: assistantChat)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                footerBar
             }
-            footerBar
         }
         .background(Palette.bg)
         .overlay(flashOverlay)
         .onAppear {
             installKeyHandler()
             installMouseMonitors()
-            layerOverview.start()
+            if hosted == nil { layerOverview.start() }
         }
         .onDisappear {
             removeKeyHandler()
             removeMouseMonitors()
-            layerOverview.stop()
+            if hosted == nil { layerOverview.stop() }
         }
         .onChange(of: controller.editor?.isPreviewing) { isPreviewing in
             handlePreviewChange(isPreviewing: isPreviewing ?? false)
-        }
-        .onChange(of: studioLayerScopeId) { _ in
-            controller.clearSelection()
         }
     }
 
@@ -277,9 +290,20 @@ struct ScreenMapView: View {
     }
 
     private func scopedWindows(_ windows: [ScreenMapWindowEntry]) -> [ScreenMapWindowEntry] {
+        if let hosted { return windows.filter { hosted.liveWids.contains($0.id) } }
         guard let layer = activeWorkspaceLayer else { return windows }
         let showing = layer.showingIds
         return windows.filter { showing.contains($0.id) }
+    }
+
+    /// What the hosted canvas draws now: live tiles after the Stack and
+    /// monitor filters, plus Overview's outlines.
+    private func hostedCanvasCount(_ hosted: OverviewCanvasHost, editor: ScreenMapEditorState) -> String {
+        let live = visibleWindowCount(in: editor)
+        var text = "\(live) on canvas"
+        if !editor.isShowingAll { text += " (\(editor.layerLabel.lowercased()))" }
+        if !hosted.outlines.isEmpty { text += " · \(hosted.outlines.count) outlined" }
+        return text
     }
 
     private func visibleWindowCount(in editor: ScreenMapEditorState) -> Int {
@@ -393,11 +417,57 @@ struct ScreenMapView: View {
             .contentShape(Rectangle())
     }
 
+    // MARK: - Overview hosting
+
+    /// A window Overview places without a live tile: a dashed outline with
+    /// its title, state and where the position comes from.
+    private func overviewOutline(_ item: OverviewCanvasItem, rect: CGRect, selected: Bool) -> some View {
+        let source = item.position.label
+        return RoundedRectangle(cornerRadius: 3)
+            .strokeBorder(style: StrokeStyle(lineWidth: selected ? 1.5 : 1, dash: [4, 3]))
+            .foregroundColor(selected ? Palette.text : Palette.textMuted.opacity(0.55))
+            .background(RoundedRectangle(cornerRadius: 3).fill(selected ? Color.white.opacity(0.06) : Color.clear))
+            .overlay(alignment: .topLeading) {
+                if rect.width > 60, rect.height > 28 {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.title.isEmpty ? item.app : item.title)
+                            .font(Typo.monoBold(8)).foregroundColor(Palette.textDim).lineLimit(1)
+                        Text([item.state.label, source].compactMap { $0 }.joined(separator: " · "))
+                            .font(Typo.mono(7)).foregroundColor(Palette.textMuted).lineLimit(1)
+                    }
+                    .padding(4)
+                }
+            }
+            .frame(width: max(rect.width, 4), height: max(rect.height, 4))
+            .offset(x: rect.minX, y: rect.minY)
+            .allowsHitTesting(false)
+            .accessibilityLabel("\(item.app) \(item.title), \(item.state.label)\(source.map { ", \($0)" } ?? "")\(selected ? ", selected" : "")")
+    }
+
+    /// Steps through the canvas's stack depths. Browsing only.
+    private func stackControl(editor: ScreenMapEditorState) -> some View {
+        HStack(spacing: 4) {
+            Text("Stack").font(Typo.mono(8)).foregroundColor(Palette.textMuted)
+            Button { editor.cyclePreviousLayer() } label: { Image(systemName: "chevron.left").font(.system(size: 8, weight: .semibold)) }
+                .buttonStyle(.plain).accessibilityLabel("Previous stack depth")
+            Text(editor.layerLabel).font(Typo.monoBold(8)).foregroundColor(Palette.textDim)
+            Button { editor.cycleLayer() } label: { Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)) }
+                .buttonStyle(.plain).accessibilityLabel("Next stack depth")
+        }
+        .foregroundColor(Palette.textMuted)
+    }
+
     // MARK: - Canvas Header Bezel
 
     private var canvasHeaderBezel: some View {
         HStack(spacing: 6) {
-            if let editor = controller.editor {
+            if let hosted, let editor = controller.editor {
+                Text(hosted.title).font(Typo.monoBold(9)).foregroundColor(Palette.textDim).lineLimit(1)
+                Spacer()
+                Text(hostedCanvasCount(hosted, editor: editor))
+                    .font(Typo.mono(8)).foregroundColor(Palette.textMuted).lineLimit(1)
+                stackControl(editor: editor)
+            } else if let editor = controller.editor {
                 if let name = scopeName {
                     Circle().fill(Palette.running.opacity(0.55)).frame(width: 6, height: 6)
                     Text("Layer").font(Typo.monoBold(9)).foregroundColor(Palette.textMuted)
@@ -510,9 +580,13 @@ struct ScreenMapView: View {
                     if let layer = activeWorkspaceLayer {
                         LayerOverviewDetail(
                             overview: layer,
-                            onCanvas: Set(scopedWindows(editor.renderedCanvasWindows).map(\.id)),
                             selected: controller.selectedWindowIds,
-                            onSelect: { controller.selectSingle($0) },
+                            onSelect: { wid in
+                                // Studio's selection is its canvas.
+                                if scopedWindows(editor.renderedCanvasWindows).contains(where: { $0.id == wid }) {
+                                    controller.selectSingle(wid)
+                                }
+                            },
                             onSwitch: { switchToWorkspaceLayer(layer) }
                         )
                     }
@@ -2406,6 +2480,13 @@ struct ScreenMapView: View {
                         .offset(x: rect.minX, y: rect.minY)
                 }
 
+                if let hosted {
+                    // Overview's outlines: windows it can place but not show live
+                    ForEach(hosted.outlines) { item in
+                        overviewOutline(item, rect: metrics.mapRect(for: item.frame), selected: hosted.selected.contains(item.wid))
+                    }
+                }
+
                 if !usesProjectionWindows {
                     // Live windows back-to-front
                     ForEach(Array(canvasWindows.sorted(by: { $0.zIndex > $1.zIndex }).enumerated()), id: \.element.id) { _, win in
@@ -3604,6 +3685,23 @@ struct ScreenMapView: View {
             if isEditableTextResponder(win.firstResponder) {
                 return event
             }
+            // Hosted, the canvas takes only its own keys, and only while it
+            // has focus. A held Space's release always reaches the pan code.
+            if hosted != nil, !(event.keyCode == 49 && event.type == .keyUp && isSpaceHeld) {
+                switch OverviewModel.canvasKeyRoute(
+                    event.keyCode, modifiers: event.modifierFlags,
+                    canvasFocused: hostedCanvasFocused, searching: controller.isSearchActive
+                ) {
+                case .pass:
+                    return event
+                case .overview(let command):
+                    if event.type == .keyDown { onHostedCommand?(command) }
+                    return nil
+                case .canvas:
+                    // Studio's tiling mode turns these keys into window moves.
+                    if controller.editor?.isTilingMode == true { return event }
+                }
+            }
             // Track space key for canvas drag-to-pan (only when no modifiers are held,
             // so Hyper+Space / Ctrl+Opt+Space are not intercepted).
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -3658,7 +3756,9 @@ struct ScreenMapView: View {
             guard let eventWindow = event.window,
                   eventWindow === ScreenMapWindowController.shared.nsWindow else { return event }
             let flippedPt = flippedScreenPoint(event)
-            guard isCanvasInteractionEvent(event, flippedPoint: flippedPt) else { return event }
+            let onCanvas = isCanvasInteractionEvent(event, flippedPoint: flippedPt)
+            if hosted != nil, onCanvas { hostedCanvasFocused = true }
+            guard onCanvas else { return event }
 
             // Space+click → begin canvas pan
             if isSpaceHeld,
@@ -3679,6 +3779,11 @@ struct ScreenMapView: View {
                 }
                 canvasPanStart = event.locationInWindow
                 canvasPanStartOffset = editor.panOffset
+                return nil
+            } else if let hosted, let editor = controller.editor,
+                      let wid = outlineHit(flippedScreenPt: flippedPt, editor: editor, outlines: hosted.outlines) {
+                screenMapClickWindowId = nil
+                onOutlineClick?(wid, NSEvent.modifierFlags.contains(.command))
                 return nil
             } else {
                 screenMapClickWindowId = nil
@@ -3806,6 +3911,8 @@ struct ScreenMapView: View {
 
             let flippedPt = flippedScreenPoint(event)
             guard isCanvasInteractionEvent(event, flippedPoint: flippedPt) else { return event }
+            // Its menu stages stack moves; Overview acts through its own plans.
+            if hosted != nil { return nil }
 
             if let hit = canvasHit(flippedScreenPt: flippedPt, editor: editor) {
                 if !controller.isSelected(hit.id) {
@@ -3963,6 +4070,17 @@ struct ScreenMapView: View {
             }
         }
         return nil
+    }
+
+    private func outlineHit(flippedScreenPt: CGPoint, editor: ScreenMapEditorState, outlines: [OverviewCanvasItem]) -> UInt32? {
+        guard isCanvasPoint(flippedScreenPt) else { return nil }
+        let projection = CanvasProjection(editor: editor)
+        guard projection.scale > 0 else { return nil }
+        let mapPoint = projection.mapPoint(forCanvasPoint: CGPoint(
+            x: flippedScreenPt.x - screenMapCanvasOrigin.x,
+            y: flippedScreenPt.y - screenMapCanvasOrigin.y
+        ))
+        return outlines.last { projection.mapRect(for: $0.frame).contains(mapPoint) }?.wid
     }
 
     private func isCanvasPoint(_ point: CGPoint) -> Bool {
@@ -4221,7 +4339,7 @@ struct ScreenMapPreviewOverlay: View {
                                 .foregroundColor(color.opacity(0.7))
                         }
                         if win.hasEdits && h > 80 {
-                            Text("D\(win.layer)")
+                            Text("S\(win.layer)")
                                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                                 .foregroundColor(color.opacity(0.5))
                         }

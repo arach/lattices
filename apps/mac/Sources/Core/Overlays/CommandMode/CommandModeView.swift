@@ -237,7 +237,7 @@ struct CommandModeView: View {
         }
     }
 
-    /// The Windows page (`AppPage.desktopInventory`, embedded in the app shell).
+    /// The embedded window selector. The app shell shows Overview instead.
     /// Filters live in their own pane, an inspector pane stands in for the
     /// chord footer, and OCR matches render inline under their row instead of
     /// in a detached snippet list. See design/studio/.../shell/WindowsPanel.tsx

@@ -47,10 +47,10 @@ enum HotkeyAction: String, CaseIterable, Codable {
     var label: String {
         switch self {
         case .palette:         return "Command Palette"
-        case .screenMap:       return "Studio"
+        case .screenMap:       return "Overview"
         case .bezel:           return "Window Bezel"
         case .cheatSheet:      return "Cheat Sheet"
-        case .desktopInventory: return "Window Selector"
+        case .desktopInventory: return "Overview (alternate)"
         case .omniSearch:      return "Search"
         case .voiceCommand:    return "Voice Command"
         case .handsOff:        return "Hands-Off Mode"

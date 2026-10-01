@@ -228,7 +228,7 @@ final class KeyboardRemapController: ObservableObject {
         ]
         var installedLabel = "unknown"
         var installedLocation: CGEventTapLocation = .cghidEventTap
-        let tap = tapCandidates.lazy.compactMap { location, label -> CFMachPort? in
+        let tap = EventTapInstallation.firstAvailable(tapCandidates) { location, label -> CFMachPort? in
             let candidate = CGEvent.tapCreate(
                 tap: location,
                 place: .headInsertEventTap,
@@ -242,7 +242,7 @@ final class KeyboardRemapController: ObservableObject {
                 installedLocation = location
             }
             return candidate
-        }.first
+        }
 
         guard let tap else {
             DiagnosticLog.shared.warn("KeyboardRemap: failed to install keyboard event tap")

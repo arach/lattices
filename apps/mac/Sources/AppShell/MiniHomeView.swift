@@ -1213,7 +1213,7 @@ private struct MiniHomeCommandJumps: View {
     var body: some View {
         HStack(spacing: 10) {
             jump("magnifyingglass", "Inventory") {
-                ScreenMapWindowController.shared.showPage(.desktopInventory)
+                ScreenMapWindowController.shared.showPage(.overview)
             }
             jump("list.bullet.rectangle", "Activity") {
                 ScreenMapWindowController.shared.showPage(.activity)

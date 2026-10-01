@@ -225,7 +225,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     @objc private func menuAssistant() { AssistantAccess.show() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
-    @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.screenMap) }
+    @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.overview) }
     @objc private func menuSearch() { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }

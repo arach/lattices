@@ -99,7 +99,7 @@ struct HomeDashboardView: View {
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(title: "Sessions", count: sessions.count, actionTitle: "Manage") {
-                onNavigate?(.screenMap)
+                onNavigate?(.overview)
             }
 
             if sessions.isEmpty {
@@ -218,7 +218,7 @@ struct HomeDashboardView: View {
         let windows = activeWindows
         return VStack(alignment: .leading, spacing: 10) {
             sectionHeader(title: "Active windows", count: windows.count, actionTitle: "Open in Windows") {
-                onNavigate?(.desktopInventory)
+                onNavigate?(.overview)
             }
 
             if windows.isEmpty {

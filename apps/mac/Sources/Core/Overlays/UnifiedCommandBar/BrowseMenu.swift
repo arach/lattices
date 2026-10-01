@@ -174,7 +174,7 @@ enum BrowseMenu {
             },
             OmniResult(kind: .action, title: "Studio",
                        subtitle: "Arrange windows & layers", icon: "rectangle.3.group", score: 0) {
-                ScreenMapWindowController.shared.showPage(.screenMap)
+                ScreenMapWindowController.shared.showPage(.overview)
             },
             OmniResult(kind: .action, title: "Activity Log",
                        subtitle: "View logs, events, and diagnostics", icon: "list.bullet.rectangle", score: 0) {

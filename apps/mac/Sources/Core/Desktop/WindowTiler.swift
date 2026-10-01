@@ -2677,23 +2677,33 @@ enum WindowTiler {
 
     /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
     /// If `region` is provided (fractional x, y, w, h), the grid is constrained to that sub-area.
+    /// The whole batch lands on one screen: `screen` when given, else the
+    /// first window's. Callers with windows on several monitors call once
+    /// per monitor with its screen.
     static func batchRaiseAndDistribute(
         windows: [(wid: UInt32, pid: Int32)],
         region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil,
         reactivateLattices: Bool = true,
-        shape shapeOverride: [Int]? = nil
+        shape shapeOverride: [Int]? = nil,
+        screen explicitScreen: NSScreen? = nil
     ) {
         guard !windows.isEmpty else { return }
         let diag = DiagnosticLog.shared
 
-        // Find screen from first window
-        guard let firstFrame = cgWindowFrame(wid: windows[0].wid) else {
-            diag.warn("batchRaiseAndDistribute: no frame for first window wid=\(windows[0].wid)")
-            return
+        let screen: NSScreen
+        if let explicitScreen {
+            screen = explicitScreen
+        } else {
+            // The first window's screen. Its CG frame is top-left origin, so
+            // convert before testing it against AppKit's screen frames.
+            guard let firstFrame = cgWindowFrame(wid: windows[0].wid) else {
+                diag.warn("batchRaiseAndDistribute: no frame for first window wid=\(windows[0].wid)")
+                return
+            }
+            screen = screenForWindowFrame(WindowFrame(
+                x: firstFrame.minX, y: firstFrame.minY, w: firstFrame.width, h: firstFrame.height
+            ))
         }
-        let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(NSPoint(x: firstFrame.midX, y: firstFrame.midY))
-        }) ?? NSScreen.main ?? NSScreen.screens[0]
 
         let visible = screen.visibleFrame
         let screenFrame = screen.frame

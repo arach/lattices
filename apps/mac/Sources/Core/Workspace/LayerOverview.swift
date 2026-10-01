@@ -57,6 +57,23 @@ struct LayerOverview: Identifiable, Equatable {
         let app: String
         let title: String
         let spot: Spot
+        /// Its Spaces and frame (CG, top-left origin) as the inventory last
+        /// had them: the true frame for a hidden app's collapsed window.
+        var spaceIds: [Int] = []
+        var frame: CGRect = .zero
+        /// How its entry holds it: a generated pin, a rule, an app...
+        var tier: LayerMembership.Tier? = nil
+        var id: UInt32 { wid }
+    }
+
+    /// A member Spaces can't place: minimized, or closed but kept. Its
+    /// state is unknown, so it stays out of the confirmed `windows`.
+    struct Unplaced: Identifiable, Equatable {
+        let wid: UInt32
+        let app: String
+        let title: String
+        var frame: CGRect = .zero
+        var tier: LayerMembership.Tier? = nil
         var id: UInt32 { wid }
     }
 
@@ -70,6 +87,8 @@ struct LayerOverview: Identifiable, Equatable {
         let windows: [Window]
         /// Why nothing matched (`.noWindow`, `.notOpen`), nil when something did.
         let missing: LayerRoster.Place?
+        /// Members it holds that Spaces can't place, kept apart from `windows`.
+        var unknown: [Unplaced] = []
         var id: Int { index }
     }
 
@@ -159,21 +178,28 @@ extension LayerOverview {
         layers.enumerated().map { index, layer in
             let members = resolution.layers.indices.contains(index) ? resolution.layers[index] : []
             let entries = layer.projects.enumerated().map { projectIndex, project -> Entry in
-                let windows = members.compactMap { member -> Window? in
-                    guard member.project == projectIndex else { return nil }
+                var windows: [Window] = []
+                var unknown: [Unplaced] = []
+                for member in members where member.project == projectIndex {
                     let entry = member.entry
                     let frame = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
+                    let tier = resolution.owners[entry.wid]?.tier
                     guard let spot = spot(place: place(entry.spaceIds), frame: frame, appHidden: entry.appHidden, main: main) else {
-                        return nil
+                        unknown.append(Unplaced(wid: entry.wid, app: entry.app, title: entry.title, frame: frame, tier: tier))
+                        continue
                     }
-                    return Window(wid: entry.wid, app: entry.app, title: entry.title, spot: spot)
+                    windows.append(Window(
+                        wid: entry.wid, app: entry.app, title: entry.title, spot: spot,
+                        spaceIds: entry.spaceIds, frame: frame, tier: tier
+                    ))
                 }
                 return Entry(
                     index: projectIndex,
                     name: name(of: project, at: projectIndex, groupLabel: groupLabel),
                     pattern: pattern(of: project),
                     windows: windows,
-                    missing: windows.isEmpty ? missing(project) : nil
+                    missing: windows.isEmpty ? missing(project) : nil,
+                    unknown: unknown
                 )
             }
             return LayerOverview(

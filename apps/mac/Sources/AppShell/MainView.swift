@@ -329,7 +329,7 @@ struct MainView: View {
                 icon: "rectangle.3.group",
                 accentColor: Palette.textDim
             ) {
-                ScreenMapWindowController.shared.showPage(.screenMap)
+                ScreenMapWindowController.shared.showPage(.overview)
             }
             ActionRow(
                 label: "Command Bar",
