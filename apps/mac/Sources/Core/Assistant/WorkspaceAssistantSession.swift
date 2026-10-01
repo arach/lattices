@@ -1871,7 +1871,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                     "deepScanBudget": prefs.ocrDeepBudget,
                 ],
                 "mouseShortcuts": mouseShortcutContextPayload(),
-                "studioLayers": StudioLayerStore.shared.assistantContextPayload(),
+                "layers": WorkspaceManager.shared.layersContextPayload(),
                 "liveTabGroups": LiveTabGroupStore.shared.assistantContextPayload(),
             ],
             "settingsCatalog": [
@@ -1917,7 +1917,6 @@ final class WorkspaceAssistantSession: ObservableObject {
             ],
             "settingsFiles": [
                 "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
-                "studioLayers": StudioLayerStore.shared.configFilePath,
                 "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
                 "mouseShortcutsHistory": MouseShortcutStore.shared.historyDirectoryURL.path,
                 "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",
@@ -1931,7 +1930,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 "lattices restart [pane]",
                 "lattices tile <position>",
                 "lattices group [id]",
-                "lattices layer [name|index]",
+                "lattices layer [name|slot]",
                 "lattices windows --json",
                 "lattices search <query>",
                 "lattices app restart",

@@ -3149,7 +3149,7 @@ struct SettingsContentView: View {
 
                             shortcutMapSection(
                                 "Layers",
-                                actions: HotkeyAction.layerActions + [.layerPrev, .layerNext, .layerTag]
+                                actions: HotkeyAction.layerActions + [.layerPrev, .layerNext, .layerUp, .layerDown, .layerTag]
                             )
 
                             shortcutSectionCard(

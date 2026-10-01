@@ -88,31 +88,46 @@ enum BrowseMenu {
         let workspace = WorkspaceManager.shared
         guard let layers = workspace.config?.layers else { return [] }
         var out: [OmniResult] = []
+        let windowCounts = workspace.layerWindowCounts()
         for (index, layer) in layers.enumerated() {
             let i = index
-            let counts = workspace.layerRunningCount(index: i)
+            let count = windowCounts.indices.contains(i) ? windowCounts[i] : 0
             let isActive = i == workspace.activeLayerIndex
-            if counts.running > 0 {
+            let facts: [String?] = [LayerOverview.chord(forIndex: i), LayerOverview.countNote(count), isActive ? "active" : nil]
+            let subtitle = facts.compactMap { $0 }.joined(separator: " · ")
+            if count > 0 {
                 out.append(OmniResult(
                     kind: .layer,
                     title: "Focus Layer: \(layer.label)",
-                    subtitle: "\(counts.running)/\(counts.total) running" + (isActive ? " · active" : ""),
+                    subtitle: subtitle,
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {
-                    workspace.tileLayer(index: i)
+                    workspace.focusLayer(index: i)
                 })
             } else {
                 out.append(OmniResult(
                     kind: .layer,
                     title: "Launch Layer: \(layer.label)",
-                    subtitle: "Start all \(layer.projects.count) project\(layer.projects.count == 1 ? "" : "s")",
+                    subtitle: subtitle,
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {
                     workspace.tileLayer(index: i, launch: true)
                 })
             }
+        }
+        let stage = LayerStage.shared.status()
+        if !stage.parked.isEmpty || !stage.hiddenApps.isEmpty {
+            out.append(OmniResult(
+                kind: .layer,
+                title: "Show All Windows",
+                subtitle: "\(stage.parked.count) parked · \(stage.hiddenApps.count) hidden",
+                icon: "eye",
+                score: 0
+            ) {
+                DispatchQueue.global(qos: .userInitiated).async { LayerStage.shared.showAll() }
+            })
         }
         return out
     }
@@ -174,8 +189,9 @@ enum BrowseMenu {
                 SettingsWindowController.shared.show()
             },
             OmniResult(kind: .action, title: "Refresh Projects",
-                       subtitle: "Re-scan for .lattices.json configs", icon: "arrow.clockwise", score: 0) {
+                       subtitle: "Re-scan .lattices.json configs, reload workspace.json", icon: "arrow.clockwise", score: 0) {
                 ProjectScanner.shared.scan()
+                WorkspaceManager.shared.reloadConfig()
             },
             OmniResult(kind: .action, title: "Quit Lattices",
                        subtitle: "Exit the menu bar app", icon: "power", score: 0) {

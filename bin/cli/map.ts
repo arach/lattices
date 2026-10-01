@@ -35,7 +35,6 @@ export type MapWindow = {
   isOnScreen: boolean;
   axVerified?: boolean;
   latticesSession?: string;
-  layerTag?: string;
 };
 
 type MapOptions = {
@@ -487,7 +486,6 @@ function snapshotWindow(window: MapWindow, zIndex: number): WorkspaceMapSnapshot
     isOnScreen: window.isOnScreen,
     ...(window.axVerified === undefined ? {} : { axVerified: window.axVerified }),
     ...(window.latticesSession === undefined ? {} : { latticesSession: window.latticesSession }),
-    ...(window.layerTag === undefined ? {} : { layerTag: window.layerTag }),
     zIndex,
   };
 }

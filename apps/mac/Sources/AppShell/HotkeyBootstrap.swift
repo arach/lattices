@@ -45,28 +45,62 @@ enum HotkeyBootstrap {
         }
 
         registerLayerHotkeys(store: store)
+        LayerChordMonitor.shared.start()
         registerTilingHotkeys(store: store)
     }
 
     private static func registerLayerHotkeys(store: HotkeyStore) {
-        store.register(action: .layerNext) { SessionLayerStore.shared.cycleNext() }
-        store.register(action: .layerPrev) { SessionLayerStore.shared.cyclePrev() }
-        store.register(action: .layerTag) { SessionLayerStore.shared.tagFrontmostWindow() }
+        store.register(action: .layerPrev) { stepLayer(.left) }
+        store.register(action: .layerNext) { stepLayer(.right) }
+        store.register(action: .layerUp) { stepLayer(.up) }
+        store.register(action: .layerDown) { stepLayer(.down) }
+        store.register(action: .layerTag) { WorkspaceManager.shared.addFrontmostWindowToActiveLayer() }
 
-        let workspace = WorkspaceManager.shared
-        let configLayerCount = (workspace.config?.layers ?? []).count
-        let maxLayers = max(configLayerCount, 9)
-        for (index, action) in HotkeyAction.layerActions.prefix(maxLayers).enumerated() {
-            store.register(action: action) {
-                let session = SessionLayerStore.shared
-                if !session.layers.isEmpty && index < session.layers.count {
-                    session.switchTo(index: index)
-                } else {
-                    workspace.focusLayer(index: index)
-                }
-                EventBus.shared.post(.layerSwitched(index: index))
-            }
+        for (offset, action) in HotkeyAction.layerActions.enumerated() {
+            let slot = offset + 1
+            store.register(action: action) { selectSlot(slot) }
         }
+    }
+
+    /// Cmd+Opt+N switches to the layer in slot N of the pad. The middle
+    /// slot, and any slot without a layer, shows where you are instead.
+    private static func selectSlot(_ slot: Int) {
+        if LayerPreview.shared.select(slot: slot) { return }
+        let workspace = WorkspaceManager.shared
+        guard let index = LayerSlots.index(forSlot: slot), workspace.layers.indices.contains(index) else {
+            showCurrentLayer()
+            return
+        }
+        workspace.focusLayer(index: index)
+        LayerPreview.shared.arm()
+    }
+
+    /// Shows the bezel on the layer you're on, without switching.
+    static func showCurrentLayer() {
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        guard !layers.isEmpty else { return }
+        let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
+        workspace.showBezel(for: current, in: layers)
+        LayerPreview.shared.arm()
+    }
+
+    /// Cmd+Opt+arrows move across the pad the way they point. They hop the
+    /// middle and don't wrap: at the pad's edge, the bezel shows where you are
+    /// briefly, its lit slot bumping the way you pushed.
+    private static func stepLayer(_ direction: LayerSlots.Direction) {
+        // Frozen on a preview (Space mid-flip), its tap browses instead.
+        if LayerPreview.shared.step(direction) { return }
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        guard !layers.isEmpty else { return }
+        let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
+        guard let index = LayerSlots.neighbour(of: current, direction, count: layers.count) else {
+            workspace.showBezel(for: current, in: layers, edge: direction)
+            return
+        }
+        workspace.focusLayer(index: index)
+        LayerPreview.shared.arm()
     }
 
     private static func registerTilingHotkeys(store: HotkeyStore) {

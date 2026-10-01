@@ -34,6 +34,21 @@ struct Chord {
     let keyCode: UInt16
     let label: String       // e.g. "tile all"
     let action: () -> Void
+
+    /// A layer's chord, keyed by its pad slot digit.
+    var isLayer: Bool { Int(key) != nil }
+
+    /// The digit keys' key codes, by digit.
+    static let digitKeyCodes: [Int: UInt16] = [1: 18, 2: 19, 3: 20, 4: 21, 5: 23, 6: 22, 7: 26, 8: 28, 9: 25]
+
+    /// The key for each of `count` layers that has a pad slot: the slot's
+    /// digit, as ⌘⌥ takes it (`LayerSlots`).
+    static func layerKeys(count: Int) -> [(index: Int, slot: Int, keyCode: UInt16)] {
+        (0..<max(count, 0)).compactMap { index -> (index: Int, slot: Int, keyCode: UInt16)? in
+            guard let slot = LayerSlots.slot(forIndex: index), let keyCode = digitKeyCodes[slot] else { return nil }
+            return (index: index, slot: slot, keyCode: keyCode)
+        }
+    }
 }
 
 // MARK: - Desktop Inventory Mode
@@ -1715,25 +1730,25 @@ final class CommandModeState: ObservableObject {
             }
         })
 
-        // [1]-[3] layer focus (dynamic)
+        // [1]-[9] layer focus, on the ⌘⌥ pad's digits
         let layers = workspace.config?.layers ?? []
-        let layerKeyCodes: [UInt16] = [18, 19, 20]  // 1, 2, 3
-        for (i, layer) in layers.prefix(3).enumerated() {
-            let idx = i
-            chords.append(Chord(key: "\(i + 1)", keyCode: layerKeyCodes[i], label: layer.label.lowercased()) {
-                WorkspaceManager.shared.tileLayer(index: idx)
+        for key in Chord.layerKeys(count: layers.count) {
+            let index = key.index
+            chords.append(Chord(key: "\(key.slot)", keyCode: key.keyCode, label: layers[index].label.lowercased()) {
+                WorkspaceManager.shared.focusLayer(index: index)
             })
         }
 
         // [l] launch layer — explicitly start non-running projects
         chords.append(Chord(key: "l", keyCode: 37, label: "launch layer") {
             let ws = WorkspaceManager.shared
-            ws.tileLayer(index: ws.activeLayerIndex, launch: true, force: true)
+            ws.tileLayer(index: ws.activeLayerIndex, launch: true)
         })
 
         // [r] refresh
         chords.append(Chord(key: "r", keyCode: 15, label: "refresh") {
             ProjectScanner.shared.scan()
+            WorkspaceManager.shared.reloadConfig()
             TmuxModel.shared.poll()
             InventoryManager.shared.refresh()
         })

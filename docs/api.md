@@ -1499,9 +1499,6 @@ Supported action types:
 | `window.tile` | write | Compatibility wrapper for session tiling |
 | `window.focus` | write | Focus a window / switch Spaces |
 | `window.move` | write | Move a window to another display, placement slot, or Space |
-| `window.assignLayer` | write | Tag a window to a layer |
-| `window.removeLayer` | write | Remove a window's layer tag |
-| `window.layerMap` | read | All window→layer assignments |
 | `space.optimize` | write | Optimize a set of windows using an explicit scope and strategy |
 | `layout.distribute` | write | Compatibility wrapper for visible-window balancing |
 
@@ -1522,7 +1519,7 @@ reads `desktop.snapshot` when the app is new enough).
 ```json
 {
   "frontmost": { "wid": 1234, "app": "iTerm2", "title": "…", "pid": 1 },
-  "activeLayer": { "id": "web", "index": 0 },
+  "activeLayer": { "id": "web", "label": "Web", "index": 0, "slot": 1, "active": true, "layout": null, "entries": [] },
   "displays": [ { "displayIndex": 0, "name": "Built-in", "frame": {}, "visibleFrame": {}, "currentSpaceId": 1, "spaces": [] } ],
   "currentSpaceId": 1,
   "windows": [
@@ -1570,17 +1567,13 @@ List all visible windows tracked by the desktop model.
     "frame": { "x": 0, "y": 25, "w": 960, "h": 1050 },
     "spaceIds": [1],
     "isOnScreen": true,
-    "latticesSession": "myapp-a1b2c3",
-    "layerTag": "web"
+    "latticesSession": "myapp-a1b2c3"
   }
 ]
 ```
 
 The `latticesSession` field is present only on windows that belong to
 a lattices session (matched via the `[lattices:name]` title tag).
-
-The `layerTag` field is present when a window has been manually assigned
-to a layer via `window.assignLayer`.
 
 #### `windows.get`
 
@@ -1681,8 +1674,8 @@ terminal/JSON projection, and visible-surface lifecycle guidance.
     "visibleFrame": { "x": 0, "y": 38, "w": 1728, "h": 1079 },
     "currentSpaceId": 1,
     "spaces": [
-      { "id": 1, "index": 1, "display": 0, "isCurrent": true },
-      { "id": 2, "index": 2, "display": 0, "isCurrent": false }
+      { "id": 1, "index": 1, "name": "Desktop 1", "display": 0, "isCurrent": true },
+      { "id": 2, "index": 2, "name": "Desktop 2", "display": 0, "isCurrent": false }
     ]
   }
 ]
@@ -1833,45 +1826,6 @@ await daemonCall('window.move', { wid: 4182, display: 1, placement: 'right' })
 // Plan only — validate the move and preview frames without executing
 await daemonCall('window.move', { wid: 4182, display: 1, dryRun: true })
 ```
-
-#### `window.assignLayer`
-
-Manually tag a window to a layer. Tagged windows are raised and tiled
-when that layer activates, even if they aren't declared in `workspace.json`.
-
-**Params**:
-
-| Field   | Type   | Required | Description                    |
-|---------|--------|----------|--------------------------------|
-| `wid`   | number | yes      | CGWindowID                     |
-| `layer` | string | yes      | Layer ID to assign             |
-
-#### `window.removeLayer`
-
-Remove a window's layer tag.
-
-**Params**:
-
-| Field | Type   | Required | Description    |
-|-------|--------|----------|----------------|
-| `wid` | number | yes      | CGWindowID     |
-
-#### `window.layerMap`
-
-Return all current window→layer assignments.
-
-**Params**: none
-
-**Returns**:
-
-```json
-{
-  "1234": "web",
-  "5678": "mobile"
-}
-```
-
-Keys are CGWindowIDs (as strings), values are layer IDs.
 
 #### `space.optimize`
 
@@ -2047,9 +2001,16 @@ Restart a specific pane's process within a session.
 |--------|------|-------------|
 | `projects.list` | read | Discovered projects |
 | `projects.scan` | write | Re-scan project directory |
-| `layers.list` | read | Workspace layers and active index |
-| `layer.activate` | write | Activate a workspace layer using an explicit mode |
-| `layer.switch` | write | Compatibility wrapper for launch-style layer activation |
+| `layers.list` | read | Workspace layers, active index, and what switches put away |
+| `layers.members` | read | Each layer's entries and the windows they hold, on any desktop |
+| `layers.reveal` | write | Show All: put back parked windows, unhide apps a switch hid |
+| `layers.create` | write | Save windows as a new layer |
+| `layers.assign` | write | Add windows to a layer |
+| `layers.unassign` | write | Take windows out of a layer |
+| `layers.rename` | write | Rename a layer |
+| `layers.delete` | write | Delete a layer |
+| `layer.activate` | write | Switch to a workspace layer; `focus`, `tile` or `launch` |
+| `layer.switch` | write | Same as `layer.activate` |
 | `group.launch` | write | Launch a tab group |
 | `group.kill` | write | Kill a tab group |
 | `tabStacks.list` | read | List ephemeral cross-app tab stacks |
@@ -2094,7 +2055,8 @@ repo or adding a `.lattices.json` config.
 
 #### `layers.list`
 
-List configured workspace layers and the active index.
+List configured workspace layers and the active index. `stage` lists
+what layer switches have put away: parked windows and hidden apps.
 
 **Params**: none
 
@@ -2106,16 +2068,113 @@ List configured workspace layers and the active index.
     { "id": "web", "label": "Web", "index": 0, "projectCount": 2 },
     { "id": "mobile", "label": "Mobile", "index": 1, "projectCount": 2 }
   ],
-  "active": 0
+  "active": 0,
+  "stage": {
+    "parked": [{ "wid": 4812, "app": "Ghostty", "title": "mini: web · server" }],
+    "hidden": ["Slack"]
+  }
 }
 ```
 
-Returns empty `layers` array if no workspace config is loaded.
+Returns empty `layers` array if no workspace config is loaded. `stage`
+is read as it stands: a window that closed or was dragged back since the
+last switch can still be listed until something prunes the ledger.
+
+#### `layers.members`
+
+Each layer's entries and the windows each one holds, on every desktop,
+from the same resolution a layer switch uses. A window belongs to one
+layer. `presence` says where it is: `showing` (on a desktop a display is
+showing), `elsewhere` (another desktop, or full screen), `parked` (in the
+corner a switch parks windows in) or `hidden` (its app is hidden).
+`missing` says why an entry holds nothing: `No window` when its app runs,
+`Not open` when it doesn't. Moves nothing.
+
+**Params**:
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `layer` | string | no | Layer id or label (default: every layer) |
+| `index` | int | no | Layer index |
+
+**Returns**:
+
+```json
+{
+  "active": 0,
+  "layers": [
+    {
+      "id": "web", "label": "Web", "index": 0, "slot": 1, "active": true, "layout": "auto",
+      "entries": [
+        {
+          "index": 0, "name": "Ghostty", "rule": "App contains Ghostty · Name: web", "pattern": "web",
+          "missing": null,
+          "windows": [
+            { "wid": 4812, "app": "Ghostty", "title": "mini: web · server", "presence": "parked", "where": "Parked" }
+          ]
+        },
+        { "index": 1, "name": "Figma", "rule": "App contains Figma", "pattern": null, "missing": "Not open", "windows": [] }
+      ]
+    }
+  ]
+}
+```
+
+`desktop.snapshot` reports the active layer in the same shape as
+`activeLayer`.
+
+#### `layers.reveal`
+
+Show All. Puts back every window a layer switch parked and unhides every
+app a switch hid; apps the user hid stay hidden. A window parked on a
+desktop that isn't showing stays parked until that desktop is showing.
+Untracked windows sitting in the park corner (an app can reopen a window
+where it last saw it) are centred on the main screen and counted in
+`rescued`.
+
+**Params**: none
+
+**Returns**:
+
+```json
+{
+  "ok": true,
+  "unparked": 3,
+  "stillParked": 0,
+  "rescued": 0,
+  "unhidden": ["Slack"],
+  "stage": { "parked": [], "hidden": [] }
+}
+```
+
+#### Editing layers
+
+`layers.create`, `layers.assign`, `layers.unassign`, `layers.rename` and
+`layers.delete` write the `layers` in `~/.lattices/workspace.json`, the
+same ones ⌘⌥ switches. The first write each launch copies the file to
+`workspace.json.bak`. A window is saved as an entry of its app and its
+title; while the window lives it stays in the layer when its title changes.
+
+Each takes the layer as `layer` (id or label) or `index`; `assign` and
+`unassign` default to the active layer, and take `wid` or `windowIds`.
+
+| Method | Params | Returns |
+|--------|--------|---------|
+| `layers.create` | `name`; `windowIds`, or `windows: [{wid, tile?}]`, or `visible` (the default: every window on screen) | `{index, id, label, count}` |
+| `layers.assign` | `wid` / `windowIds` | `{index, added}` |
+| `layers.unassign` | `wid` / `windowIds` | `{index, removed, held}`: `held` lists windows an entry matching other windows too (a bare app, a project) still holds |
+| `layers.rename` | `name` | `ok` |
+| `layers.delete` | | `ok` |
+
+```js
+await daemonCall('layers.create', { name: 'review', windows: [{ wid: 1234, tile: 'left' }, { wid: 5678 }] })
+await daemonCall('layers.assign', { layer: 'review', wid: 4321 })
+await daemonCall('layers.unassign', { layer: 'review', wid: 4321 })
+```
 
 #### `layer.activate`
 
-Canonical layer mutation. Use this when an agent wants an explicit
-activation mode instead of implicit "switch" behavior.
+Switch to a workspace layer. With no `mode` it switches as ⌘⌥ does.
 
 **Params**:
 
@@ -2123,22 +2182,24 @@ activation mode instead of implicit "switch" behavior.
 |---------|--------|----------|---------------------------------------------|
 | `index` | number | no       | Layer index (0-based)                       |
 | `name`  | string | no       | Layer ID or label                           |
-| `mode`  | string | no       | `launch`, `focus`, or `retile`              |
+| `mode`  | string | no       | `focus` (default), `tile`, or `launch`      |
 
 Provide either `index` or `name`.
 
 **Modes**:
 
-- `launch` — bring up the layer, launching missing projects and retiling
-- `focus` — raise the layer's windows in place
-- `retile` — re-apply the layer layout without launch semantics
+- `focus` — put away what the layer doesn't use, raise its windows and
+  apply its `layout`: the ⌘⌥ switch
+- `tile` — focus, then move entries with a `tile` to their place
+  (`retile` is accepted too)
+- `launch` — start the projects that aren't running, then tile
 
 **Returns**: execution receipt including resolved layer, mode, and trace.
 
 #### `layer.switch`
 
-Compatibility wrapper for `layer.activate` with `mode=launch`.
-It keeps the old semantics and still posts a `layer.switched` event.
+The same as `layer.activate`, `focus` unless a `mode` is given. It
+posts a `layer.switched` event.
 
 #### `group.launch`
 
@@ -2463,7 +2524,7 @@ is available at ws://127.0.0.1:9399.
 - Focus a window: `daemonCall('window.focus', { wid: 1234 })`
 - Place a window: `daemonCall('window.place', { session: 'name', placement: 'left' })`
 - Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
-- Activate a layer: `daemonCall('layer.activate', { name: 'web', mode: 'launch' })`
+- Switch layers: `daemonCall('layer.activate', { name: 'web' })`; add `mode: 'launch'` to start what isn't running
 - Optimize the workspace: `daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })`
 - CLI: `lattices place myproject left` (search + focus + tile in one step)
 
