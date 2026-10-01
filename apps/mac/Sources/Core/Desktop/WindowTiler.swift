@@ -1428,7 +1428,7 @@ enum WindowTiler {
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
     /// Move a window between spaces via CGS private APIs. Internal — used by present() and moveWindowToSpace().
-    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
+    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int, switchOnDenial: Bool = true) -> MoveResult? {
         let diag = DiagnosticLog.shared
         guard let mainConn = CGS.mainConnectionID,
               let addToSpaces = CGS.addWindowsToSpaces,
@@ -1453,7 +1453,12 @@ enum WindowTiler {
             return .success(method: "CGS", wid: wid)
         }
 
-        // CGS was silently denied — switch the view instead
+        // CGS was silently denied. Callers that can carry the window
+        // (WindowSpaceCarry) ask for the refusal; the rest switch the view.
+        guard switchOnDenial else {
+            diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction)")
+            return .failed(reason: "denied")
+        }
         diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction) — switching view")
         switchToSpace(spaceId: toSpace)
         return .success(method: "switch-view", wid: wid)

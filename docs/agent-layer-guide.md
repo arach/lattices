@@ -17,23 +17,23 @@ lattices layer create "Design" --json '[
 # Snapshot current windows as a layer
 lattices layer snap "my-context"
 
-# List / switch / delete session layers
-lattices layer session
-lattices layer session "Design"
+# Add a window to the layer you're on, or to a named one
+lattices layer add wid:1234
+lattices layer add wid:1234 --to "Design"
+lattices layer remove wid:1234 --from "Design"
+
+# List / switch / rename / delete
+lattices layer
+lattices layer "Design"
+lattices layer rename "Design" "Figma work"
 lattices layer delete "Design"
-lattices layer clear
 ```
 
 ## How It Works
 
-There are two kinds of layers:
+Layers live in `~/.lattices/workspace.json`, and they're the ones on the ⌘⌥ pad: the first four layers are ⌘⌥1–4, the next four ⌘⌥6–9 (5 is the pad's centre), and any after that have no digit. The CLI, the daemon API, voice ("save this layout as deploy") and ⌘⌥T all write that file, and a change takes effect at once.
 
-| Type | Storage | Requires restart? | How to create |
-|------|---------|-------------------|---------------|
-| **Config layers** | `~/.lattices/workspace.json` | Yes (or refresh) | Edit JSON file |
-| **Session layers** | In-memory (daemon) | No | CLI or daemon API |
-
-**Session layers are what you want.** They're created via TypeScript CLI commands, take effect immediately, and don't require restarting anything.
+Each window is saved as an entry of its app and its title at the time, which is how the layer finds it again after a restart. While the window stays open it's pinned in, so a title that changes later (a browser switching tabs) doesn't drop it. To make an entry broader, edit its `title` in `workspace.json` down to the part that stays put.
 
 ## Step-by-Step: Generating a Layer
 
@@ -102,7 +102,7 @@ lattices layer create "Coding" --json '[
 ]'
 ```
 
-**Option B: By app name (survives window recreation)**
+**Option B: By app name** (picks the first open window that matches)
 ```bash
 lattices layer create "Research" --json '[
   {"app": "Google Chrome", "title": "docs", "tile": "left"},
@@ -115,7 +115,7 @@ lattices layer create "Research" --json '[
 lattices layer create "Focus" wid:1234 wid:5678
 ```
 
-**Option D: Snapshot everything visible**
+**Option D: Snapshot everything visible** (also what `create` does with no windows named)
 ```bash
 lattices layer snap "Current Context"
 ```
@@ -123,33 +123,39 @@ lattices layer snap "Current Context"
 ### 4. Switch between layers
 
 ```bash
-lattices layer session          # list all session layers
-lattices layer session "Coding" # switch to "Coding"
-lattices layer session 0        # switch by index
+lattices layer           # list layers
+lattices layer "Coding"  # switch to "Coding"
+lattices layer 0         # switch by index
 ```
+
+Or press ⌘⌥ and the layer's slot number.
 
 ## Daemon API (Advanced)
 
 For finer control, use raw daemon calls:
 
 ```bash
-# Create layer with window IDs
-lattices call session.layers.create '{"name":"Coding","windowIds":[1234,5678]}'
+# Create a layer from window IDs (omit windowIds to save what's on screen)
+lattices call layers.create '{"name":"Coding","windowIds":[1234,5678]}'
 
-# Create layer with app references
-lattices call session.layers.create '{"name":"Design","windows":[{"app":"Figma"},{"app":"Google Chrome","contentHint":"Tailwind"}]}'
+# Add windows to a layer (default: the active one)
+lattices call layers.assign '{"layer":"Coding","windowIds":[9012]}'
+
+# Take a window out (drops the entries that hold only it)
+lattices call layers.unassign '{"layer":"Coding","wid":9012}'
 
 # Tile a specific window
 lattices call window.place '{"wid":1234,"placement":"left"}'
 
 # Switch layer
-lattices call session.layers.switch '{"name":"Coding"}'
+lattices call layer.activate '{"name":"Coding","mode":"focus"}'
 
-# List session layers
-lattices call session.layers.list
+# List layers
+lattices call layers.list
 
-# Delete
-lattices call session.layers.delete '{"name":"old-layer"}'
+# Rename / delete
+lattices call layers.rename '{"layer":"Coding","name":"Deep work"}'
+lattices call layers.delete '{"layer":"old-layer"}'
 ```
 
 ## Composing Layers from Intent
@@ -199,9 +205,8 @@ Browser windows are chameleons — use `title` matching to assign them to the ri
 ## Tips
 
 - Prefer `wid` when the windows are already open — it's unambiguous.
-- Use `app` + `title` when you want the layer to survive window restarts.
 - Don't put more than 4-5 windows in a single layer — it gets cramped.
 - Background apps (music, etc.) usually don't need to be in any layer.
 - The `snap` command is great for "save what I have now" scenarios.
-- Session layers are ephemeral — they live until the daemon restarts. For permanent layers, edit `~/.lattices/workspace.json`.
-- You can create multiple layers in sequence, then switch between them with `lattices layer session <name>`.
+- Layers are saved as soon as they're made; `lattices layer delete` removes one. The first save of each launch keeps the previous file as `workspace.json.bak`.
+- You can create multiple layers in sequence, then switch between them with `lattices layer <name>` or ⌘⌥ + slot.

@@ -239,7 +239,7 @@ This lets you tile a whole group into a screen position:
 }
 ```
 
-When switching to this layer, Lattices launches or focuses the "vox"
+When this layer is launched, Lattices starts or focuses the "vox"
 group and stacks all of its terminal and app windows in the top-left
 quarter, alongside the design-system project on the right. Use the HUD
 tab strip to change the visible member, or its grid button to fan out
@@ -316,18 +316,21 @@ Four ways to switch:
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
 | **CLI**              | `lattices layer <name\|index>`           |
 
-When you switch to a layer:
+Every one of them switches the same way:
 
 1. Everything the layer doesn't use is **put away** (see below)
-2. Each project's window is **raised and focused**
-3. App windows are matched by `app` / `title` / `url`
-4. If a project isn't running yet, it gets **launched** automatically
-5. Windows with a `tile` value are **tiled** to that position
-6. A layer with a `layout` **lays out** the rest
+2. The layer's windows are **raised**, matched by `app` / `title` / `url`
+3. A layer with a `layout` **lays out** its windows
 
-The hotkeys and the layer chips don't launch or tile, but they apply a
-`layout`. Choosing the layer you're on again gathers its windows back
-up. The CLI and the command bar launch and tile too.
+Choosing the layer you're on again gathers its windows back up.
+
+Two extras go further, and are always asked for by name:
+
+- **Tile** also moves windows with a `tile` value to that position:
+  `lattices layer <name> --tile`, or `mode: "tile"` in the API.
+- **Launch** first starts the projects that aren't running, then tiles:
+  `lattices layer <name> --launch`, **Launch Layer** in the command
+  bar, `l` in command mode, or `mode: "launch"`.
 
 The app remembers which layer was last active across restarts.
 
@@ -382,31 +385,31 @@ stays in the corner until you switch layers or use Show All.
 You can switch layers by name from the CLI:
 
 ```bash
-lattices layer hudson     # Switch to the layer named "hudson"
-lattices layer 0          # Switch to the first layer (by index)
+lattices layer hudson           # Switch to the layer named "hudson"
+lattices layer 0                # Switch to the first layer (by index)
+lattices layer hudson --launch  # Start what isn't running, then tile
 ```
 
 This is useful for scripting — you don't need to know the index,
 just the layer's `id` or `label`.
 
-### Window tagging
+### Adding and removing windows
 
-You can manually assign any window to a layer, even if it's not
-declared in `workspace.json`. This is useful for ad-hoc windows
-that you want to move with a layer:
-
-```bash
-lattices window assign <wid> <layer>   # Tag a window to a layer
-lattices window map                    # Show all window→layer assignments
-```
-
-Tagged windows behave like declared ones — they're raised and tiled
-when their layer activates. Remove a tag by reassigning or with:
+Any window can join a layer without editing `workspace.json` by hand.
+It's saved there as an entry of its app and its title, so it comes back
+after a restart; while it lives, it stays in the layer when its title
+changes.
 
 ```bash
-# Via the agent API
-await daemonCall('window.removeLayer', { wid: 1234 })
+lattices layer add wid:1234 --to web       # default: the active layer
+lattices layer remove wid:1234 --from web
 ```
+
+⌘⌥T adds the front window to the layer you're on. In the ⌘⌥Space
+preview, a digit sends the picked window to the layer in that slot and
+Delete takes it out. Hyperspace's layer piles and ⌘L write the same
+layers. A window held by an entry that matches other windows too (a bare
+app, a project) can't be taken out on its own; edit that entry instead.
 
 ### Layer bezel
 
@@ -445,8 +448,10 @@ await daemonCall('layer.switch', { index: 0 })
 await daemonCall('layer.switch', { name: 'hudson' })
 ```
 
-The `layer.switch` call puts away what the target layer doesn't use,
-then focuses and tiles its windows, like the command bar. Its `index`
+The `layer.switch` call switches as ⌘⌥ does: it puts away what the
+target layer doesn't use, brings its windows forward, and applies the
+layer's `layout`. Entry `tile` placements need `mode: "tile"`, and
+`mode: "launch"` also opens what isn't running. Its `index`
 counts layers in list order from 0, not pad slots. A
 `layer.switched` event is broadcast to all connected clients.
 `layers.list` also reports what switches have put away, under `stage`,
@@ -454,40 +459,29 @@ and `layers.reveal` brings it all back.
 
 More methods in the [Agent API reference](/docs/api).
 
-## Rule-backed Studio layers
+## Entry rules
 
-Studio layers are live window rules stored in `~/.lattices/layers.json`.
-They are separate from `workspace.json` launch-and-tile layers: Studio
-layers do not launch projects. They resolve matching desktop windows,
-then recall or scope those windows in Studio and Screen Map.
-
-Each layer has a `match` array. A window joins the layer when it matches
-any clause in that array. Inside one clause, every present positive field
-must match, and every clause in `not` must fail.
+An entry finds its windows by `app` and `title`. For a sharper rule, give
+it a `match` clause instead; the layer holds a window when any of its
+entries matches it. Inside one clause, every field given must match, and
+every clause in `not` must fail.
 
 ```json
-[
-  {
-    "id": "review",
-    "name": "Review",
-    "match": [
-      {
+{
+  "id": "review",
+  "label": "Review",
+  "projects": [
+    {
+      "match": {
         "appEquals": "Google Chrome",
         "titleRegex": "(GitHub|Pull Request)",
-        "not": [
-          { "titleContains": "Actions" }
-        ]
-      },
-      {
-        "sessionContains": "lattices",
-        "isOnScreen": true
+        "not": [{ "titleContains": "Actions" }]
       }
-    ]
-  }
-]
+    },
+    { "match": { "sessionContains": "lattices" } }
+  ]
+}
 ```
-
-Supported clause fields:
 
 | Field | Match |
 |-------|-------|
@@ -503,9 +497,9 @@ Supported clause fields:
 | `spaceId` | Window belongs to this macOS Space id |
 | `not` | Exclusion clauses; any match rejects the window |
 
-`app` and `titleContains` are the original substring fields, so older
-`layers.json` files continue to work. New layers created from plucked
-windows use `appEquals` by default to avoid accidental substring matches.
+Hyperspace's layer piles write these clauses; Screen Map scopes its canvas
+to a layer's windows. `~/.lattices/layers.json`, the old Studio layer file,
+is no longer read.
 
 ### Layer bar
 

@@ -8,7 +8,7 @@ import AppKit
 /// the layer's apps (`LayerRoster`). The middle holds the mark's pointer,
 /// aimed at the lit slot. Slots without a layer stay dim. `acknowledge` shows
 /// the bar alone, for actions that don't land on a slot: tabs, and saved
-/// Studio layers.
+/// layers from ⌘L.
 final class LayerBezel {
     static let shared = LayerBezel()
 
@@ -18,8 +18,30 @@ final class LayerBezel {
     /// Bumped by every show, so a fade-out that ends after a newer show leaves
     /// the panel up.
     private var generation = 0
+    /// While ⌘⌥ is down the bezel stays up; `release` lets it go.
+    private var held = false
 
     private init() {}
+
+    /// Keeps the bezel up, through any shows, until `release`.
+    func hold() {
+        held = true
+        dismissTimer?.invalidate()
+    }
+
+    /// Lets a held bezel go `after` seconds from now.
+    func release(after delay: TimeInterval) {
+        guard held else { return }
+        held = false
+        dismissTimer?.invalidate()
+        guard delay > 0 else {
+            dismiss()
+            return
+        }
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            self?.dismiss()
+        }
+    }
 
     /// Lights the slot of layer `index` among `total`, names it `label`, and
     /// lists its `apps` underneath. A layer past the eighth has no slot, so
@@ -42,8 +64,14 @@ final class LayerBezel {
         present(label: label, slots: nil)
     }
 
-    func dismiss() {
+    func dismiss(animated: Bool = true) {
         guard let panel, panel.isVisible else { return }
+        guard animated else {
+            dismissTimer?.invalidate()
+            generation += 1
+            panel.orderOut(nil)
+            return
+        }
         let shown = generation
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.25
@@ -86,7 +114,8 @@ final class LayerBezel {
             panel.animator().alphaValue = 1
         }
 
-        // A list takes longer to read.
+        // A list takes longer to read. Held, it stays until ⌘⌥ lifts.
+        guard !held else { return }
         dismissTimer = Timer.scheduledTimer(withTimeInterval: rows.isEmpty ? 1.5 : 2.5, repeats: false) { [weak self] _ in
             self?.dismiss()
         }

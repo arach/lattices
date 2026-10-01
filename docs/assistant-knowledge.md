@@ -41,10 +41,9 @@ canonical `grid:CxR:c,r` starts at 0 for APIs. → [Tiling reference](/docs/tili
 
 ### Workspace layers & tab groups
 Group projects into named **layers** you can switch between, and tab-group related
-windows. `workspace.json` layers launch/focus/tile projects. Studio layers are
-rule-backed live window sets persisted in `~/.lattices/layers.json`; their clauses
-support app/title/session exact, substring, regex, Space, visibility, and exclusion
-matches. For an ephemeral cross-app stack, select windows in Hyperspace and press
+windows. Layers live in `workspace.json`; ⌘⌥ switches to one (focus), with tile
+and launch as extras. An entry can carry a `match` clause (app/title/session exact,
+substring, regex, Space, visibility, and exclusion matches). For an ephemeral cross-app stack, select windows in Hyperspace and press
 Cmd+T or say “stack these as tabs” / “add these up”; use the HUD grid button to fan
 them out. Agents call `tabStacks.create`, `tabStacks.add`, `tabStacks.select`, and
 `tabStacks.layout`. → [Layers](/docs/layers).
@@ -107,7 +106,7 @@ the defaults as guaranteed.
 ## Config & file locations
 
 - **Per project:** `.lattices.json` in the project root (panes, commands, layout, ensure/prefill).
-- **User config (`~/.lattices/`):** `workspace.json`, `layers.json`, `mouse-shortcuts.json`,
+- **User config (`~/.lattices/`):** `workspace.json`, `mouse-shortcuts.json`,
   `snap-zones.json`, `clusters.json`, `ocr.db`, `lattices.log`.
 - **Defaults domain:** `dev.lattices.app` (read/write app settings via `defaults`).
 

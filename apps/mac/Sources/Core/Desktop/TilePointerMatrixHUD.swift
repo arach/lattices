@@ -23,6 +23,9 @@ final class TilePointerMatrixHUD {
 
     private var panel: NSPanel?
     private var matrixView: TilePointerMatrixView?
+    /// Bumped by every show, so a fade-out that finishes after the HUD was
+    /// shown again doesn't order it out.
+    private var generation = 0
 
     private init() {}
 
@@ -34,14 +37,17 @@ final class TilePointerMatrixHUD {
             height: Self.panelSize
         )
         let (panel, view) = ensurePanel()
+        generation += 1
         view.aim(at: position, animated: panel.isVisible)
         if panel.frame != frame {
             panel.setFrame(frame, display: true)
         }
-        if !panel.isVisible {
-            view.alphaValue = 0
+        if !panel.isVisible || panel.alphaValue < 1 {
+            let wasVisible = panel.isVisible
+            view.alphaValue = wasVisible ? view.alphaValue : 0
             panel.alphaValue = 1
             panel.orderFrontRegardless()
+            DiagnosticLog.shared.info("TilePointerHUD: show wid=\(panel.windowNumber) was=\(wasVisible) now=\(panel.isVisible) occl=\(panel.occlusionState.contains(.visible)) space=\(panel.isOnActiveSpace) screen=\(panel.screen?.localizedName ?? "nil") frame=\(panel.frame)")
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.08
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.00, 0.30, 1.00)
@@ -52,13 +58,16 @@ final class TilePointerMatrixHUD {
 
     func hide() {
         guard let panel, panel.isVisible else { return }
+        let hiding = generation
+        DiagnosticLog.shared.info("TilePointerHUD: hide wid=\(panel.windowNumber)")
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.08
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
+            guard let self, self.generation == hiding else { return }
             panel.orderOut(nil)
             panel.alphaValue = 1
-            self?.matrixView?.aim(at: nil, animated: false)
+            self.matrixView?.aim(at: nil, animated: false)
         })
     }
 

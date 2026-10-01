@@ -36,10 +36,9 @@ enum AssistantSnapshotBuilder {
         }
 
         var layerInfo: [String: Any]?
-        let layerStore = SessionLayerStore.shared
-        if layerStore.activeIndex >= 0 && layerStore.activeIndex < layerStore.layers.count {
-            let current = layerStore.layers[layerStore.activeIndex]
-            layerInfo = ["name": current.name, "index": layerStore.activeIndex]
+        let workspace = WorkspaceManager.shared
+        if let current = workspace.activeLayer {
+            layerInfo = ["name": current.label, "index": workspace.activeLayerIndex]
         }
 
         let terminals = ProcessModel.shared.synthesizeTerminals()

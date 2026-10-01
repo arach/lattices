@@ -28,12 +28,12 @@ async function main() {
     console.log(`  ${project.name} (${project.paneCount} panes) — ${project.path}`);
   }
 
-  const { layers, activeIndex } = await daemonCall("session.layers.list");
+  const { layers, active } = await daemonCall("layers.list");
   if (layers.length > 0) {
-    console.log(`\nSession layers: ${layers.length}`);
-    for (let i = 0; i < layers.length; i++) {
-      const marker = i === activeIndex ? " *" : "";
-      console.log(`  ${layers[i].name} (${layers[i].windows.length} windows)${marker}`);
+    console.log(`\nLayers: ${layers.length}`);
+    for (const layer of layers) {
+      const marker = layer.index === active ? " *" : "";
+      console.log(`  ${layer.label} (${layer.projectCount} entries)${marker}`);
     }
   }
 }

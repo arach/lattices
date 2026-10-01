@@ -100,7 +100,8 @@ enum BrowseMenu {
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {
-                    workspace.tileLayer(index: i)
+                    workspace.focusLayer(index: i)
+                    EventBus.shared.post(.layerSwitched(index: i))
                 })
             } else {
                 out.append(OmniResult(

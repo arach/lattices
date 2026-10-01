@@ -360,8 +360,7 @@ public final class EmbeddedLatticesWindows: @unchecked Sendable {
                     spaceIds: EmbeddedSkyLight.spacesForWindow(wid),
                     isOnScreen: isOnScreen,
                     latticesSession: Self.extractSessionName(from: title),
-                    axVerified: nil,
-                    layerTag: nil
+                    axVerified: nil
                 )
             )
         }

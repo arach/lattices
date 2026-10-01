@@ -58,11 +58,10 @@ Use these action identifiers. Legacy names still exist as wrappers.
 | Action | Use for |
 | --- | --- |
 | `window.place` | Place a window or session with a typed placement |
-| `layer.activate` | Bring up a workspace layer |
+| `layer.activate` | Switch layers as ⌘⌥ does; `mode: "launch"` starts what isn't running |
 | `space.optimize` | Rebalance windows with an explicit scope and strategy |
 
-`window.tile` is `window.place`. `layer.switch` is `layer.activate` with
-`mode=launch`. `layout.distribute` is `space.optimize` with
+`window.tile` is `window.place`. `layer.switch` is `layer.activate`. `layout.distribute` is `space.optimize` with
 `scope=visible` and `strategy=balanced`.
 
 Resolve before mutating when the target identity matters:

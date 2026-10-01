@@ -130,14 +130,15 @@ extension WorkspaceManager {
                         )
                     )
                 }
-                let name = project.app ?? project.launch
-                    ?? project.group.map { group(byId: $0)?.label ?? $0 }
-                    ?? project.path.map { ($0 as NSString).lastPathComponent }
-                    ?? "Entry \(projectIndex + 1)"
+                let groupName: String? = project.group.map { group(byId: $0)?.label ?? $0 }
+                let folder: String? = project.path.map { ($0 as NSString).lastPathComponent }
+                let named: String? = project.match?.summary ?? project.app ?? project.launch ?? groupName ?? folder
+                let name: String = named ?? "Entry \(projectIndex + 1)"
+                let pattern: String? = project.match == nil && project.app != nil ? project.title : nil
                 return LayerOverview.Entry(
                     index: projectIndex,
                     name: name,
-                    pattern: project.app == nil ? nil : project.title,
+                    pattern: pattern,
                     windows: matched,
                     missing: matched.isEmpty ? missingApp(for: project, running: running)?.place : nil
                 )
@@ -175,5 +176,43 @@ final class LayerOverviewStore: ObservableObject {
     func rebuild() {
         let fresh = WorkspaceManager.shared.overviews(in: DesktopModel.shared.allWindows())
         if fresh != layers { layers = fresh }
+    }
+}
+
+extension WorkspaceManager {
+    /// Every ⌘⌥ layer as the assistant reads it: rules and live members.
+    func layersContextPayload(in desktop: DesktopModel = .shared) -> [String: Any] {
+        [
+            "file": "\(NSHomeDirectory())/.lattices/workspace.json",
+            "active": activeLayerIndex,
+            "layers": overviews(in: desktop.allWindows()).map { layerContextPayload($0) },
+        ]
+    }
+
+    /// One layer as the assistant reads it: each entry's rule and the windows it holds.
+    func layerContextPayload(_ overview: LayerOverview) -> [String: Any] {
+        let projects = config?.layers?.first { $0.id == overview.id }?.projects ?? []
+        return [
+            "id": overview.id,
+            "label": overview.label,
+            "index": overview.index,
+            "slot": overview.slot.map { $0 as Any } ?? NSNull(),
+            "active": overview.isActive,
+            "entries": overview.entries.map { entry -> [String: Any] in
+                let rule = projects.indices.contains(entry.index) ? projects[entry.index].clause?.summary : nil
+                return [
+                    "name": entry.name,
+                    "rule": rule.map { $0 as Any } ?? NSNull(),
+                    "windows": entry.windows.map { ["wid": Int($0.wid), "app": $0.app, "title": $0.title, "showing": $0.spot.isShowing] },
+                ]
+            },
+        ]
+    }
+
+    func layerContextJSON(_ overview: LayerOverview) -> String {
+        let payload = layerContextPayload(overview)
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
     }
 }

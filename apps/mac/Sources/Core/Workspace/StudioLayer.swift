@@ -5,9 +5,8 @@ import AppKit
 /// One match clause. The Hyperspace editor intentionally keeps authoring simple:
 /// pick an app name and, optionally, a direct or regex match against the window
 /// name/title.
-/// The extra fields remain Codable so older layers.json files keep working.
-/// A `StudioLayer` ORs its clauses together, so a heterogeneous selection
-/// (a Chrome window + a terminal) becomes "app Chrome OR app iTerm".
+/// A ⌘⌥ layer entry's `match`; a layer holds a window when any of its
+/// entries matches it.
 struct StudioLayerClause: Codable, Equatable {
     var app: String? = nil              // app name contains (case-insensitive)
     var appEquals: String? = nil        // app name exactly equals (case-insensitive)
@@ -119,35 +118,5 @@ struct StudioLayerClause: Codable, Equatable {
     private func appendNonEmpty(_ value: String?, prefix: String?, suffix: String = "", to parts: inout [String]) {
         guard let value = trimmed(value) else { return }
         parts.append("\(prefix ?? "")\(value)\(suffix)")
-    }
-}
-
-// MARK: - StudioLayer
-
-/// A named, rule-backed layer. Membership is *computed* by evaluating the rule
-/// against live windows — it is not a frozen list of window IDs — so a layer
-/// survives restarts and auto-includes any new window that matches. Authored in
-/// Hyperspace (or edited by hand), recalled from the Studio panel or ⌘L. This
-/// is the unified successor to clusters and session layers.
-struct StudioLayer: Identifiable, Codable, Equatable {
-    let id: String
-    var name: String
-    var match: [StudioLayerClause]
-
-    init(id: String = UUID().uuidString, name: String, match: [StudioLayerClause]) {
-        self.id = id
-        self.name = name
-        self.match = match
-    }
-
-    /// A window belongs to the layer if it satisfies ANY clause (OR).
-    func contains(_ e: WindowEntry) -> Bool {
-        match.contains { $0.matches(e) }
-    }
-
-    /// Human-readable rule, e.g. "App: Google Chrome · Name: GitHub".
-    var summary: String {
-        guard !match.isEmpty else { return "no rule" }
-        return match.map(\.summary).joined(separator: " OR ")
     }
 }

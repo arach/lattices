@@ -32,16 +32,19 @@ struct LayerProject: Codable {
     let group: String?
     let tile: String?
     let display: Int?
-    let app: String?       // match by owner app name (e.g. "Google Chrome", "Xcode")
-    let title: String?     // substring match on window title (case-insensitive)
+    var app: String?       // match by owner app name (e.g. "Google Chrome", "Xcode")
+    var title: String?     // substring match on window title (case-insensitive)
     let url: String?       // URL to open if no matching window found
     let launch: String?    // app name to launch if not running (via `open -a`)
+    /// A Studio rule (regex, exact names, sessions, exclusions), for what
+    /// `app` and `title` can't say. Takes the place of the fields above.
+    var match: StudioLayerClause? = nil
 }
 
 struct Layer: Codable, Identifiable {
     let id: String
-    let label: String
-    let projects: [LayerProject]
+    var label: String
+    var projects: [LayerProject]
     /// How to lay the layer's windows out when it's shown: "auto",
     /// "columns" or "master-stack" (`LayerLayout`). Nil leaves them where
     /// they are.
@@ -51,7 +54,7 @@ struct Layer: Codable, Identifiable {
 struct WorkspaceConfig: Codable {
     let name: String
     let groups: [TabGroup]?
-    let layers: [Layer]?
+    var layers: [Layer]?
 }
 
 // MARK: - Grid Presets & Named Layouts
@@ -439,12 +442,16 @@ class WorkspaceManager: ObservableObject {
     @Published private(set) var selectedGroupTabIndices: [String: Int] = [:]
     @Published private(set) var expandedGroupIDs: Set<String> = []
 
-    private let configPath: String
+    let configPath: String
+    /// Windows added to a layer by hand, by layer id: each wid under the
+    /// index of the entry it was saved as. The entry's title can drift (a
+    /// browser changes tabs); the pin keeps the window in while it lives.
+    var pins: [String: [UInt32: Int]] = [:]
     private let gridConfigPath: String
     private let snapZonesConfigPath: String
     private var gridConfigSourceToken = ""
     private var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
-    private let activeLayerKey = "lattices.activeLayerIndex"
+    let activeLayerKey = "lattices.activeLayerIndex"
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -476,6 +483,8 @@ class WorkspaceManager: ObservableObject {
     // MARK: - Config I/O
 
     func loadConfig() {
+        let previous = config?.layers ?? []
+        defer { reconcilePins(from: previous, to: config?.layers ?? []) }
         guard FileManager.default.fileExists(atPath: configPath),
               let data = FileManager.default.contents(atPath: configPath) else {
             config = nil
@@ -928,7 +937,10 @@ class WorkspaceManager: ObservableObject {
         var members: [(entry: WindowEntry, placed: Bool, project: Int)] = []
         var seen = Set<UInt32>()
         var project = 0
+        let pinned = (pins[layer.id] ?? [:]).filter { layer.projects.indices.contains($0.value) }
         func add(_ entry: WindowEntry, placed: Bool) {
+            // A window pinned to one entry belongs to it, whatever else it matches.
+            if let owner = pinned[entry.wid], owner != project { return }
             if seen.insert(entry.wid).inserted { members.append((entry, placed, project)) }
         }
         func matchApp(_ app: String, title: String?, placed: Bool) {
@@ -947,7 +959,12 @@ class WorkspaceManager: ObservableObject {
         for (index, lp) in layer.projects.enumerated() {
             project = index
             let placed = lp.tile != nil || lp.display != nil
-            if let groupId = lp.group, let grp = group(byId: groupId) {
+            for entry in windows where pinned[entry.wid] == index {
+                add(entry, placed: placed)
+            }
+            if let clause = lp.match {
+                for entry in windows where clause.matches(entry) { add(entry, placed: placed) }
+            } else if let groupId = lp.group, let grp = group(byId: groupId) {
                 for tab in grp.tabs {
                     if let path = tab.path {
                         matchSession(Self.sessionName(for: path), placed: placed)
@@ -1019,41 +1036,48 @@ class WorkspaceManager: ObservableObject {
         diag.finish(t)
     }
 
-    /// Raises the window each of a layer's entries matches on the showing
-    /// desktop, where it is.
+    /// Raises the layer's windows on the showing desktop, where they are:
+    /// every window pinned to an entry, then the front match of an app or
+    /// rule entry holding no pinned one, or each tab of a group and each
+    /// window of a project.
     private func raiseWindows(of targetLayer: Layer) {
+        let pinned = pins[targetLayer.id] ?? [:]
+        let members = memberWindows(of: targetLayer, in: DesktopModel.shared.allWindows())
+            .filter { $0.entry.isOnScreen }
+        var seen = Set<UInt32>()
         var windowsToRaise: [(wid: UInt32, pid: Int32)] = []
+        func raise(_ entry: WindowEntry) {
+            if seen.insert(entry.wid).inserted { windowsToRaise.append((entry.wid, entry.pid)) }
+        }
 
-        for lp in targetLayer.projects {
+        for (index, lp) in targetLayer.projects.enumerated() {
+            let mine = members.filter { $0.project == index }
+            let pinnedHere = mine.filter { pinned[$0.entry.wid] == index }
+            pinnedHere.forEach { raise($0.entry) }
+
+            if lp.match != nil {
+                if pinnedHere.isEmpty, let front = mine.first { raise(front.entry) }
+                continue
+            }
             if let groupId = lp.group, let grp = group(byId: groupId) {
-                // Raise all tab windows in the group
                 for tab in grp.tabs {
-                    if let entry = window(for: tab, currentSpaceOnly: true) {
-                        windowsToRaise.append((entry.wid, entry.pid))
-                    }
+                    if let entry = window(for: tab, currentSpaceOnly: true) { raise(entry) }
                 }
                 continue
             }
-
-            if let appName = lp.app {
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title, currentSpaceOnly: true) {
-                    windowsToRaise.append((entry.wid, entry.pid))
-                }
+            if lp.app != nil {
+                if pinnedHere.isEmpty, let front = mine.first { raise(front.entry) }
                 continue
             }
 
             guard let path = lp.path else { continue }
-            let sessionName = Self.sessionName(for: path)
-            if let entry = windowForSession(sessionName, currentSpaceOnly: true) {
-                windowsToRaise.append((entry.wid, entry.pid))
+            if let entry = windowForSession(Self.sessionName(for: path), currentSpaceOnly: true) {
+                raise(entry)
             }
-
-            // Also raise companion windows
-            let companions = projectWindows(at: path)
-            for cw in companions {
+            for cw in projectWindows(at: path) {
                 guard let appName = cw.app else { continue }
                 if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title, currentSpaceOnly: true) {
-                    windowsToRaise.append((entry.wid, entry.pid))
+                    raise(entry)
                 }
             }
         }
@@ -1108,8 +1132,25 @@ class WorkspaceManager: ObservableObject {
             debugLines.append("screen[\(i)]: frame=\(s.frame) visible=\(s.visibleFrame)")
         }
 
-        for lp in targetLayer.projects {
+        // The window each app or rule entry places: one pinned to it, else
+        // its front match, as membership reads them.
+        let pinned = pins[targetLayer.id] ?? [:]
+        let members = memberWindows(of: targetLayer, in: DesktopModel.shared.allWindows())
+            .filter { $0.entry.isOnScreen }
+        func target(for entry: Int) -> WindowEntry? {
+            let mine = members.filter { $0.project == entry }
+            return (mine.first { pinned[$0.entry.wid] == entry } ?? mine.first)?.entry
+        }
+
+        for (entryIndex, lp) in targetLayer.projects.enumerated() {
             guard let lpScreen = screen(for: lp.display) else { continue }
+
+            if lp.match != nil {
+                if let pos = lp.tile.flatMap({ resolvePlacement($0) }), let entry = target(for: entryIndex) {
+                    batchMoves.append((entry.wid, entry.pid, WindowTiler.tileFrame(for: pos, on: lpScreen)))
+                }
+                continue
+            }
 
             if let groupId = lp.group, let grp = group(byId: groupId) {
                 let position = lp.tile.flatMap { resolvePlacement($0) }
@@ -1148,7 +1189,7 @@ class WorkspaceManager: ObservableObject {
             // App-based window matching
             if let appName = lp.app {
                 let position = lp.tile.flatMap { resolvePlacement($0) }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title, currentSpaceOnly: true) {
+                if let entry = target(for: entryIndex) {
                     if let pos = position {
                         let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
                         batchMoves.append((entry.wid, entry.pid, frame))
@@ -1267,8 +1308,11 @@ class WorkspaceManager: ObservableObject {
             diag.finish(t)
         }
 
-        // Lay out the windows whose entries don't place them.
-        arrangeLayer(targetLayer, windows: DesktopModel.shared.allWindows())
+        // Lay out the windows whose entries don't place them; when there's no
+        // layout to apply, bring the layer forward as a focus does.
+        if !arrangeLayer(targetLayer, windows: DesktopModel.shared.allWindows()) {
+            raiseWindows(of: targetLayer)
+        }
 
         // Phase 3: fallback for running-but-untracked windows
         for (i, fb) in fallbacks.enumerated() {

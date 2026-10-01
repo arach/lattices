@@ -1721,7 +1721,8 @@ final class CommandModeState: ObservableObject {
         for (i, layer) in layers.prefix(3).enumerated() {
             let idx = i
             chords.append(Chord(key: "\(i + 1)", keyCode: layerKeyCodes[i], label: layer.label.lowercased()) {
-                WorkspaceManager.shared.tileLayer(index: idx)
+                WorkspaceManager.shared.focusLayer(index: idx)
+                EventBus.shared.post(.layerSwitched(index: idx))
             })
         }
 

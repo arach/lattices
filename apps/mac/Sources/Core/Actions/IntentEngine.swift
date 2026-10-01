@@ -429,30 +429,12 @@ final class IntentEngine {
                     throw IntentError.missingSlot("layer")
                 }
 
-                // Try as index first
                 if let index = Int(layer) {
-                    // Try session layers first, then config layers
-                    let session = SessionLayerStore.shared
-                    if !session.layers.isEmpty && index < session.layers.count {
-                        DispatchQueue.main.async { session.switchTo(index: index) }
-                        return .object(["ok": .bool(true), "type": .string("session"), "index": .int(index)])
-                    }
                     return try LatticesApi.shared.dispatch(
                         method: "layer.switch",
                         params: .object(["index": .int(index)])
                     )
                 }
-
-                // Try as name — session layers first
-                let session = SessionLayerStore.shared
-                if let idx = session.layers.firstIndex(where: {
-                    $0.name.localizedCaseInsensitiveContains(layer)
-                }) {
-                    DispatchQueue.main.async { session.switchTo(index: idx) }
-                    return .object(["ok": .bool(true), "type": .string("session"), "name": .string(session.layers[idx].name)])
-                }
-
-                // Then config layers
                 return try LatticesApi.shared.dispatch(
                     method: "layer.switch",
                     params: .object(["name": .string(layer)])
@@ -575,7 +557,7 @@ final class IntentEngine {
 
         register(IntentDef(
             name: "create_layer",
-            description: "Create a new session layer from current windows",
+            description: "Save the windows on screen as a new layer",
             examples: [
                 "save this layout as review",
                 "create a layer called deploy",
@@ -585,25 +567,17 @@ final class IntentEngine {
                 IntentSlot(name: "name", type: "string", required: true,
                            description: "Name for the new layer", enumValues: nil),
                 IntentSlot(name: "capture_visible", type: "bool", required: false,
-                           description: "Auto-capture visible windows into the layer", enumValues: nil),
+                           description: "Save the windows on screen into it (default true)", enumValues: nil),
             ],
             handler: { req in
                 guard let name = req.slots["name"]?.stringValue else {
                     throw IntentError.missingSlot("name")
                 }
-
-                var windowIds: [JSON] = []
-                if req.slots["capture_visible"]?.boolValue == true {
-                    for entry in DesktopModel.shared.windows.values where entry.isOnScreen {
-                        windowIds.append(.int(Int(entry.wid)))
-                    }
-                }
-
                 return try LatticesApi.shared.dispatch(
-                    method: "session.layers.create",
+                    method: "layers.create",
                     params: .object([
                         "name": .string(name),
-                        "windowIds": .array(windowIds)
+                        "visible": .bool(req.slots["capture_visible"]?.boolValue ?? true)
                     ])
                 )
             }

@@ -86,13 +86,14 @@ Usage:
   lattices window place <wid> <slot> [--display <n>]
                          Snap a window into a named or grid placement slot
   lattices distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
-  lattices layer [name|index]  List layers or switch by name/index (daemon required)
+  lattices layer [name|index] [--tile|--launch]  List layers, or switch as ⌘⌥ does (daemon required)
   lattices layer reveal        Show All: put back parked windows, unhide apps a switch hid
-  lattices layer create <name> [wid:N ...] [--json '<specs>']  Create a session layer
-  lattices layer snap [name]   Snapshot visible windows into a session layer
-  lattices layer session [n]   List or switch session layers (runtime, no restart)
-  lattices layer delete <name> Delete a session layer
-  lattices layer clear         Clear all session layers
+  lattices layer create <name> [wid:N ...] [--json '<specs>']  Save windows (default: on screen) as a new layer
+  lattices layer snap [name]   Save the windows on screen as a new layer
+  lattices layer add wid:N ... [--to <layer>]  Add windows to a layer (default: the active one)
+  lattices layer remove wid:N ... [--from <layer>]  Take windows out of a layer (default: the active one)
+  lattices layer rename <layer> <name>  Rename a layer
+  lattices layer delete <layer> Delete a layer from workspace.json
   lattices voice say <text>   Speak text through the Voice helper
   lattices voice stop         Stop speaking (pause, resume, skip, seek, list, select too)
   lattices voice stopListening  Stop voice capture

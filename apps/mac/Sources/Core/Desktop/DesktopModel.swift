@@ -60,8 +60,6 @@ final class DesktopModel: ObservableObject {
     @Published private(set) var windows: [UInt32: WindowEntry] = [:]
     @Published private(set) var interactionDates: [UInt32: Date] = [:]
     @Published private(set) var focusedWindowID: UInt32?
-    /// In-memory layer tags: wid → layer id (e.g. "lattices", "vox", "hudson")
-    private(set) var windowLayerTags: [UInt32: String] = [:]
     private var timer: Timer?
     private var lastFocusedWindowID: UInt32?
 
@@ -190,21 +188,6 @@ final class DesktopModel: ObservableObject {
             SessionWindowLocator.matches(session: session, title: entry.title, extractedSessionName: entry.latticesSession)
                 && Self.isOnCurrentSpace(entry, current: current)
         }
-    }
-
-    /// Assign a layer tag to a window (in-memory only)
-    func assignLayer(wid: UInt32, layerId: String) {
-        windowLayerTags[wid] = layerId
-    }
-
-    /// Remove layer tag from a window
-    func removeLayerTag(wid: UInt32) {
-        windowLayerTags.removeValue(forKey: wid)
-    }
-
-    /// Clear all layer tags
-    func clearLayerTags() {
-        windowLayerTags.removeAll()
     }
 
     /// Find a window by app name and optional title substring (case-insensitive).

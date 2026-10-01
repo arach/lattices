@@ -56,7 +56,7 @@ Compatibility wrappers still exist:
 |---------------|----------------------|
 | `window.place` | `actions.execute` with `type=window.place` |
 | `window.tile` | `window.place` |
-| `layer.switch` | `layer.activate` with `mode=launch` |
+| `layer.switch` | `layer.activate` |
 | `layout.distribute` | `space.optimize` with `scope=visible`, `strategy=balanced` |
 
 ## Discoverability
