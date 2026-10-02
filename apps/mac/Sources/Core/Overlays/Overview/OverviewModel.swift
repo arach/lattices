@@ -242,7 +242,7 @@ final class OverviewModel: ObservableObject {
             homes: stage.homes(),
             tucked: stage.tuckedByLayer(),
             extras: extras,
-            ocrText: OcrModel.shared.results.mapValues(\.fullText)
+            ocrText: ScreenText.shared.results.mapValues(\.fullText)
         ), alive: windows)
     }
 
