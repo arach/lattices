@@ -143,7 +143,8 @@ struct AppShellView: View {
             } content: {
                 contentArea
             } statusBar: {
-                statusBar
+                statusBar(availableWidth: proxy.size.width - HudSidebarLayout.railWidth
+                    - (sidebarCompact ? 0 : CGFloat(sidebarLabelWidth)) - HudSpacing.sm)
             }
             .onPreferenceChange(PageActionsKey.self) { pageActions = $0 }
             .ignoresSafeArea(.container, edges: .top)
@@ -278,9 +279,12 @@ struct AppShellView: View {
     /// shape, last scan — so the strip never changes shape under you. Anything
     /// page-specific lives next to the thing it counts. The one variable region
     /// is the error line, and it sits between the fixed slots so they hold.
-    private var statusBar: some View {
-        HStack(spacing: 18) {
-            statusSlot(width: 132) {
+    private func statusBar(availableWidth: CGFloat) -> some View {
+        // Preserve the three standard slots and their stable proportions. A
+        // fixed 632pt minimum otherwise makes the whole shell clip at 600pt.
+        let scale = min(1, max(0.1, (availableWidth - 2 * Chrome.inset) / 608))
+        return HStack(spacing: 18 * scale) {
+            statusSlot(width: 132 * scale) {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(runningSessionCount > 0 ? Palette.running : Palette.textMuted)
@@ -289,7 +293,7 @@ struct AppShellView: View {
                 }
             }
 
-            statusSlot(width: 260) {
+            statusSlot(width: 260 * scale) {
                 Text(desktopShapeText)
             }
 
@@ -307,10 +311,10 @@ struct AppShellView: View {
                 .help("Open Activity")
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 12 * scale)
 
             if ocr.isAvailable {
-                statusSlot(width: 150, alignment: .trailing) {
+                statusSlot(width: 150 * scale, alignment: .trailing) {
                     Text(lastScanText)
                 }
             }
