@@ -90,7 +90,7 @@ struct MainView: View {
     }
 
     private var visiblyMissingCapabilities: [Capability] {
-        Capability.allCases.filter { !$0.isGranted && !prefs.isCapabilityDismissed($0.rawValue) }
+        Capability.available.filter { !$0.isGranted && !prefs.isCapabilityDismissed($0.rawValue) }
     }
 
     private var mainContent: some View {

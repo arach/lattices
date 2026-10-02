@@ -584,7 +584,7 @@ struct ScreenMapView: View {
 
     private func inspectorWindowCard(win: ScreenMapWindowEntry, editor: ScreenMapEditorState) -> some View {
         let desktopEntry = DesktopModel.shared.windows[UInt32(win.id)]
-        let ocrText = OcrModel.shared.results[UInt32(win.id)]?.fullText
+        let ocrText = ScreenText.shared.results[UInt32(win.id)]?.fullText
 
         return VStack(alignment: .leading, spacing: 8) {
             // Header: app + visibility
@@ -729,7 +729,7 @@ struct ScreenMapView: View {
                 WindowTiler.tileWindowById(wid: wid, pid: entry.pid, to: .maximize)
             }),
             ("r", "rescan", {
-                OcrModel.shared.scanSingle(wid: wid)
+                ScreenText.shared.scanSingle(wid: wid)
             }),
             ("c", "copy info", { [controller] in
                 let info = [

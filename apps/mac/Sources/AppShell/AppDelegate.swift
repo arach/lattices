@@ -25,6 +25,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         HudLoggerSinks.install(HudLogStore.shared)
         HudLoggerSinks.install(LatticesLogDiskSink.shared)
+        #if LATTICES_BUNDLE
+        LatticesBundle.register()
+        #endif
+        DiagnosticLog.shared.info("Lattices tier: \(LatticesTier.current.rawValue) [\(BundleModules.ids.joined(separator: ", "))]")
         traceBuildIdentity()
         HudLogger(category: "lattices").info("Lattices booted", metadata: ["state": "ready"])
 
@@ -45,7 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
-        SpatialLensController.shared.start()
+        BundleModules.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
         DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
@@ -147,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SecureEventInputMonitor.shared.stop()
         SpaceSwitchInterceptor.shared.stop()
         KeyboardRemapController.shared.stop()
-        SpatialLensController.shared.stop()
+        BundleModules.stop()
         AppServicesBootstrap.stop()
     }
 

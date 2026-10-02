@@ -13,6 +13,14 @@ MODE="dmg"
 DRY_RUN=0
 UPLOAD_TMP=""
 
+# The public release feed carries the free tier only. Bundle builds come from
+# `LATTICES_TIER=bundle bun bin/lattices-app.ts build` and never ship here.
+if [ "${LATTICES_TIER:-free}" != "free" ]; then
+    echo "Error: ship.sh publishes the free tier only (LATTICES_TIER=$LATTICES_TIER)" >&2
+    exit 1
+fi
+export LATTICES_TIER=free
+
 cleanup() {
     if [ -n "$UPLOAD_TMP" ] && [ -d "$UPLOAD_TMP" ]; then
         rm -rf "$UPLOAD_TMP"
@@ -24,7 +32,8 @@ usage() {
     cat <<'EOF'
 Usage: ./tools/release/ship.sh [dmg|bin] [--dry-run]
 
-Build the release asset and upload it to the public GitHub release feed.
+Build the free-tier release asset and upload it to the public GitHub release
+feed. Bundle builds never ship through this script.
 
 Modes:
   dmg   Build/sign/notarize dist/Lattices.dmg and upload it (default)
@@ -66,11 +75,12 @@ build_binary() {
 
     echo "==> Building release binary (arm64)..."
     if [ "$DRY_RUN" -eq 1 ]; then
-        printf 'DRY RUN: (cd %q && swift build -c release)\n' "$APP_DIR"
+        printf 'DRY RUN: (cd %q && eval "$(bun bin/lattices-build-env.ts shell)" && swift build -c release)\n' "$APP_DIR"
         printf 'DRY RUN: mkdir -p %q && cp %q %q && chmod +x %q\n' "$DIST_DIR" "$binary" "$asset" "$asset"
         return 0
     fi
     (
+        eval "$(bun "$ROOT/bin/lattices-build-env.ts" shell)"
         cd "$APP_DIR"
         swift build -c release
     )
