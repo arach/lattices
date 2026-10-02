@@ -255,6 +255,17 @@ enum Chrome {
 /// Pages publish their own set with `.pageActions(...)` and the shell renders
 /// them, so every page's actions land in the same place wearing the same shape
 /// — the page decides *what* it can do, the chrome decides how that looks.
+struct PageActionItem: Identifiable, Equatable {
+    let id: String
+    let title: String
+    var isOn: Bool = false
+    let perform: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.title == rhs.title && lhs.isOn == rhs.isOn
+    }
+}
+
 struct PageAction: Identifiable, Equatable {
     let id: String
     let title: String
@@ -263,6 +274,8 @@ struct PageAction: Identifiable, Equatable {
     let shortcut: String?
     let isPrimary: Bool
     let isEnabled: Bool
+    let isOn: Bool
+    let menu: [PageActionItem]?
     let perform: () -> Void
 
     init(
@@ -272,7 +285,9 @@ struct PageAction: Identifiable, Equatable {
         shortcut: String? = nil,
         isPrimary: Bool = false,
         isEnabled: Bool = true,
-        perform: @escaping () -> Void
+        isOn: Bool = false,
+        menu: [PageActionItem]? = nil,
+        perform: @escaping () -> Void = {}
     ) {
         self.id = id
         self.title = title
@@ -280,6 +295,8 @@ struct PageAction: Identifiable, Equatable {
         self.shortcut = shortcut
         self.isPrimary = isPrimary
         self.isEnabled = isEnabled
+        self.isOn = isOn
+        self.menu = menu
         self.perform = perform
     }
 
@@ -292,6 +309,8 @@ struct PageAction: Identifiable, Equatable {
             && lhs.shortcut == rhs.shortcut
             && lhs.isPrimary == rhs.isPrimary
             && lhs.isEnabled == rhs.isEnabled
+            && lhs.isOn == rhs.isOn
+            && lhs.menu == rhs.menu
     }
 }
 
@@ -314,35 +333,61 @@ extension View {
 /// variant is the only one that carries hue, and it carries the running green.
 struct PageActionButton: View {
     let action: PageAction
+    var compact = false
 
     @State private var isHovering = false
 
     private var foreground: Color {
         if !action.isEnabled { return Palette.textMuted }
-        if action.isPrimary  { return Palette.running }
+        if action.isPrimary || action.isOn  { return Palette.running }
         return isHovering ? Palette.text : Palette.textDim
     }
 
     private var fill: Color {
-        if action.isPrimary { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
+        if action.isPrimary || action.isOn { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
         return isHovering ? Palette.surfaceHov : Palette.surface
     }
 
     private var stroke: Color {
-        if action.isPrimary { return Palette.running.opacity(0.32) }
+        if action.isPrimary || action.isOn { return Palette.running.opacity(0.32) }
         return isHovering ? Palette.borderLit : Palette.border
     }
 
     var body: some View {
-        Button(action: action.perform) {
+        Group {
+            if let items = action.menu {
+                Menu {
+                    ForEach(items) { item in
+                        Button(action: item.perform) {
+                            if item.isOn { Label(item.title, systemImage: "checkmark") }
+                            else { Text(item.title) }
+                        }
+                    }
+                } label: { controlLabel }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            } else {
+                Button(action: action.perform) { controlLabel }
+                    .accessibilityValue(action.isOn ? "On" : "Off")
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!action.isEnabled)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(action.title)
+        .help(action.title + (action.shortcut.map { " " + $0 } ?? ""))
+    }
+
+    private var controlLabel: some View {
             HStack(spacing: 6) {
                 if let icon = action.icon {
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .medium))
                 }
-                Text(action.title)
-                    .font(Typo.body(12))
-                if let shortcut = action.shortcut {
+                if !compact || action.icon == nil {
+                    Text(action.title).font(Typo.body(12))
+                }
+                if let shortcut = action.shortcut, !compact {
                     KeyCap(shortcut)
                 }
             }
@@ -357,11 +402,6 @@ struct PageActionButton: View {
                             .strokeBorder(stroke, lineWidth: Chrome.hairline)
                     )
             )
-        }
-        .buttonStyle(.plain)
-        .disabled(!action.isEnabled)
-        .onHover { isHovering = $0 }
-        .accessibilityLabel(action.title)
     }
 }
 

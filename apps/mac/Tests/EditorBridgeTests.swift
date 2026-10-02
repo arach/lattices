@@ -17,6 +17,74 @@ final class EditorBridgeTests: XCTestCase {
          "revision": revision as Any? ?? NSNull(), "kind": kind, "payload": [String: Any]()]
     }
 
+    func testHostChromeUIStateDoesNotCaptureOrMutateSubject() throws {
+        var captures = 0
+        let bridge = EditorBridge(hostChrome: true) {
+            captures += 1
+            throw EditorBridgeError("unavailable", "No subject")
+        }
+        let capabilities = bridge.reply(to: request("capabilities"))["payload"] as! [String: Any]
+        XCTAssertEqual(capabilities["chrome"] as? String, "host")
+        XCTAssertTrue((capabilities["methods"] as! [String]).contains("ui.state"))
+        let baseline = captures
+        var received: EditorUIState?
+        bridge.onUIState = { received = $0 }
+        var call = request("ui.state")
+        call["payload"] = ["arrangement": "columns", "panels": ["chat", "preview"], "sourceOpen": false]
+        let reply = bridge.reply(to: call)
+        XCTAssertEqual(reply["kind"] as? String, "ui.state.result")
+        XCTAssertEqual((reply["payload"] as? [String: Any])?.count, 0)
+        XCTAssertEqual(received?.arrangement, "columns")
+        XCTAssertEqual(captures, baseline)
+        for invalid: [String: Any] in [
+            ["arrangement": "bad", "panels": ["chat"], "sourceOpen": false],
+            ["arrangement": "grid", "panels": ["terminal"], "sourceOpen": false],
+            ["arrangement": "grid", "panels": ["source"], "sourceOpen": false],
+            ["arrangement": "grid", "panels": ["chat", "chat"], "sourceOpen": false]
+        ] {
+            call["payload"] = invalid
+            XCTAssertEqual(bridge.reply(to: call)["kind"] as? String, "error")
+        }
+        XCTAssertEqual(received?.arrangement, "columns")
+        XCTAssertEqual(captures, baseline)
+    }
+
+    func testHostUICommandsUseEnvelopeAndRejectUnknownCommands() {
+        let bridge = EditorBridge(hostChrome: true) { throw EditorBridgeError("unavailable", "Unused") }
+        var events: [[String: Any]] = []
+        bridge.onEvent = { events.append($0) }
+        bridge.sendUICommand("arrangement", value: "grid")
+        bridge.sendUICommand("togglePanel", value: "history")
+        bridge.sendUICommand("toggleSource")
+        bridge.sendUICommand("activate", value: "web")
+        bridge.sendUICommand("arrangement", value: "invalid")
+        bridge.sendUICommand("togglePanel", value: "terminal")
+        XCTAssertEqual(events.count, 3)
+        XCTAssertTrue(events.allSatisfy { $0["kind"] as? String == "ui.command" })
+        XCTAssertTrue(events.allSatisfy { $0["subjectId"] as? String == EditorSubject.id })
+        XCTAssertEqual((events[0]["payload"] as? [String: String])?["value"], "grid")
+        let standalone = EditorBridge { throw EditorBridgeError("unavailable", "Unused") }
+        standalone.onEvent = { _ in XCTFail("No host command without host chrome") }
+        standalone.sendUICommand("toggleSource")
+        XCTAssertEqual(standalone.reply(to: request("ui.state"))["kind"] as? String, "error")
+        XCTAssertNil((standalone.reply(to: request("capabilities"))["payload"] as? [String: Any])?["chrome"])
+    }
+
+    func testLayersNavigationAndPageActionSelectionIdentity() {
+        XCTAssertEqual(AppPage.navigationGroups.first?.pages, [.home, .overview, .layers])
+        XCTAssertEqual(AppPage.named("layers"), .layers)
+        let off = PageAction(id: "source", title: "Source", isOn: false) {}
+        let on = PageAction(id: "source", title: "Source", isOn: true) {}
+        XCTAssertNotEqual(off, on)
+        let first = PageAction(id: "panels", title: "Panels", menu: [
+            PageActionItem(id: "chat", title: "Chat", isOn: false) {}
+        ])
+        let second = PageAction(id: "panels", title: "Panels", menu: [
+            PageActionItem(id: "chat", title: "Chat", isOn: true) {}
+        ])
+        XCTAssertNotEqual(first, second)
+    }
+
     func testRevisionIgnoresObjectKeyOrderAndUnrelatedRootButPreservesUnknownEntryFields() throws {
         let a = try subject("{\"app\":\"Safari\",\"future\":{\"z\":2,\"a\":1}}")
         let b = try EditorSubject(data: Data("{\"other\":true,\"layers\":[{\"projects\":[{\"future\":{\"a\":1,\"z\":2},\"app\":\"Safari\"}],\"label\":\"Web\",\"id\":\"web\"}]}".utf8))

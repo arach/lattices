@@ -10,13 +10,28 @@ final class EditorBridge {
     static let methods = ["subject.read", "preview.project", "events.subscribe"]
     let subscriptionId = UUID().uuidString
     var onEvent: (([String: Any]) -> Void)?
+    let hostChrome: Bool
+    var onUIState: ((EditorUIState) -> Void)?
     private let capture: () throws -> Snapshot
     private var subscribed = false
     private var lastRevision: String?
     private var lastSnapshot: String?
     private var readFailed = false
 
-    init(capture: @escaping () throws -> Snapshot) { self.capture = capture }
+    init(hostChrome: Bool = false, capture: @escaping () throws -> Snapshot) {
+        self.hostChrome = hostChrome
+        self.capture = capture
+    }
+
+    func sendUICommand(_ command: String, value: String? = nil) {
+        guard hostChrome,
+              (command == "arrangement" && EditorUIState.arrangements.contains(value ?? ""))
+                || (command == "togglePanel" && EditorUIState.panelIDs.contains(value ?? ""))
+                || (command == "toggleSource" && value == nil) else { return }
+        var payload: [String: Any] = ["command": command]
+        if let value { payload["value"] = value }
+        onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "ui.command", payload: payload))
+    }
 
     private func envelope(requestId: Any = NSNull(), revision: Any = NSNull(), kind: String,
                           payload: [String: Any]) -> [String: Any] {
@@ -71,7 +86,7 @@ final class EditorBridge {
                   (request["subjectId"] is NSNull || request["subjectId"] is String) else {
                 throw EditorBridgeError("invalid_request", "Expected a v1 Editor request envelope.")
             }
-            guard kind == "capabilities" || Self.methods.contains(kind) else {
+            guard kind == "capabilities" || Self.methods.contains(kind) || (hostChrome && kind == "ui.state") else {
                 throw EditorBridgeError("unsupported", "This Editor is read-only; method is not supported.")
             }
             guard kind == "capabilities" || request["subjectId"] as? String == EditorSubject.id else {
@@ -84,9 +99,18 @@ final class EditorBridge {
                 let revision: Any = snapshot?.subject.revision as Any? ?? NSNull()
                 let subject: [String: Any] = ["id": EditorSubject.id, "kind": "lattices.workspace-layers",
                                              "label": "Workspace Layers", "revision": revision]
-                return envelope(requestId: requestId, revision: revision, kind: "capabilities.result", payload: [
-                    "readOnly": true, "methods": Self.methods, "subject": subject, "terminal": false
-                ])
+                var payload: [String: Any] = [
+                    "readOnly": true, "methods": Self.methods + (hostChrome ? ["ui.state"] : []),
+                    "subject": subject, "terminal": false
+                ]
+                if hostChrome { payload["chrome"] = "host" }
+                return envelope(requestId: requestId, revision: revision, kind: "capabilities.result", payload: payload)
+            }
+            if kind == "ui.state" {
+                let state = try EditorUIState(payload: request["payload"] as! [String: Any])
+                onUIState?(state)
+                return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
+                                kind: "ui.state.result", payload: [:])
             }
             // Register before capture. Events may precede this reply; the client
             // installs its listener before sending events.subscribe.
@@ -147,5 +171,30 @@ final class EditorBridge {
         let sources = LayerMembership.Sources(group: { groups[$0] }, projectWindows: { companions[$0] ?? [] },
                                               isContent: DesktopModel.isContent, isRunning: { running[$0] ?? false })
         return Snapshot(subject: subject, projection: try subject.project(windows: windows, sources: sources))
+    }
+}
+
+
+/// UI-only state. Never enters the subject revision, workspace or resolver.
+struct EditorUIState: Equatable {
+    static let arrangements = ["single", "columns", "rows", "grid"]
+    static let panelIDs = ["chat", "preview", "history", "source"]
+    let arrangement: String
+    let panels: [String]
+    let sourceOpen: Bool
+
+    init(payload: [String: Any]) throws {
+        guard let arrangement = payload["arrangement"] as? String,
+              Self.arrangements.contains(arrangement),
+              let panels = payload["panels"] as? [String],
+              Set(panels).count == panels.count,
+              panels.allSatisfy(Self.panelIDs.contains),
+              let sourceOpen = payload["sourceOpen"] as? Bool,
+              sourceOpen == panels.contains("source") else {
+            throw EditorBridgeError("invalid_request", "Invalid Editor UI state.")
+        }
+        self.arrangement = arrangement
+        self.panels = panels
+        self.sourceOpen = sourceOpen
     }
 }

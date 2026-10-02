@@ -11,6 +11,7 @@ enum AppPage: String, CaseIterable {
     /// Every window: replaces Studio (`screenMap`) and Windows
     /// (`desktopInventory`).
     case overview
+    case layers
     case activity
     case runs
     case assistant
@@ -22,6 +23,7 @@ enum AppPage: String, CaseIterable {
         switch self {
         case .home:             return "Home"
         case .overview:         return "Overview"
+        case .layers:           return "Layers"
         case .activity:         return "Activity"
         case .runs:             return "Runs"
         case .assistant:        return "Assistant"
@@ -35,6 +37,7 @@ enum AppPage: String, CaseIterable {
         switch self {
         case .home:             return "house"
         case .overview:         return "rectangle.3.group"
+        case .layers:           return "square.3.layers.3d"
         case .activity:         return "list.bullet.rectangle"
         case .runs:             return "record.circle"
         case .assistant:        return "bubble.left.and.bubble.right"
@@ -48,7 +51,7 @@ enum AppPage: String, CaseIterable {
     /// places you work, agent surfaces, system state — so Runs and Activity stop
     /// reading as peers of Home.
     static let navigationGroups: [(title: String, pages: [AppPage])] = [
-        ("Workspace", [.home, .overview]),
+        ("Workspace", [.home, .overview, .layers]),
         ("Agents",    [.assistant, .runs]),
         ("System",    [.activity]),
     ]
@@ -242,12 +245,21 @@ struct AppShellView: View {
                 .foregroundColor(Palette.text)
                 .lineLimit(1)
 
+            if windowController.activePage == .layers {
+                Text("Read only").font(Typo.body(12)).foregroundColor(Palette.textMuted)
+            }
             Spacer(minLength: 12)
 
-            ForEach(pageActions) { action in
-                PageActionButton(action: action)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(pageActions) { action in PageActionButton(action: action) }
+                    PageActionButton(action: searchAction)
+                }
+                HStack(spacing: 6) {
+                    ForEach(pageActions) { action in PageActionButton(action: action, compact: true) }
+                    PageActionButton(action: searchAction, compact: true)
+                }
             }
-            PageActionButton(action: searchAction)
         }
         .padding(.horizontal, Chrome.inset)
         .frame(height: Chrome.titleBarHeight)
@@ -401,6 +413,8 @@ struct AppShellView: View {
             })
         case .overview:
             OverviewView(model: overview, controller: controller)
+        case .layers:
+            LayersPage()
         case .activity:
             ActivityPageView()
         case .runs:

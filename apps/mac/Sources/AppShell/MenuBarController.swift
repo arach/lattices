@@ -160,7 +160,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             ("Assistant", "⌘⇧A", #selector(menuAssistant)),
             ("Home", "", #selector(menuWorkspace)),
             ("Studio", "", #selector(menuLayout)),
-            ("Editor…", "", #selector(menuEditor)),
+            ("Layers…", "", #selector(menuEditor)),
             ("Command Bar", "", #selector(menuSearch)),
         ]
         for (title, shortcut, action) in actions {

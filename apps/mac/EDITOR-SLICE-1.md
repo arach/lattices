@@ -168,3 +168,37 @@ WOFF2 as font/woff2 and CSP permits self fonts.
 
 All five copied hashes match the approved values. Design live evidence is in
 EDITOR-SLICE-1-LIVE.md.
+
+
+## Layers shell integration (native, October 2)
+
+The standalone Editor window is removed. The compatibility
+EditorWindowController.show() entry point now selects AppPage.layers in the
+main app window. The menu item is Layers…; lattices://editor keeps working.
+
+Layers appears after Overview in Workspace. A process-retained LayersPageModel
+owns one EditorWebHost/WKWebView, created and loaded only on first visit.
+Switching pages detaches/reattaches the same web view without reloading it.
+Its under-page color and the SwiftUI host background are Palette.bg.
+
+PageAction adds optional menu items and selected state. Appearance remains in
+PageActionButton; the shell falls back to icon controls when the header is narrow.
+Layers publishes Arrangement, Panels and Inspect source. Search remains the
+shell action, and the existing three-slot status bar is unchanged.
+
+Hosted capabilities advertises chrome:"host" and ui.state. UI state validates
+known arrangements/panels and source visibility, acknowledges with
+ui.state.result payload {}, and never captures or writes the workspace.
+Commands use the standard v1 hudson:host-event envelope, kind ui.command, and
+the approved payload shapes. Controls remain disabled until initial ui.state,
+so commands cannot be sent before the web layout is ready. Selected states
+come only from the web's reported state, not optimistic native toggles.
+
+Native bundle build passed; 54 targeted tests passed, including hosted
+capabilities, valid/invalid UI state, no capture for UI-only calls, command
+allowlist/envelopes, navigation order and action selected-state equality.
+The external design canvas could not be fetched; implementation follows the
+explicit version-7 requirements in the coordinator's message.
+
+No new web bundle imported yet. Integration screenshots and dev relaunch wait
+for the Hudson builder's approved commit and hashes.

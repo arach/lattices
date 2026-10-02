@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import SwiftUI
 
 /// All transport constants live here. This scheme serves bundled files only;
 /// it neither opens a port nor starts the Companion bridge.
@@ -69,7 +70,7 @@ final class EditorWebHost: NSObject, WKScriptMessageHandlerWithReply, WKNavigati
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: EditorTransport.handler)
         web.navigationDelegate = self
         web.setValue(false, forKey: "drawsBackground")
-        web.underPageBackgroundColor = NSColor(calibratedWhite: 0.025, alpha: 1)
+        web.underPageBackgroundColor = NSColor(Palette.bg)
         bridge.onEvent = { [weak self] event in
             guard let self else { return }
             // callAsyncJavaScript passes structured arguments, never interpolates
@@ -128,35 +129,71 @@ final class EditorWebHost: NSObject, WKScriptMessageHandlerWithReply, WKNavigati
     }
 }
 
-final class EditorWindowController: NSObject, NSWindowDelegate {
+/// Compatibility entry point for menu items and lattices://editor.
+/// The standalone window has been removed.
+final class EditorWindowController {
     static let shared = EditorWindowController()
-    private var window: NSWindow?
-    private var host: EditorWebHost?
+    func show() { ScreenMapWindowController.shared.showPage(.layers) }
+}
 
-    func show() {
-        if let window { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return }
+/// Owns a single WKWebView independently of SwiftUI's page-view lifetime.
+/// Switching pages only detaches/reattaches it; start() is called exactly once.
+final class LayersPageModel: ObservableObject {
+    static let shared = LayersPageModel()
+    @Published private(set) var state: EditorUIState?
+    private let bridge = EditorBridge(hostChrome: true, capture: EditorBridge.liveSnapshot)
+    private var retainedHost: EditorWebHost?
+
+    var host: EditorWebHost {
+        if let retainedHost { return retainedHost }
+        bridge.onUIState = { [weak self] state in
+            DispatchQueue.main.async { self?.state = state }
+        }
         let root = Bundle.module.resourceURL!.appendingPathComponent("Editor", isDirectory: true)
-        let host = EditorWebHost(bundleRoot: root)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 820),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Lattices Editor"
-        window.minSize = NSSize(width: 480, height: 420)
-        window.backgroundColor = NSColor(calibratedWhite: 0.025, alpha: 1)
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.contentView = host.web
-        window.center()
-        window.setFrameAutosaveName("LatticesEditor")
-        self.host = host; self.window = window
-        AppActivationCoordinator.shared.registerSurface(id: "editor") { [weak self] in self?.window?.isVisible == true }
+        let host = EditorWebHost(bundleRoot: root, bridge: bridge)
+        retainedHost = host
         host.start()
-        window.makeKeyAndOrderFront(nil)
-        AppActivationCoordinator.shared.refresh()
-        NSApp.activate(ignoringOtherApps: true)
+        return host
     }
 
-    func windowWillClose(_ notification: Notification) {
-        host?.stop(); host = nil; window = nil
-        AppActivationCoordinator.shared.refresh()
+    func command(_ command: String, value: String? = nil) {
+        guard state != nil else { return }
+        bridge.sendUICommand(command, value: value)
     }
+
+    var actions: [PageAction] {
+        [
+            PageAction(id: "layers.arrangement", title: "Arrangement", icon: "rectangle.3.group",
+                       isEnabled: state != nil, menu: EditorUIState.arrangements.map { value in
+                PageActionItem(id: value, title: value.capitalized, isOn: state?.arrangement == value) {
+                    self.command("arrangement", value: value)
+                }
+            }),
+            PageAction(id: "layers.panels", title: "Panels", icon: "sidebar.left",
+                       isEnabled: state != nil, menu: EditorUIState.panelIDs.map { value in
+                PageActionItem(id: value, title: value.capitalized, isOn: state?.panels.contains(value) == true) {
+                    self.command("togglePanel", value: value)
+                }
+            }),
+            PageAction(id: "layers.source", title: "Inspect source", icon: "curlybraces",
+                       isEnabled: state != nil, isOn: state?.sourceOpen == true) {
+                self.command("toggleSource")
+            }
+        ]
+    }
+}
+
+struct LayersPage: View {
+    @ObservedObject private var model = LayersPageModel.shared
+    var body: some View {
+        LayersWebView(host: model.host)
+            .background(Palette.bg)
+            .pageActions(model.actions)
+    }
+}
+
+private struct LayersWebView: NSViewRepresentable {
+    let host: EditorWebHost
+    func makeNSView(context: Context) -> WKWebView { host.web }
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
