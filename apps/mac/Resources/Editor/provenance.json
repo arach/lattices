@@ -1,0 +1,11 @@
+{
+  "source": "arach/hudson:apps/lattices-editor",
+  "revision": "eb075a499ff40a19ba2a1b3188a12a661d19e711",
+  "sourceDirty": false,
+  "files": {
+    "index.html": "73af1bc2c2f6f69c0674176a2ca4f3746cacebab8146ef26f07f307f0dce0e69",
+    "editor.js": "434f3e40a3aadfd8c08cf824fdedadde51d17bf2f2f3bf279d95cda6777c33c3",
+    "editor.css": "f47c38467762442d6fb3aa4d5f74bf72a59b70ec2c2076fa04386d63e78c65bb"
+  },
+  "approvedRevision": "ada590fddbdff2d50a0f4f0e38d54eef9d111268"
+}

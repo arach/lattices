@@ -6,9 +6,9 @@
 - Worktree: `/Users/arach/dev/lattices-editor-host-slice-1`
 - Base: `codex/native-workspace` at `91e2e3ab`.
 - Only this feature worktree changed. No app launch, desktop action, push or merge.
-- Hudson owns the UI and static build. The checked-in native fallback is **not**
-  the completed Editor UI. Do not describe slice 1 as shipped until the approved
-  Hudson bundle is imported and the user-authorized native integration pass runs.
+- Hudson owns the UI and static build. The approved Hudson bundle is now
+  imported and hash-verified. Live native acceptance still requires Arach's
+  authorization; this build has not been launched or installed.
 
 ## Locked bridge
 
@@ -70,10 +70,25 @@ SwiftPM copies the Editor resources. The dev packager now copies SwiftPM
 resource bundles, matching existing package/release behavior. No installed app
 was rebuilt or replaced by this work.
 
-## Bundle handoff (pending)
+## Bundle handoff (imported and verified)
 
-Wait for the Hudson owner to approve a commit and per-file SHA-256 hashes.
-Then, from this worktree:
+Approved Hudson commit: `ada590fddbdff2d50a0f4f0e38d54eef9d111268`.
+Source: `/Users/arach/dev/hudson-worktrees/lattices-editor-slice-1/apps/lattices-editor/dist`.
+All three copied files match the coordinator-approved SHA-256 values:
+
+| File | SHA-256 |
+|---|---|
+| `editor.css` | `f47c38467762442d6fb3aa4d5f74bf72a59b70ec2c2076fa04386d63e78c65bb` |
+| `editor.js` | `434f3e40a3aadfd8c08cf824fdedadde51d17bf2f2f3bf279d95cda6777c33c3` |
+| `index.html` | `73af1bc2c2f6f69c0674176a2ca4f3746cacebab8146ef26f07f307f0dce0e69` |
+
+The Hudson HEAD advanced during import to
+`eb075a499ff40a19ba2a1b3188a12a661d19e711` (only a package.json test-script
+path correction). The initial HEAD-equality assertion caught that change;
+all asset hashes passed. Provenance retains the actual import HEAD and the
+approved revision separately; the approved bundle bytes did not change.
+
+Commands run from this worktree:
 
 ```sh
 bun bin/import-editor-bundle.ts /Users/arach/dev/hudson-worktrees/lattices-editor-slice-1/apps/lattices-editor/dist
@@ -81,29 +96,29 @@ swift build --package-path apps/mac
 swift test --package-path apps/mac --filter 'EditorBridgeTests|LayerMembershipTests'
 ```
 
-The importer records the Hudson revision and exact asset hashes in
-`Resources/Editor/provenance.json`. Until that handoff, `index.html` deliberately
-shows an unavailable message rather than pretending the full UI exists.
+`Resources/Editor/provenance.json` records the actual import HEAD, clean source
+state, approved revision, and exact copied asset hashes. The bundled index now
+loads the approved Editor UI, replacing the temporary unavailable placeholder.
 
 ## Acceptance evidence
 
 | Acceptance | Status |
 |---|---|
-| Open Editor; five panels, Terminal hidden, Chat reflow | Native menu/window wired; approved Hudson bundle and interactive verification pending |
+| Open Editor; five panels, Terminal hidden, Chat reflow | Native menu/window wired; approved Hudson bundle imported; interactive verification pending |
 | Preview agrees with Lattices membership | Same resolver; native projection/pins/Unassigned tests pass; live side-by-side check pending |
 | Cross-selection, including duplicates | Content-key/range contract tested with emoji, escapes, nested content, reorders and duplicates; end-to-end UI check pending |
 | External assign updates Source/Preview/History in about a second | 500ms invalidation observation implemented and event transitions tested; live timing/flicker check pending |
-| Layout persists and narrow widths stack | Persistent WK store configured; Hudson behavior/native verification pending |
+| Layout persists and narrow widths stack | Persistent WK store configured and Hudson bundle imported; native verification pending |
 | Older host displays unavailable, not blank | Native missing-bundle fallback present; older-host client behavior belongs to Hudson |
 | No workspace writes or effects | Closed read-only allowlist, unknown mutations rejected before capture; native code has no config-write/effect path |
 
 ## Verification
 
-- `swift build --package-path apps/mac`: **passed** (`Build complete! (2.41s)`); log in
-  `/tmp/lattices-editor-slice-1/build-final.log`.
+- `swift build --package-path apps/mac`: **passed** after bundle import and provenance update; log in
+  `/tmp/lattices-editor-slice-1/build-bundle.log`.
 - `swift test --package-path apps/mac --filter 'EditorBridgeTests|LayerMembershipTests'`:
   **51 tests passed, zero failures** (12 Editor, 39 membership).
-- Test log: `/tmp/lattices-editor-slice-1/tests-final.log`.
+- Test log: `/tmp/lattices-editor-slice-1/tests-bundle.log`.
 - Initial compile exposed a WebKit argument-label mismatch, corrected to
   `callAsyncJavaScript(..., in: nil, in: .page, ...)`; the final test build passes.
 - Existing repository deprecation/concurrency warnings remain outside scope.
