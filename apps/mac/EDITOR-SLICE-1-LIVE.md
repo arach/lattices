@@ -1,4 +1,63 @@
-# Slice 1 live acceptance — deep-link run
+# Slice 1 live acceptance — approved 2×2 grid regression
+
+October 1, 2026 (Toronto). Worktree:
+`/Users/arach/dev/lattices-editor-host-slice-1`, branch `feat/editor-host-slice-1`.
+
+## Latest result: Hudson 74679b4
+
+Imported approved Hudson `74679b445ae24cae817a3fd98bb9bf91720bc239`.
+All three copied hashes match the coordinator's values; provenance records the
+same clean source revision. Native bundle import commit: **19d92c89**.
+This section supersedes the initial-panel defect and running-process details
+in the historical deep-link report below.
+
+- **Check 1 PASS:** first open after upgrade automatically replaced the previous
+  saved three-column, Chat-hidden layout with the filled **2×2** grid:
+  Chat / Preview above History & Results / Source. All four panels are visible,
+  no empty cell, Terminal hidden. No manual layout reset or storage deletion.
+  Screenshot: [migrated grid](EditorSlice1LiveEvidence/grid-migrated.png).
+  This demonstrates migration of the existing saved layout on upgrade; a second
+  migration-cycle test with a newly customized layout was not performed.
+  The previously reported default-layout defect is resolved.
+- **Selection spot-check PASS:** clicking the first Lattices Ghostty Preview row
+  selected one window and highlighted exactly its project JSON object at Source
+  lines 9–12. Screenshot:
+  [selection](EditorSlice1LiveEvidence/grid-selection.png).
+  Reverse selection passed in the earlier run; not repeated in this spot-check.
+- **Check 6 PASS:** workspace.json unchanged across import, rebuild, relaunch
+  and selection: SHA-256
+  `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+  mtime_ns `1790863638274089681`, size 3172 bytes.
+  Evidence: `grid-before.json` and `grid-after.json`.
+- Checks 2 and 4 retain the earlier pass evidence, not rerun here.
+  Check 3 duplicate subcase and check 5 transient flash/WebKit console remain
+  pending as described below. Stable current captures are dark and nonblank.
+  External assignment remains Arach's manual check.
+
+## Current build and running state
+
+- `swift build --package-path apps/mac`: passed (10.43s).
+- `swift test --package-path apps/mac --filter 'EditorBridgeTests|LayerMembershipTests'`:
+  **51 passed, zero failures**.
+- Logs: `/tmp/lattices-editor-slice-1/grid-build.log` and
+  `/tmp/lattices-editor-slice-1/grid-tests.log`.
+- `bin/lattices-dev build`: passed; incremental production build 1.98s,
+  embedded helper build 1.95s; signed and installed dev bundle.
+  Log: `/tmp/lattices-editor-slice-1/grid-dev-build.log`.
+  First build attempt safely refused while the quitting dev process was still
+  exiting; retried only after confirming it had stopped.
+- Launched with `bin/lattices-dev launch`, then
+  `open -b dev.lattices.app.dev "lattices://editor"`.
+- Dev remains running **PID 90586**, Editor **177158**, 1240×852.
+  Release remains stopped. Editor is left open with the selected row.
+- No config writes, layer operations, permission changes, push or merge.
+  No manual window hide/move actions. The only test interaction after opening
+  was a click inside the Editor's read-only Preview.
+- No restoreParked movement receipt observed during this launch.
+
+---
+
+# Historical deep-link run
 
 October 1, 2026 (Toronto). Worktree:
 `/Users/arach/dev/lattices-editor-host-slice-1`, branch `feat/editor-host-slice-1`.
