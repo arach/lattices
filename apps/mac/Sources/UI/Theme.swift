@@ -274,7 +274,7 @@ struct PageAction: Identifiable, Equatable {
     let shortcut: String?
     let isPrimary: Bool
     let isEnabled: Bool
-    let isOn: Bool
+    let isOn: Bool?
     let menu: [PageActionItem]?
     let perform: () -> Void
 
@@ -285,7 +285,7 @@ struct PageAction: Identifiable, Equatable {
         shortcut: String? = nil,
         isPrimary: Bool = false,
         isEnabled: Bool = true,
-        isOn: Bool = false,
+        isOn: Bool? = nil,
         menu: [PageActionItem]? = nil,
         perform: @escaping () -> Void = {}
     ) {
@@ -339,17 +339,17 @@ struct PageActionButton: View {
 
     private var foreground: Color {
         if !action.isEnabled { return Palette.textMuted }
-        if action.isPrimary || action.isOn  { return Palette.running }
+        if action.isPrimary || action.isOn == true  { return Palette.running }
         return isHovering ? Palette.text : Palette.textDim
     }
 
     private var fill: Color {
-        if action.isPrimary || action.isOn { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
+        if action.isPrimary || action.isOn == true { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
         return isHovering ? Palette.surfaceHov : Palette.surface
     }
 
     private var stroke: Color {
-        if action.isPrimary || action.isOn { return Palette.running.opacity(0.32) }
+        if action.isPrimary || action.isOn == true { return Palette.running.opacity(0.32) }
         return isHovering ? Palette.borderLit : Palette.border
     }
 
@@ -368,7 +368,7 @@ struct PageActionButton: View {
                 .fixedSize()
             } else {
                 Button(action: action.perform) { controlLabel }
-                    .accessibilityValue(action.isOn ? "On" : "Off")
+                    .accessibilityValue(action.isOn.map { $0 ? "On" : "Off" } ?? "")
             }
         }
         .buttonStyle(.plain)
