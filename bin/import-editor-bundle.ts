@@ -12,7 +12,8 @@ const input = process.argv[2];
 if (!input) throw new Error("Usage: bun bin/import-editor-bundle.ts <Hudson editor dist directory>");
 const source = resolve(input);
 const destination = resolve(import.meta.dir, "../apps/mac/Resources/Editor");
-const files = ["index.html", "editor.js", "editor.css"];
+const files = ["index.html", "editor.js", "editor.css",
+  "jetbrains-mono-LICENSE.txt", "jetbrains-mono-latin-400-normal.woff2"];
 const assets = files.map(name => {
   const path = resolve(source, name);
   if (!lstatSync(path).isFile()) throw new Error(`Expected a regular bundled file: ${path}`);

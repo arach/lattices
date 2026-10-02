@@ -150,3 +150,21 @@ LATTICES_BUNDLE=0. Both retain the manifest's voice feature.
 - A preliminary compile was discarded after the Overview source was corrected
   while it was compiling; the reported builds were rerun on the fixed tree.
 - Dev bundle reinstall and screenshot evidence: EDITOR-SLICE-1-LIVE.md.
+
+
+## Approved design refresh (October 2)
+
+Hudson 064386a68599ef7815928518a25d89fc50aa8468, clean source import. The importer now explicitly
+includes the bundled JetBrains Mono WOFF2 and its license. SwiftPM copies the
+whole Editor directory. CSS uses the sibling URL
+`./jetbrains-mono-latin-400-normal.woff2`; the existing scheme handler serves
+WOFF2 as font/woff2 and CSP permits self fonts.
+
+- index.html: de8f487e24e1b0488743fb798cad73d33fccad6c2e2f9675bec9612c79e417cc
+- editor.js: b3a550368c7aea87dd7439b7d9587a353fd87c1aa0ac7abd7f2dc9b5afb86042
+- editor.css: 29169eafdc1c975e92415ad93ffb5636a495f3146dd707eeeb7362d95d6cdb51
+- jetbrains-mono-LICENSE.txt: 403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b
+- jetbrains-mono-latin-400-normal.woff2: 14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb
+
+All five copied hashes match the approved values. Design live evidence is in
+EDITOR-SLICE-1-LIVE.md.
