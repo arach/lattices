@@ -5,10 +5,10 @@
 - Branch: `feat/editor-host-slice-1`
 - Worktree: `/Users/arach/dev/lattices-editor-host-slice-1`
 - Base: `codex/native-workspace` at `91e2e3ab`.
-- Only this feature worktree changed. No app launch, desktop action, push or merge.
+- Only this feature worktree changed. No push or merge.
 - Hudson owns the UI and static build. The approved Hudson bundle is now
-  imported and hash-verified. Live native acceptance still requires Arach's
-  authorization; this build has not been launched or installed.
+  imported and hash-verified. Authorized dev-app live evidence is recorded in
+  EDITOR-SLICE-1-LIVE.md. The release app stays stopped.
 
 ## Locked bridge
 
@@ -67,26 +67,23 @@ observes config/projection invalidations without a full webview reload. Actual
 window-inventory latency also depends on DesktopModel's existing poll interval.
 
 SwiftPM copies the Editor resources. The dev packager now copies SwiftPM
-resource bundles, matching existing package/release behavior. No installed app
-was rebuilt or replaced by this work.
+resource bundles, matching existing package/release behavior. The dev app is rebuilt and installed only with Arach’s authorization.
 
 ## Bundle handoff (imported and verified)
 
-Approved Hudson commit: `ada590fddbdff2d50a0f4f0e38d54eef9d111268`.
+Approved Hudson commit: `74679b445ae24cae817a3fd98bb9bf91720bc239`.
 Source: `/Users/arach/dev/hudson-worktrees/lattices-editor-slice-1/apps/lattices-editor/dist`.
 All three copied files match the coordinator-approved SHA-256 values:
 
 | File | SHA-256 |
 |---|---|
 | `editor.css` | `f47c38467762442d6fb3aa4d5f74bf72a59b70ec2c2076fa04386d63e78c65bb` |
-| `editor.js` | `434f3e40a3aadfd8c08cf824fdedadde51d17bf2f2f3bf279d95cda6777c33c3` |
+| `editor.js` | `9beb4fb47f3b3acd4e59172138eb93c694f51a1b34f418842b762705ada46250` |
 | `index.html` | `73af1bc2c2f6f69c0674176a2ca4f3746cacebab8146ef26f07f307f0dce0e69` |
 
-The Hudson HEAD advanced during import to
-`eb075a499ff40a19ba2a1b3188a12a661d19e711` (only a package.json test-script
-path correction). The initial HEAD-equality assertion caught that change;
-all asset hashes passed. Provenance retains the actual import HEAD and the
-approved revision separately; the approved bundle bytes did not change.
+Hudson HEAD matches the approved revision, with a clean source tree. This
+bundle enables Chat, Preview, History and Source in a filled 2×2 default grid,
+Terminal hidden, with a one-time saved-layout migration.
 
 Commands run from this worktree:
 
@@ -115,12 +112,12 @@ loads the approved Editor UI, replacing the temporary unavailable placeholder.
 ## Verification
 
 - `swift build --package-path apps/mac`: **passed** after bundle import and provenance update; log in
-  `/tmp/lattices-editor-slice-1/build-bundle.log`.
+  `/tmp/lattices-editor-slice-1/grid-build.log`.
 - `swift test --package-path apps/mac --filter 'EditorBridgeTests|LayerMembershipTests'`:
   **51 tests passed, zero failures** (12 Editor, 39 membership).
-- Test log: `/tmp/lattices-editor-slice-1/tests-bundle.log`.
+- Test log: `/tmp/lattices-editor-slice-1/grid-tests.log`.
 - Initial compile exposed a WebKit argument-label mismatch, corrected to
   `callAsyncJavaScript(..., in: nil, in: .page, ...)`; the final test build passes.
 - Existing repository deprecation/concurrency warnings remain outside scope.
-- No live app, WKWebView rendering, screenshot, tiling, focus or other desktop
-  action was exercised. Those checks require Arach's go-ahead.
+- The original build-only acceptance table above is historical. Authorized live
+  results, including the new grid regression, are in EDITOR-SLICE-1-LIVE.md.
