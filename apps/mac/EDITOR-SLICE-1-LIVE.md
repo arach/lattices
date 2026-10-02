@@ -1,3 +1,66 @@
+# Slice 1 live acceptance — approved design refresh
+
+October 2, 2026 (Toronto). Feature branch/worktree unchanged.
+
+## Import and build
+
+- Hudson **064386a68599ef7815928518a25d89fc50aa8468**, imported in **81bd76e2**.
+- All **five** approved hashes verified after copying and again in the installed
+  dev app, including JetBrains Mono WOFF2 and license. Importer updated to retain
+  both assets. No approved CSS/JS/HTML bytes modified.
+- Bundle Swift build passed (74.84s); targeted Editor/membership tests:
+  **51 passed, zero failures**.
+- Dev bundle build passed (0.68s; helper 0.37s), signed and installed.
+  Only dev was quit/relaunched; release untouched.
+- Logs: /tmp/lattices-editor-slice-1/design-{build,tests,dev-build}.log.
+- Opened via explicit dev bundle deep link. Dev remains running **PID 68863**,
+  Editor **177577**, restored to **1240×852**, Expanded layout, two selections.
+
+## Visual checks
+
+- First open: Chat + Preview columns, dark/nonblank, Terminal hidden. This is
+  the approved new default, superseding the earlier four-panel default.
+- Two selected windows: Ghostty and ChatGPT in the Lattices group, with two
+  context chips and **2 windows selected** in the bottom status bar.
+  Emerald row highlights, source highlights, chips and live indicator visible.
+- Expanded layout: four occupied cells (Chat, Preview, History, Source).
+- Narrow at 600px: vertical stack, Preview first; bottom status stays visible.
+  Narrow Chat reduces to context chips, and layer/window counts disappear from
+  status; both are explicitly implemented by Hudson's responsive CSS, not host
+  failures. The first narrow capture retained the scrolled position; a second
+  capture scrolls to the top. Restoring width returns the filled grid.
+- Font: installed WOFF2 and license hashes match. CSS resolves its relative
+  WOFF2 URL to the same Editor bundle directory; existing scheme handler serves
+  font/woff2 and permits self fonts. Mono labels and Source render visibly.
+  **Runtime font identity remains unverified:** no WebKit inspector/font API
+  readback was available, so visual inspection cannot rule out a fallback.
+- White flash: all captured states are dark and nonblank. **First-frame flash
+  remains unverified**; still screenshots do not establish absence of a
+  transient flash before capture.
+- No new confirmed visual defect. The two limitations above are not passes.
+
+## Screenshots
+
+Under apps/mac/EditorSlice1LiveEvidence/ in this worktree:
+
+- design-first-open.png
+- design-two-selected.png
+- design-expanded.png
+- design-narrow.png
+- design-narrow-top.png
+- design-final.png (left open for Arach)
+
+## Safety checkpoint
+
+workspace.json unchanged across import/build/relaunch/interactions:
+SHA-256 **08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc**,
+mtime_ns **1790863638274089681**. Evidence: design-before.json and
+design-after.json. No workspace edits, layer actions, permissions changes,
+push, PR or merge. Only Editor selection, layout expansion and Editor resize
+were exercised.
+
+---
+
 # Slice 1 live acceptance — merged tier split
 
 October 1, 2026 (Toronto). Same feature worktree and branch as below.
