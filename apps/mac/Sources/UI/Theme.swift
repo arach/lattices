@@ -358,10 +358,10 @@ struct PageActionButton: View {
             if let items = action.menu {
                 Menu {
                     ForEach(items) { item in
-                        Button(action: item.perform) {
-                            if item.isOn { Label(item.title, systemImage: "checkmark") }
-                            else { Text(item.title) }
-                        }
+                        Toggle(item.title, isOn: Binding(
+                            get: { item.isOn },
+                            set: { _ in item.perform() }
+                        ))
                     }
                 } label: { controlLabel }
                 .menuStyle(.borderlessButton)
