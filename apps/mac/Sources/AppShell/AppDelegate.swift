@@ -318,6 +318,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .lowercased()
 
         switch host {
+        case "editor":
+            // lattices://editor opens only the read-only Editor surface.
+            EditorWindowController.shared.show()
+            DiagnosticLog.shared.info("DeepLink: opened Editor")
         case "companion":
             handleCompanionDeepLink(action: action)
         case "daemon":
