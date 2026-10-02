@@ -314,7 +314,7 @@ final class OmniSearchState: ObservableObject {
         let procs = ProcessModel.shared.interesting
 
         // OCR info
-        let ocrResults = OcrModel.shared.results
+        let ocrResults = ScreenText.shared.results
         let lastScan: Date? = ocrResults.values.map(\.timestamp).max()
 
         activitySummary = ActivitySummary(

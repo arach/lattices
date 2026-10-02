@@ -1,30 +1,6 @@
 import AppKit
 import CryptoKit
-import Vision
 
-// MARK: - Data Types
-
-enum TextSource: String {
-    case accessibility
-    case ocr
-}
-
-struct OcrTextBlock {
-    let text: String
-    let confidence: Float         // 0.0–1.0
-    let boundingBox: CGRect       // normalized coordinates within window
-}
-
-struct OcrWindowResult {
-    let wid: UInt32
-    let app: String
-    let title: String
-    let frame: WindowFrame
-    let texts: [OcrTextBlock]
-    let fullText: String
-    let timestamp: Date
-    let source: TextSource
-}
 
 // MARK: - OCR Scanner
 
@@ -511,26 +487,6 @@ final class OcrModel: ObservableObject {
     // MARK: - Vision OCR
 
     func recognizeText(in image: CGImage) -> [OcrTextBlock] {
-        let handler = VNImageRequestHandler(cgImage: image, options: [:])
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = prefs.ocrAccuracy == "fast" ? .fast : .accurate
-        request.usesLanguageCorrection = true
-
-        do {
-            try handler.perform([request])
-        } catch {
-            return []
-        }
-
-        guard let observations = request.results else { return [] }
-
-        return observations.compactMap { obs in
-            guard let candidate = obs.topCandidates(1).first else { return nil }
-            return OcrTextBlock(
-                text: candidate.string,
-                confidence: candidate.confidence,
-                boundingBox: obs.boundingBox
-            )
-        }
+        ScreenText.recognize(in: image)
     }
 }

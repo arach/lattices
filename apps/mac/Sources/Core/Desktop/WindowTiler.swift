@@ -551,6 +551,15 @@ struct DisplaySpaces {
     /// desktops plus fullscreen app Spaces. `currentSpaceId` can be a
     /// fullscreen Space, so navigation must use this list, not `spaces`.
     var orderedSpaceIds: [Int] = []
+
+    /// Pure relative target resolution for previous/next space (no SkyLight call).
+    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
+    func relativeSpace(direction: Int) -> SpaceInfo? {
+        guard let currentIdx = spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
+        let targetIdx = currentIdx + direction
+        guard spaces.indices.contains(targetIdx) else { return nil }
+        return spaces[targetIdx]
+    }
 }
 
 private enum CGS {
