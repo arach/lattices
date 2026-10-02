@@ -214,3 +214,17 @@ All five copied hashes match approval; provenance records the clean source.
 - index.html: f8959618fcd68f274db3a9f718dcc1c495855e6a5bc0859944f2c31a06b0a83a
 - jetbrains-mono-LICENSE.txt: 403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b
 - jetbrains-mono-latin-400-normal.woff2: 14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb
+
+
+### Shell acceptance completed
+
+See EDITOR-SLICE-1-LIVE.md for installed 683e871b and screenshot evidence.
+Page switching retains selection and layout; native commands and checked menus
+work. Both 800px and 600px shell widths show the responsive web composition.
+Header controls compact using root-window geometry. The standard status slots
+keep their identities and scale widths with the window instead of forcing a
+632px content minimum. Wide status sizing is unchanged.
+
+The latest targeted suite has 54 passes; full integration suite had
+368 executed / 13 skipped / zero failures. Final dev production build passed.
+workspace.json hash and mtime remained identical.

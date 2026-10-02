@@ -1,3 +1,93 @@
+# Layers page live acceptance — shell integration
+
+October 2, 2026. Worktree /Users/arach/dev/lattices-editor-host-slice-1,
+branch feat/editor-host-slice-1. Installed native code **683e871b** with
+approved Hudson **b3dfd98f7a0d182bcf78ce4eed5fc59cfbda91e5**.
+
+## Delivered
+
+- **1c15827f**: Layers after Overview in Workspace; existing bridge/WKWebView
+  embedded in the app shell. The actual standalone window is **removed**.
+  EditorWindowController remains only as a compatibility router to Layers;
+  both the Layers… menu item and lattices://editor open the main app window.
+- One process-retained EditorWebHost owns the WKWebView. Returning from Activity
+  retains the two selected windows, source highlights and grid arrangement.
+  No second load is issued on page changes. Palette.bg is set before loading.
+- Native PageActions own Arrangement, Panels and Inspect source. Menu selections
+  and the source toggle track ui.state. Search stays the shell's usual action.
+  Header says Layers / Read only; web header/status chrome is absent.
+- **150cb8ee**: imported the approved host-chrome bundle only after its commit
+  and five hashes were posted on hudson-editor-spec-20261001.
+  All five copied AND installed hashes match, including font and license.
+- **69f8dde4**, **10d93feb**: toggle accessibility and native checked menu items.
+  Live testing exposed that a Label image was not a native menu checkmark;
+  Toggle-backed items now visibly check the current panels.
+- **8f1e8bab**, **683e871b**: compact header controls use actual window width;
+  the existing three status slots compress proportionally at narrow widths.
+  The old fixed status widths otherwise forced the entire shell to clip at
+  its advertised 600px minimum. No Editor-specific status fields were added.
+
+## Live results
+
+| Check | Result |
+|---|---|
+| Layers routing and main-window chrome | Pass: sidebar order, title/subtitle, native actions and standard status slots visible; no standalone Editor window |
+| Two selections | Pass: Ghostty + ChatGPT selected, two chips, panel-local selected count, Source highlights |
+| Arrangement / Panels / Inspect source | Pass: native Columns/Grid actions, History toggle, Source off/on; native checked states reflect web state |
+| Expanded composition | Pass: occupied Chat, Preview, History and Source grid |
+| Narrow composition | Pass: 800px and 600px main-window widths; Preview, attached chips and Source stack; native controls remain accessible; standard status text truncates within its three slots |
+| Return from another page | Pass: Activity → Layers preserves two selections and layout; same retained web host |
+| Workspace safety | Pass: hash and mtime identical before and after all tests |
+| Transient white flash | Not conclusively measured: stable captures are dark/nonblank; no reload on page switching; no frame-by-frame capture |
+
+The initial first-open/two-selected and menu captures are from native 10d93feb.
+Expanded, narrow, minimum-width and returned captures are from final 683e871b.
+The later changes affect narrow native chrome only, not the approved web bytes.
+
+## Screenshots
+
+All under /Users/arach/dev/lattices-editor-host-slice-1/apps/mac/EditorSlice1LiveEvidence/:
+
+- shell-first-open.png
+- shell-two-selected.png
+- shell-expanded.png
+- shell-narrow.png
+- shell-min-width.png
+- shell-panels-menu.png
+- shell-returned.png (final state left open)
+
+## Builds and tests
+
+- Native bundle build passed.
+- Full suite during integration: **368 executed, 13 skipped, zero failures**.
+- Final targeted Editor/membership suite after narrow fixes: **54 passed**.
+- Free-tier compile passed for initial native integration (1c15827f); the
+  subsequent changes are shared shell styling, not a new free-tier validation.
+- Final signed/installed dev production build passed (225.41s; helper 0.25s).
+- Logs: /tmp/lattices-editor-slice-1/shell-build.log,
+  shell-all-tests.log, shell-free-build.log, shell-narrow-tests.log,
+  shell-compact-dev-build.log.
+- A redundant intermediate production compile was interrupted before editing
+  the status-width fix; the final build above completed cleanly.
+
+## Final state and safety
+
+Dev bundle remains running **PID 33974**, main window **178212**, Layers selected,
+1240×760, expanded grid, two windows selected. Release app remained stopped.
+No push, PR or merge. No permission changes or workspace edits.
+
+workspace.json SHA-256:
+**08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc**
+mtime_ns: **1790863638274089681**.
+Evidence: shell-before.json / shell-after.json.
+
+No layer activation, staging, desktop-window hiding or placement commands
+were issued. Native UI actions changed only Editor layout/selection; resize
+tests targeted only the app shell hosting Layers. Earlier human external-assign,
+duplicate-fixture and runtime-font/first-frame checks are not claimed here.
+
+---
+
 # Slice 1 live acceptance — approved design refresh
 
 October 2, 2026 (Toronto). Feature branch/worktree unchanged.
