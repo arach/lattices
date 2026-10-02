@@ -1,13 +1,13 @@
 {
   "source": "arach/hudson:apps/lattices-editor",
-  "revision": "064386a68599ef7815928518a25d89fc50aa8468",
+  "revision": "b3dfd98f7a0d182bcf78ce4eed5fc59cfbda91e5",
   "sourceDirty": false,
   "files": {
-    "index.html": "de8f487e24e1b0488743fb798cad73d33fccad6c2e2f9675bec9612c79e417cc",
-    "editor.js": "b3a550368c7aea87dd7439b7d9587a353fd87c1aa0ac7abd7f2dc9b5afb86042",
-    "editor.css": "29169eafdc1c975e92415ad93ffb5636a495f3146dd707eeeb7362d95d6cdb51",
+    "index.html": "f8959618fcd68f274db3a9f718dcc1c495855e6a5bc0859944f2c31a06b0a83a",
+    "editor.js": "54a1a1eec8928b11efc245bf03f74c3bbaf6841eb73433db52e7ff39ec12f85f",
+    "editor.css": "c3da4864461752e8e47563d00863f42e6ab4fa5fb19e9a56acc8f57170fc8dc8",
     "jetbrains-mono-LICENSE.txt": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b",
     "jetbrains-mono-latin-400-normal.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb"
   },
-  "approvedRevision": "064386a68599ef7815928518a25d89fc50aa8468"
+  "approvedRevision": "b3dfd98f7a0d182bcf78ce4eed5fc59cfbda91e5"
 }

@@ -202,3 +202,15 @@ explicit version-7 requirements in the coordinator's message.
 
 No new web bundle imported yet. Integration screenshots and dev relaunch wait
 for the Hudson builder's approved commit and hashes.
+
+
+### Hosted bundle imported
+
+Approved on hudson-editor-spec-20261001: Hudson b3dfd98f7a0d182bcf78ce4eed5fc59cfbda91e5.
+All five copied hashes match approval; provenance records the clean source.
+
+- editor.css: c3da4864461752e8e47563d00863f42e6ab4fa5fb19e9a56acc8f57170fc8dc8
+- editor.js: 54a1a1eec8928b11efc245bf03f74c3bbaf6841eb73433db52e7ff39ec12f85f
+- index.html: f8959618fcd68f274db3a9f718dcc1c495855e6a5bc0859944f2c31a06b0a83a
+- jetbrains-mono-LICENSE.txt: 403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b
+- jetbrains-mono-latin-400-normal.woff2: 14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb
