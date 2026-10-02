@@ -300,7 +300,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
 
     func testV5MigrationReplacesOnlyUntouchedStarters() {
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(
+            CompanionCockpitStore.migrateLayout(
                 LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2,
                 fromVersion: 2
             ),
@@ -308,7 +308,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(
+            CompanionCockpitStore.migrateLayout(
                 LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3,
                 fromVersion: 3
             ),
@@ -316,7 +316,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(
+            CompanionCockpitStore.migrateLayout(
                 LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4,
                 fromVersion: 4
             ),
@@ -326,21 +326,21 @@ final class CompanionCockpitMappingTests: XCTestCase {
         var customized = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2
         customized.pages[0].title = "My Commands"
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(customized, fromVersion: 2),
+            CompanionCockpitStore.migrateLayout(customized, fromVersion: 2),
             customized
         )
 
         var customizedV3 = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3
         customizedV3.pages[0].title = "My Remote"
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(customizedV3, fromVersion: 3),
+            CompanionCockpitStore.migrateLayout(customizedV3, fromVersion: 3),
             customizedV3
         )
 
         var customizedV4 = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4
         customizedV4.pages[0].title = "My Remote"
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(customizedV4, fromVersion: 4),
+            CompanionCockpitStore.migrateLayout(customizedV4, fromVersion: 4),
             customizedV4
         )
     }
@@ -356,7 +356,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(v1Starter, fromVersion: 1),
+            CompanionCockpitStore.migrateLayout(v1Starter, fromVersion: 1),
             LatticesCompanionCockpitCatalog.defaultLayout
         )
 
@@ -364,7 +364,7 @@ final class CompanionCockpitMappingTests: XCTestCase {
         renamed.pages[devIndex].title = "My Development Keys"
         renamed.pages[devIndex].subtitle = "Keep this personal grouping"
         XCTAssertEqual(
-            Preferences.migrateCompanionCockpitLayout(renamed, fromVersion: 1),
+            CompanionCockpitStore.migrateLayout(renamed, fromVersion: 1),
             renamed
         )
     }

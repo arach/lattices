@@ -64,7 +64,7 @@ struct AppShellView: View {
     @ObservedObject var controller: ScreenMapController
     @ObservedObject var windowController = ScreenMapWindowController.shared
     @ObservedObject private var scanner = ProjectScanner.shared
-    @ObservedObject private var ocr = OcrModel.shared
+    @ObservedObject private var ocr = ScreenText.shared
     @StateObject private var commandState = CommandModeState()
     @State private var selectedStudioLayerId: String?
 
@@ -277,8 +277,10 @@ struct AppShellView: View {
 
             Spacer(minLength: 12)
 
-            statusSlot(width: 150, alignment: .trailing) {
-                Text(lastScanText)
+            if ocr.isAvailable {
+                statusSlot(width: 150, alignment: .trailing) {
+                    Text(lastScanText)
+                }
             }
         }
         .padding(.horizontal, Chrome.inset)

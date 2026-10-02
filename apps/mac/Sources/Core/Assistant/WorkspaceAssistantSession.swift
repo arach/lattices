@@ -1509,7 +1509,7 @@ final class WorkspaceAssistantSession: ObservableObject {
             }
 
             if isSettingsMutationIntent(lower), let enabled = parseBooleanMutation(from: lower) {
-                OcrModel.shared.setEnabled(enabled)
+                ScreenText.shared.setEnabled(enabled)
                 return "\(enabled ? "Enabled" : "Disabled") screen text recognition."
             }
             return nil
