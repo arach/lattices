@@ -136,7 +136,8 @@ struct AppShellView: View {
             } trailing: {
                 EmptyView()
             } topDrawer: {
-                titleBar
+                titleBar(compact: proxy.size.width <
+                    HudSidebarLayout.railWidth + (sidebarCompact ? 0 : CGFloat(sidebarLabelWidth)) + 650)
             } bottomDrawer: {
                 EmptyView()
             } content: {
@@ -238,7 +239,7 @@ struct AppShellView: View {
     /// actions that belong to that page at the trailing edge. Pages publish
     /// their own set with `.pageActions(_:)`; Search is the chrome's, because
     /// ⌘K works everywhere.
-    private var titleBar: some View {
+    private func titleBar(compact: Bool) -> some View {
         HStack(spacing: 8) {
             Text(windowController.activePage.label)
                 .font(Typo.heading(15))
@@ -250,15 +251,9 @@ struct AppShellView: View {
             }
             Spacer(minLength: 12)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(pageActions) { action in PageActionButton(action: action) }
-                    PageActionButton(action: searchAction)
-                }
-                HStack(spacing: 6) {
-                    ForEach(pageActions) { action in PageActionButton(action: action, compact: true) }
-                    PageActionButton(action: searchAction, compact: true)
-                }
+            HStack(spacing: compact ? 6 : 8) {
+                ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
+                PageActionButton(action: searchAction, compact: compact)
             }
         }
         .padding(.horizontal, Chrome.inset)
