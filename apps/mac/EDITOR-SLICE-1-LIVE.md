@@ -1,3 +1,24 @@
+# Neutral controls and pinned composer follow-up
+
+October 2, 2026. Imported approved Hudson `46018048d38caeabe16cc43cc089df10a1efe1c7`.
+All eight copied and installed assets match the builder's hashes in provenance.json.
+
+- Replaced accent-dependent native Picker with plain accessible segment buttons:
+  selected #24282E, white .11 one-pixel border, ink #ECEDEF; unselected #B0B3B8.
+- PASS: neutral selected styling in focused Overview, focused Workspace, narrow
+  Overview and unfocused Overview (grey traffic lights in the extra capture).
+- PASS: Overview composer fully visible in wide and 600px narrow captures.
+  Short grid Chat panel shows the entire input. Reading/Try content scrolls.
+- Debug and release builds passed; 369 tests, 13 skipped, zero failures.
+  Dev package/install/launch passed. No release app launch.
+- Workspace SHA-256 and nanosecond mtime unchanged from the checkpoint below.
+- Refreshed overview-first-open.png, overview-workspace.png, overview-narrow.png;
+  added overview-unfocused.png in EditorSlice1LiveEvidence/.
+- Dev remains running. No white/blank captured states; transient flash remains
+  unverified by still screenshots. No push, merge or PR.
+
+---
+
 # Overview bundle live acceptance
 
 October 2, 2026. Native `adc62d2c`; approved Hudson

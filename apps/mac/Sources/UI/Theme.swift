@@ -360,14 +360,34 @@ struct PageActionButton: View {
     var body: some View {
         Group {
             if let items = action.segments {
-                Picker(action.title, selection: Binding<String>(
-                    get: { items.first(where: { $0.isOn })?.id ?? items.first?.id ?? "" },
-                    set: { id in items.first(where: { $0.id == id })?.perform() }
-                )) {
-                    ForEach(items) { item in Text(item.title).tag(item.id) }
+                HStack(spacing: 2) {
+                    ForEach(items) { item in
+                        Button(action: item.perform) {
+                            Text(item.title)
+                                .font(Typo.body(12))
+                                .foregroundColor(item.isOn
+                                    ? Color(red: 236 / 255, green: 237 / 255, blue: 239 / 255)
+                                    : Color(red: 176 / 255, green: 179 / 255, blue: 184 / 255))
+                                .padding(.horizontal, 12)
+                                .frame(height: Chrome.controlHeight - 4)
+                                .background {
+                                    if item.isOn {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color(red: 36 / 255, green: 40 / 255, blue: 46 / 255))
+                                            .overlay(RoundedRectangle(cornerRadius: 4)
+                                                .strokeBorder(Color.white.opacity(0.11), lineWidth: 1))
+                                            .shadow(color: .black.opacity(0.20), radius: 1, y: 1)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(item.isOn ? [.isSelected] : [])
+                        .accessibilityValue(item.isOn ? "Selected" : "Not selected")
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .padding(2)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.15)))
                 .fixedSize()
             } else if let items = action.menu {
                 Menu {

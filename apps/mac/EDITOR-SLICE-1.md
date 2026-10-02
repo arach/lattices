@@ -257,3 +257,12 @@ All eight copied assets match the supplied SHA-256 values in
 `Resources/Editor/provenance.json`. Cormorant Garamond 400, JetBrains Mono 400/600
 and both font licenses are included. Import validation confirms every CSS URL
 resolves to a copied local asset; no font network requests are needed.
+
+## Neutral controls and short-page composer
+
+Imported approved Hudson `46018048d38caeabe16cc43cc089df10a1efe1c7` (includes
+Clear/empty-layer polish and pinned composer fixes). All eight installed hashes
+match provenance.json. PageAction segments now use explicit neutral shell styling
+instead of the system-accent Picker, with selected accessibility semantics.
+Debug/release builds and 369 tests passed (13 skipped). Live evidence includes
+focused and unfocused controls plus wide Workspace and narrow Overview.
