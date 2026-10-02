@@ -174,6 +174,52 @@ struct OverviewRowGroup: Identifiable, Equatable {
     let rows: [OverviewRow]
 }
 
+/// One Space on a monitor as Overview's desk lays it out: its map and the
+/// rows that live there.
+struct OverviewDeskSpace: Identifiable, Equatable {
+    let spaceId: Int
+    /// Its Mission Control number, nil for a full-screen Space.
+    let desktop: Int?
+    /// The Space its monitor is showing: the only one with live positions.
+    let isCurrent: Bool
+    /// In the monitor and Space scope.
+    let inScope: Bool
+    /// Matched rows on this Space, front to back.
+    let rows: [OverviewRow]
+    var id: Int { spaceId }
+
+    var title: String { desktop.map { "Desktop \($0)" } ?? "Full screen" }
+
+    /// Only the showing Space has live positions. Elsewhere the map draws
+    /// last-known frames or saved homes; this says which. A full-screen
+    /// Space has no frames, so it only says it isn't showing.
+    var mapNote: String? {
+        guard !isCurrent else { return nil }
+        guard desktop != nil else { return rows.isEmpty ? nil : "not showing" }
+        let sources = rows.filter { $0.frame != nil }.map(\.position)
+        if sources.contains(.lastKnown) { return "last known" }
+        if sources.contains(.savedHome) { return "saved homes" }
+        return nil
+    }
+
+    /// Whether the map draws `row` solid: a live frame, or a full-screen
+    /// window on the Space its monitor is showing.
+    func drawsLive(_ row: OverviewRow) -> Bool {
+        desktop == nil ? isCurrent : row.position == .live
+    }
+}
+
+/// One monitor and every Space it owns, left to right as they're arranged.
+struct OverviewDeskMonitor: Identifiable, Equatable {
+    let display: OverviewDisplay
+    let inScope: Bool
+    /// Its desktops in order, all of them, then any full-screen Space
+    /// showing or holding a matched window.
+    let spaces: [OverviewDeskSpace]
+    var id: Int { display.index }
+    var rowCount: Int { spaces.reduce(0) { $0 + $1.rows.count } }
+}
+
 /// A window drawn on the canvas: a live tile or a labelled outline.
 struct OverviewCanvasItem: Identifiable, Equatable {
     let wid: UInt32
@@ -299,14 +345,24 @@ struct OverviewProjection: Equatable {
     /// Every known window by id, matched or not, for actions on the selection.
     let all: [UInt32: OverviewRow]
     let displays: [OverviewDisplay]
+    /// Every monitor and Space, empty ones too, with the matched rows on
+    /// each. Scope marks what's in it; it never hides the structure.
+    var desk: [OverviewDeskMonitor] = []
+    /// Matched rows no monitor holds: minimized, closed or unplaceable.
+    var unplaced: [OverviewRow] = []
 
-    var rows: [OverviewRow] { groups.flatMap(\.rows) }
+    /// Every matched row, in the desk's order: monitor by monitor, Space by
+    /// Space, then the unplaced ones.
+    var rows: [OverviewRow] {
+        desk.flatMap { $0.spaces.flatMap(\.rows) } + unplaced
+    }
     var inScopeRows: [OverviewRow] { rows.filter(\.inScope) }
 
     static func == (a: Self, b: Self) -> Bool {
         // `all` and `displays` too: actions read them for windows the
         // filters hide, whose state can change while the list doesn't.
-        a.groups == b.groups && a.canvas == b.canvas && a.counts == b.counts
+        a.groups == b.groups && a.desk == b.desk && a.unplaced == b.unplaced
+            && a.canvas == b.canvas && a.counts == b.counts
             && a.all == b.all && a.displays == b.displays
             && a.outOfScopeSelection.map(\.wid) == b.outOfScopeSelection.map(\.wid)
             && a.outOfScopeSelection.map(\.reason) == b.outOfScopeSelection.map(\.reason)
@@ -378,10 +434,51 @@ extension OverviewProjection {
             return (wid, locationExclusion(row, scope: scope))
         }
 
+        let (desk, unplaced) = deskLayout(matched, displays: inputs.displays, scope: scope)
+
         return OverviewProjection(
             groups: groups, canvas: canvas, counts: counts,
-            outOfScopeSelection: outside, all: all, displays: inputs.displays
+            outOfScopeSelection: outside, all: all, displays: inputs.displays,
+            desk: desk, unplaced: unplaced
         )
+    }
+
+    /// Lays `rows` out on their monitors and Spaces. Every desktop of every
+    /// monitor appears, empty or not; a full-screen Space only when it's
+    /// showing or holds a row. A row whose Space its monitor doesn't own
+    /// goes with the unplaced ones.
+    static func deskLayout(
+        _ rows: [OverviewRow], displays: [OverviewDisplay], scope: OverviewScope
+    ) -> ([OverviewDeskMonitor], [OverviewRow]) {
+        var bySpace: [String: [OverviewRow]] = [:]
+        var unplaced: [OverviewRow] = []
+        for row in rows {
+            guard row.state != .unknown, let index = row.display, let spaceId = row.spaceId,
+                  let display = displays.first(where: { $0.index == index }), display.owns(spaceId) else {
+                unplaced.append(row)
+                continue
+            }
+            bySpace["\(index)-\(spaceId)", default: []].append(row)
+        }
+        let ordered = displays.sorted { ($0.bounds.minX, $0.bounds.minY) < ($1.bounds.minX, $1.bounds.minY) }
+        let desk = ordered.map { display -> OverviewDeskMonitor in
+            let monitorInScope = scope.display == nil || scope.display == display.index
+            let fullScreen = display.spaceIds.filter { !display.desktops.contains($0) }
+            let spaceIds = display.desktops + fullScreen.filter { id in
+                id == display.currentSpaceId || bySpace["\(display.index)-\(id)"] != nil
+            }
+            let spaces = spaceIds.map { id in
+                OverviewDeskSpace(
+                    spaceId: id,
+                    desktop: display.desktopNumber(of: id),
+                    isCurrent: id == display.currentSpaceId,
+                    inScope: monitorInScope && (scope.spaceId == nil || scope.spaceId == id),
+                    rows: bySpace["\(display.index)-\(id)"] ?? []
+                )
+            }
+            return OverviewDeskMonitor(display: display, inScope: monitorInScope, spaces: spaces)
+        }
+        return (desk, unplaced)
     }
 
     /// The scope that shows `wid`: its monitor and Space, with any search,
@@ -474,6 +571,24 @@ extension OverviewProjection {
         return display.desktops.enumerated().compactMap { offset, space in
             space == row.spaceId ? nil : (space, offset + 1)
         }
+    }
+
+    /// Where a window is, in a few words: its monitor and Space, and what
+    /// keeps it from showing.
+    func location(of row: OverviewRow) -> String {
+        if row.state == .unknown { return "Minimized or closed" }
+        let display = displays.first { $0.index == row.display }
+        var parts: [String] = []
+        if displays.count > 1, let display { parts.append(display.name) }
+        if let display, let spaceId = row.spaceId {
+            parts.append(display.desktopNumber(of: spaceId).map { "Desktop \($0)" } ?? "Full screen")
+        }
+        switch row.state {
+        case .parked: parts.append("parked")
+        case .appHidden: parts.append("app hidden")
+        default: break
+        }
+        return parts.isEmpty ? row.state.label : parts.joined(separator: " · ")
     }
 
     func displayId(of row: OverviewRow) -> UInt32? {
