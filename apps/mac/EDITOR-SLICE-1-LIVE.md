@@ -1,3 +1,38 @@
+# Overview bundle live acceptance
+
+October 2, 2026. Native `adc62d2c`; approved Hudson
+`fb63d654f3e0554923dcd0b15b4db5ba00e269e1`.
+
+- PASS: all eight imported and installed asset SHA-256 values match approval.
+  Font files and both licenses are bundled; importer validates local CSS URLs.
+- PASS: bundle-tier production build, install and dev-only launch. Release app
+  was not launched. Previous native validation: 369 tests, 13 skipped, no failures.
+- PASS: first open defaults to Overview. READ ONLY tag, native segment and live
+  status are visible; arrangement/panel controls are absent there.
+- PASS: clicking + Preview opens Workspace and updates the native segment;
+  arrangement, panels and source controls appear. Existing two-window selection
+  and source highlighting remain visible.
+- PASS: 600px-wide window collapses the web layer list into its narrow selector;
+  native controls and status fit. Restored window to 1240px width afterward.
+- No white or blank surface appears in the captured opening, Workspace or narrow
+  states. Transient white flash remains unverified: still screenshots do not
+  establish frame-by-frame behavior. No reload was requested on view switches.
+- No functional defect observed in this pass. The active native segmented control
+  uses macOS blue selection; other selection remains emerald.
+- Workspace SHA-256 remains
+  `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`;
+  mtime_ns remains `1790863638274089681`. No config or layer actions performed.
+
+Screenshots in `apps/mac/EditorSlice1LiveEvidence/`:
+- `overview-first-open.png`
+- `overview-workspace.png` (after + Preview)
+- `overview-narrow.png` (600 × 760 window)
+
+Build log: `/tmp/lattices-editor-slice-1/overview-dev-build.log`.
+Dev app remains running on Layers / Overview.
+
+---
+
 # Layers page live acceptance — shell integration
 
 October 2, 2026. Worktree /Users/arach/dev/lattices-editor-host-slice-1,

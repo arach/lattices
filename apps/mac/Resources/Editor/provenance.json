@@ -1,13 +1,15 @@
 {
   "source": "arach/hudson:apps/lattices-editor",
-  "revision": "b3dfd98f7a0d182bcf78ce4eed5fc59cfbda91e5",
+  "revision": "fb63d654f3e0554923dcd0b15b4db5ba00e269e1",
   "sourceDirty": false,
   "files": {
-    "index.html": "f8959618fcd68f274db3a9f718dcc1c495855e6a5bc0859944f2c31a06b0a83a",
-    "editor.js": "54a1a1eec8928b11efc245bf03f74c3bbaf6841eb73433db52e7ff39ec12f85f",
-    "editor.css": "c3da4864461752e8e47563d00863f42e6ab4fa5fb19e9a56acc8f57170fc8dc8",
+    "cormorant-garamond-LICENSE.txt": "732f37009943e7f4378cf37113c9bcc4716af002a8583511aa91ed5d37683e73",
+    "cormorant-garamond-latin-400-normal.woff2": "8048ac209bec741e1c29cd0cfac5aac1c0c2ba8c3ddbd4a58fa9bd92ef5c63c2",
+    "editor.css": "0dab93e96b8184e03f95db3feb8903203a98b0024b08bd3f4f5ba5b68b50249e",
+    "editor.js": "5069baf4ec01686c4b677320442dbb74d9db42c7d47158fbe2512e971772daea",
+    "index.html": "6ceb52eedcfc21964230e4e1793d4e9703b7d76393b8a3808229b6c30c19c208",
     "jetbrains-mono-LICENSE.txt": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b",
-    "jetbrains-mono-latin-400-normal.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb"
-  },
-  "approvedRevision": "b3dfd98f7a0d182bcf78ce4eed5fc59cfbda91e5"
+    "jetbrains-mono-latin-400-normal.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb",
+    "jetbrains-mono-latin-600-normal.woff2": "400c6bfda18d5d14acad1c15d6dcb9f8e13c015e7286317e0b9a482539bef147"
+  }
 }

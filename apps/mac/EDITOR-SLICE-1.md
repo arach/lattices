@@ -249,3 +249,11 @@ workspace.json hash and mtime remained identical.
 - Workspace remained at SHA-256
   `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
   mtime_ns `1790863638274089681`. No app or window actions in this checkpoint.
+
+## Approved Overview bundle
+
+Imported Hudson `fb63d654f3e0554923dcd0b15b4db5ba00e269e1` after coordinator approval.
+All eight copied assets match the supplied SHA-256 values in
+`Resources/Editor/provenance.json`. Cormorant Garamond 400, JetBrains Mono 400/600
+and both font licenses are included. Import validation confirms every CSS URL
+resolves to a copied local asset; no font network requests are needed.
