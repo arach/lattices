@@ -26,6 +26,7 @@ final class EditorBridge {
     func sendUICommand(_ command: String, value: String? = nil) {
         guard hostChrome,
               (command == "arrangement" && EditorUIState.arrangements.contains(value ?? ""))
+                || (command == "view" && EditorUIState.views.contains(value ?? ""))
                 || (command == "togglePanel" && EditorUIState.panelIDs.contains(value ?? ""))
                 || (command == "toggleSource" && value == nil) else { return }
         var payload: [String: Any] = ["command": command]
@@ -177,14 +178,19 @@ final class EditorBridge {
 
 /// UI-only state. Never enters the subject revision, workspace or resolver.
 struct EditorUIState: Equatable {
+    static let views = ["overview", "workspace"]
     static let arrangements = ["single", "columns", "rows", "grid"]
     static let panelIDs = ["chat", "preview", "history", "source"]
+    let view: String
     let arrangement: String
     let panels: [String]
     let sourceOpen: Bool
 
     init(payload: [String: Any]) throws {
-        guard let arrangement = payload["arrangement"] as? String,
+        // An older bundle only has the panel workspace, not an Overview.
+        let view = payload["view"] ?? "workspace"
+        guard let view = view as? String, Self.views.contains(view),
+              let arrangement = payload["arrangement"] as? String,
               Self.arrangements.contains(arrangement),
               let panels = payload["panels"] as? [String],
               Set(panels).count == panels.count,
@@ -193,6 +199,7 @@ struct EditorUIState: Equatable {
               sourceOpen == panels.contains("source") else {
             throw EditorBridgeError("invalid_request", "Invalid Editor UI state.")
         }
+        self.view = view
         self.arrangement = arrangement
         self.panels = panels
         self.sourceOpen = sourceOpen

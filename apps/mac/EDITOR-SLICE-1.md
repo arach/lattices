@@ -228,3 +228,24 @@ keep their identities and scale widths with the window instead of forcing a
 The latest targeted suite has 54 passes; full integration suite had
 368 executed / 13 skipped / zero failures. Final dev production build passed.
 workspace.json hash and mtime remained identical.
+
+## Overview host controls (v8 native pass)
+
+- Layers has an Overview / Workspace segmented PageAction. Until the web's first
+  state arrives, Overview is selected and controls are disabled. `ui.state.view`
+  selects the native segment; missing view means Workspace for older bundles.
+- `ui.command` accepts only `view: overview|workspace`. Overview hides arrangement,
+  panels and source actions. Workspace retains them, wrapping at narrow widths.
+- The title uses a READ ONLY tag, #1A1C20–#15171A gradient and white .07 bottom line.
+  Layers status reads actual running sessions, desktop windows, displays and screen
+  text state. Other pages retain their standard status slots.
+- The importer validates all flat HTML/JS/CSS/WOFF2/TXT assets, including licenses,
+  and rejects CSS URLs that do not resolve to bundled files before copying.
+- New web bundle import and live screenshots await the Hudson builder's approved
+  commit and asset hashes. No dev reinstall is needed for this native-only checkpoint.
+- Validation: bundle-tier `swift build` passed (87.61s); full `swift test` passed,
+  369 tests, 13 skipped, zero failures. Logs: `/tmp/lattices-editor-slice-1/overview-build.log`
+  and `/tmp/lattices-editor-slice-1/overview-tests.log`.
+- Workspace remained at SHA-256
+  `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+  mtime_ns `1790863638274089681`. No app or window actions in this checkpoint.

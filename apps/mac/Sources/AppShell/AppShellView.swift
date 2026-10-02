@@ -143,8 +143,12 @@ struct AppShellView: View {
             } content: {
                 contentArea
             } statusBar: {
-                statusBar(availableWidth: proxy.size.width - HudSidebarLayout.railWidth
-                    - (sidebarCompact ? 0 : CGFloat(sidebarLabelWidth)) - HudSpacing.sm)
+                if windowController.activePage == .layers {
+                    layersStatusBar
+                } else {
+                    statusBar(availableWidth: proxy.size.width - HudSidebarLayout.railWidth
+                        - (sidebarCompact ? 0 : CGFloat(sidebarLabelWidth)) - HudSpacing.sm)
+                }
             }
             .onPreferenceChange(PageActionsKey.self) { pageActions = $0 }
             .ignoresSafeArea(.container, edges: .top)
@@ -241,29 +245,45 @@ struct AppShellView: View {
     /// their own set with `.pageActions(_:)`; Search is the chrome's, because
     /// ⌘K works everywhere.
     private func titleBar(compact: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text(windowController.activePage.label)
-                .font(Typo.heading(15))
-                .foregroundColor(Palette.text)
-                .lineLimit(1)
-
-            if windowController.activePage == .layers {
-                Text("Read only").font(Typo.body(12)).foregroundColor(Palette.textMuted)
-            }
-            Spacer(minLength: 12)
-
-            HStack(spacing: compact ? 6 : 8) {
-                ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
+        let layers = windowController.activePage == .layers
+        let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
+        return VStack(spacing: wrap ? 5 : 0) {
+            HStack(spacing: 8) {
+                Text(windowController.activePage.label)
+                    .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
+                if layers {
+                    Text("READ ONLY")
+                        .font(Typo.mono(9)).tracking(0.8)
+                        .foregroundColor(Palette.textMuted)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
+                }
+                Spacer(minLength: 8)
+                if !wrap {
+                    ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
+                }
                 PageActionButton(action: searchAction, compact: compact)
+            }
+            if wrap {
+                HStack(spacing: 6) {
+                    ForEach(pageActions) { action in PageActionButton(action: action, compact: true) }
+                    Spacer(minLength: 0)
+                }
             }
         }
         .padding(.horizontal, Chrome.inset)
-        .frame(height: Chrome.titleBarHeight)
-        .background(Palette.bg)
+        .frame(height: wrap ? 72 : Chrome.titleBarHeight)
+        .background {
+            if layers {
+                LinearGradient(colors: [
+                    Color(red: 26 / 255, green: 28 / 255, blue: 32 / 255),
+                    Color(red: 21 / 255, green: 23 / 255, blue: 26 / 255)
+                ], startPoint: .top, endPoint: .bottom)
+            } else { Palette.bg }
+        }
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: Chrome.hairline)
+            Rectangle().fill(layers ? Color.white.opacity(0.07) : Palette.border)
+                .frame(height: layers ? 1 : Chrome.hairline)
         }
     }
 
@@ -274,6 +294,19 @@ struct AppShellView: View {
     }
 
     // MARK: - Status Bar
+
+    private var layersStatusBar: some View {
+        let summary = "\(sessionHealthText) · \(desktop.windows.count) windows · \(NSScreen.screens.count) displays"
+        return HStack(spacing: 12) {
+            Text(summary).lineLimit(1).truncationMode(.tail).help(summary)
+            Spacer(minLength: 0)
+            Text(lastScanText).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+        }
+        .font(Typo.mono(11)).foregroundColor(Palette.textMuted).monospacedDigit()
+        .padding(.horizontal, Chrome.inset)
+        .frame(height: Chrome.statusBarHeight)
+        .background(Palette.bg)
+    }
 
     /// Three slots with the same meaning on every page — session health, desktop
     /// shape, last scan — so the strip never changes shape under you. Anything

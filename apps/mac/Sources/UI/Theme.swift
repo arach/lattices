@@ -276,6 +276,7 @@ struct PageAction: Identifiable, Equatable {
     let isEnabled: Bool
     let isOn: Bool?
     let menu: [PageActionItem]?
+    let segments: [PageActionItem]?
     let perform: () -> Void
 
     init(
@@ -287,6 +288,7 @@ struct PageAction: Identifiable, Equatable {
         isEnabled: Bool = true,
         isOn: Bool? = nil,
         menu: [PageActionItem]? = nil,
+        segments: [PageActionItem]? = nil,
         perform: @escaping () -> Void = {}
     ) {
         self.id = id
@@ -297,6 +299,7 @@ struct PageAction: Identifiable, Equatable {
         self.isEnabled = isEnabled
         self.isOn = isOn
         self.menu = menu
+        self.segments = segments
         self.perform = perform
     }
 
@@ -311,6 +314,7 @@ struct PageAction: Identifiable, Equatable {
             && lhs.isEnabled == rhs.isEnabled
             && lhs.isOn == rhs.isOn
             && lhs.menu == rhs.menu
+            && lhs.segments == rhs.segments
     }
 }
 
@@ -355,7 +359,17 @@ struct PageActionButton: View {
 
     var body: some View {
         Group {
-            if let items = action.menu {
+            if let items = action.segments {
+                Picker(action.title, selection: Binding<String>(
+                    get: { items.first(where: { $0.isOn })?.id ?? items.first?.id ?? "" },
+                    set: { id in items.first(where: { $0.id == id })?.perform() }
+                )) {
+                    ForEach(items) { item in Text(item.title).tag(item.id) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            } else if let items = action.menu {
                 Menu {
                     ForEach(items) { item in
                         Toggle(item.title, isOn: Binding(

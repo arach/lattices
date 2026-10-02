@@ -34,6 +34,7 @@ final class EditorBridgeTests: XCTestCase {
         let reply = bridge.reply(to: call)
         XCTAssertEqual(reply["kind"] as? String, "ui.state.result")
         XCTAssertEqual((reply["payload"] as? [String: Any])?.count, 0)
+        XCTAssertEqual(received?.view, "workspace")
         XCTAssertEqual(received?.arrangement, "columns")
         XCTAssertEqual(captures, baseline)
         for invalid: [String: Any] in [
@@ -56,10 +57,13 @@ final class EditorBridgeTests: XCTestCase {
         bridge.sendUICommand("arrangement", value: "grid")
         bridge.sendUICommand("togglePanel", value: "history")
         bridge.sendUICommand("toggleSource")
+        bridge.sendUICommand("view", value: "overview")
+        bridge.sendUICommand("view", value: "workspace")
+        bridge.sendUICommand("view", value: "invalid")
         bridge.sendUICommand("activate", value: "web")
         bridge.sendUICommand("arrangement", value: "invalid")
         bridge.sendUICommand("togglePanel", value: "terminal")
-        XCTAssertEqual(events.count, 3)
+        XCTAssertEqual(events.count, 5)
         XCTAssertTrue(events.allSatisfy { $0["kind"] as? String == "ui.command" })
         XCTAssertTrue(events.allSatisfy { $0["subjectId"] as? String == EditorSubject.id })
         XCTAssertEqual((events[0]["payload"] as? [String: String])?["value"], "grid")
@@ -83,6 +87,17 @@ final class EditorBridgeTests: XCTestCase {
             PageActionItem(id: "chat", title: "Chat", isOn: true) {}
         ])
         XCTAssertNotEqual(first, second)
+    }
+
+    func testOverviewStateAndSegmentSelection() throws {
+        for view in EditorUIState.views {
+            let state = try EditorUIState(payload: ["view": view, "arrangement": "grid", "panels": ["preview"], "sourceOpen": false])
+            XCTAssertEqual(state.view, view)
+        }
+        XCTAssertThrowsError(try EditorUIState(payload: ["view": "invalid", "arrangement": "grid", "panels": ["preview"], "sourceOpen": false]))
+        let overview = PageAction(id: "view", title: "View", segments: [PageActionItem(id: "overview", title: "Overview", isOn: true) {}])
+        let workspace = PageAction(id: "view", title: "View", segments: [PageActionItem(id: "overview", title: "Overview", isOn: false) {}])
+        XCTAssertNotEqual(overview, workspace)
     }
 
     func testRevisionIgnoresObjectKeyOrderAndUnrelatedRootButPreservesUnknownEntryFields() throws {

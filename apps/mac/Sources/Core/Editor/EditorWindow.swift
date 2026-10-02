@@ -162,7 +162,15 @@ final class LayersPageModel: ObservableObject {
     }
 
     var actions: [PageAction] {
-        [
+        let viewSelector = PageAction(id: "layers.view", title: "Layers view", isEnabled: state != nil,
+                                     segments: EditorUIState.views.map { view in
+            PageActionItem(id: view, title: view.capitalized, isOn: (state?.view ?? "overview") == view) {
+                self.command("view", value: view)
+            }
+        })
+        guard state?.view == "workspace" else { return [viewSelector] }
+        return [
+            viewSelector,
             PageAction(id: "layers.arrangement", title: "Arrangement", icon: "rectangle.3.group",
                        isEnabled: state != nil, menu: EditorUIState.arrangements.map { value in
                 PageActionItem(id: value, title: value.capitalized, isOn: state?.arrangement == value) {

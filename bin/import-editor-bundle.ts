@@ -5,15 +5,24 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, lstatSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, lstatSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
 const input = process.argv[2];
 if (!input) throw new Error("Usage: bun bin/import-editor-bundle.ts <Hudson editor dist directory>");
 const source = resolve(input);
 const destination = resolve(import.meta.dir, "../apps/mac/Resources/Editor");
-const files = ["index.html", "editor.js", "editor.css",
-  "jetbrains-mono-LICENSE.txt", "jetbrains-mono-latin-400-normal.woff2"];
+// Import all flat, local assets, including font licenses. Reject unexpected
+// files or directories rather than silently shipping an incomplete bundle.
+const files = readdirSync(source).sort();
+for (const required of ["index.html", "editor.js", "editor.css"]) {
+  if (!files.includes(required)) throw new Error(`Missing bundle entry: ${required}`);
+}
+for (const name of files) {
+  if (!/^[a-zA-Z0-9._-]+\.(html|js|css|woff2|txt)$/.test(name)) {
+    throw new Error(`Unsupported bundle asset: ${name}`);
+  }
+}
 const assets = files.map(name => {
   const path = resolve(source, name);
   if (!lstatSync(path).isFile()) throw new Error(`Expected a regular bundled file: ${path}`);
@@ -21,6 +30,11 @@ const assets = files.map(name => {
   if (!data.length) throw new Error(`Empty bundle file: ${path}`);
   return { name, data, sha256: createHash("sha256").update(data).digest("hex") };
 });
+const css = assets.find(asset => asset.name === "editor.css")!.data.toString("utf8");
+for (const match of css.matchAll(/url\(\s*["']?([^"')\s]+)["']?\s*\)/g)) {
+  const name = match[1].replace(/^\.\//, "");
+  if (!files.includes(name)) throw new Error(`CSS references an unbundled asset: ${match[1]}`);
+}
 const revision = execFileSync("git", ["-C", dirname(source), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const sourceDirty = execFileSync("git", ["-C", dirname(source), "status", "--porcelain"], { encoding: "utf8" }).trim().length > 0;
 mkdirSync(destination, { recursive: true });
