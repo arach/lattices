@@ -1,3 +1,31 @@
+# Native Overview desk integration
+
+Merged feat/native-overview-desk aa14e1f6 with merge commit a3539c14, no conflicts.
+Merging origin/main (3058abf2) reported already up to date. No history rewritten.
+Main checkout and its uncommitted files were not touched.
+
+Imported Hudson 48b58e937b843bf8b5bb959953c486ef005a4de7. Six source/copied/installed
+hashes match provenance.json. Cormorant font and license removed, including from
+installed resources. Layers now has a sans-serif heading.
+
+With LATTICES_HUDSON_PATH=/Users/arach/dev/hudson: swift test passed, 406 tests,
+30 skipped, zero failures. Production dev build/install and dev-only launch passed.
+Logs: /tmp/lattices-editor-slice-1/desk-tests.log and desk-install.log.
+
+Screenshots in EditorSlice1LiveEvidence/:
+- desk-overview.png: All windows filter, 11 in scope, shown in other desktop
+  thumbnails and last-known/minimized lists; current desktop maps are empty.
+- desk-overview-layer.png: Lattices scope, two members on last-known Desktop 1.
+- layers-overview-sans.png: Layers Overview with sans heading and visible composer.
+
+Both pages render without blank/white captured surfaces. Transient flash cannot
+be ruled out from still captures. No stage, tile, focus-window or layer activation
+was performed; only scope filters and page navigation were used.
+Workspace hash remains 08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc,
+mtime_ns 1790863638274089681. Dev app remains running. Pass 2 stays cancelled.
+
+---
+
 # Neutral controls and pinned composer follow-up
 
 October 2, 2026. Imported approved Hudson `46018048d38caeabe16cc43cc089df10a1efe1c7`.

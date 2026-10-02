@@ -266,3 +266,10 @@ match provenance.json. PageAction segments now use explicit neutral shell stylin
 instead of the system-accent Picker, with selected accessibility semantics.
 Debug/release builds and 369 tests passed (13 skipped). Live evidence includes
 focused and unfocused controls plus wide Workspace and narrow Overview.
+
+## Native Overview desk and sans Layers heading
+
+Merged native desk aa14e1f6 via a3539c14, no conflicts; origin/main already included.
+Imported approved Hudson 48b58e93, six hashes verified, removed Cormorant font/license.
+Full test run: 406 tests, 30 skipped, zero failures with LATTICES_HUDSON_PATH set.
+See EDITOR-SLICE-1-LIVE.md for native desk and Layers screenshots.
