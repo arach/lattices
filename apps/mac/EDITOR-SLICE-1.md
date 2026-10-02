@@ -121,3 +121,32 @@ loads the approved Editor UI, replacing the temporary unavailable placeholder.
 - Existing repository deprecation/concurrency warnings remain outside scope.
 - The original build-only acceptance table above is historical. Authorized live
   results, including the new grid regression, are in EDITOR-SLICE-1-LIVE.md.
+
+
+## Main tier-split integration (October 1)
+
+Merged origin/main `3058abf2` into the feature branch at **0df6b883**.
+The only conflict, AppShellView.swift:75–76, keeps `ScreenText.shared` and
+`@StateObject private var overview = OverviewModel()`. Removed the obsolete
+commandState and selectedStudioLayerId declarations: neither has a remaining
+use in the merged file.
+
+Audit of branch-touched native source found one additional bundle dependency:
+OverviewModel.swift:245 directly read OcrModel. **549db666** changes it to
+`ScreenText.shared.results`. No references to OcrModel, OcrStore,
+SpatialLensController, LatticesCompanionBridgeServer, LatticesDeckHost or
+DeckActionRequest remain in branch-touched native source. Existing
+CompanionAppsMenu is a core product-family menu, not the bundle Companion host.
+
+Build environment was resolved with `bin/lattices-build-env.ts shell`:
+default bundle yields LATTICES_BUNDLE=1; LATTICES_TIER=free yields
+LATTICES_BUNDLE=0. Both retain the manifest's voice feature.
+
+- Default bundle Swift build: passed (98.77s).
+- Free Swift build: passed (73.09s), build only; not installed.
+- Full bundle Swift test suite: 365 executed, 13 skipped, zero failures
+  (352 non-skipped passes).
+- Logs: /tmp/lattices-editor-slice-1/tier-{bundle-build,free-build,tests}.log.
+- A preliminary compile was discarded after the Overview source was corrected
+  while it was compiling; the reported builds were rerun on the fixed tree.
+- Dev bundle reinstall and screenshot evidence: EDITOR-SLICE-1-LIVE.md.

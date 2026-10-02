@@ -1,3 +1,37 @@
+# Slice 1 live acceptance — merged tier split
+
+October 1, 2026 (Toronto). Same feature worktree and branch as below.
+
+- Merge **0df6b883** brings origin/main **3058abf2** into the feature only.
+  AppShellView keeps ScreenText.shared and OverviewModel; drops unused
+  commandState/selectedStudioLayerId.
+- Follow-up **549db666** replaces the additional direct OcrModel reference at
+  Core/Overlays/Overview/OverviewModel.swift:245 with ScreenText.shared.
+  Boundary audit and build details are in EDITOR-SLICE-1.md.
+- Default bundle build **PASS**, free build **PASS** (not installed).
+  Full bundle tests: **365 executed, 13 skipped, zero failures**.
+- Bundle dev production build **PASS** (244.76s), embedded helper **PASS**
+  (2.69s); signed and installed at ~/Applications/dev/Lattices/Lattices.app.
+  Log: /tmp/lattices-editor-slice-1/tier-dev-build.log.
+- Launch log confirms **bundle [spatial-lens, screen-text, companion]**.
+  Opened Editor with the explicit dev bundle deep link.
+  Dev remains running **PID 19150**, Editor **177269**, 1240×852.
+  Release remains stopped. No free app was installed or launched.
+- Screenshot: [bundle tier with Editor](EditorSlice1LiveEvidence/tier-bundle-editor.png).
+  Editor renders Chat, Preview, History & Results and Source in the retained
+  filled 2×2 grid, Terminal hidden, with live groups/source populated.
+  This run is an open/render smoke test, not a rerun of selection/membership.
+- workspace.json hash **and mtime unchanged** across builds/tests/relaunch:
+  SHA-256 `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+  mtime_ns `1790863638274089681`, size 3172.
+  Evidence: tier-before.json, tier-after.json, tier-host.log.
+- No restoreParked movement receipt observed. No config writes, layer actions,
+  hide/move actions or permission changes. No push or merge into main.
+- Approved Hudson UI remains **74679b4**; no newer bundle imported.
+  Earlier pending duplicate, flash/console and human assignment checks remain.
+
+---
+
 # Slice 1 live acceptance — approved 2×2 grid regression
 
 October 1, 2026 (Toronto). Worktree:
