@@ -163,8 +163,8 @@ final class LayersPageModel: ObservableObject {
         bridge.actionCapture = { try EditorBridge.liveSnapshot() }
         bridge.actions = EditorActions(execute: { try WorkspaceManager.shared.executeEditorAction($0) }, reveal: {
             let outcome = LayerStage.shared.showAll()
-            return ["restored": outcome.unparked.count, "stillParked": outcome.stillParked]
-        })
+            return ["restored": outcome.unparked.count, "skipped": outcome.stillParked]
+        }, journalFactory: { EditorMutationJournal() })
         bridge.assistantState = { [weak self] requested in
             guard let self, let layerId = requested ?? self.assistantLayerId else {
                 return ["layerId": NSNull(), "messages": [], "isSending": false, "error": NSNull(), "suggestions": []]

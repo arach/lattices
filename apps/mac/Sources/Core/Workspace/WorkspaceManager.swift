@@ -1441,7 +1441,7 @@ class WorkspaceManager: ObservableObject {
         }
         if operation.kind == "gather", operation.mode == "focus" {
             let outcome = switchLayer(to: index, in: subject.layers, persistRebinds: false)
-            return ["shown": outcome.shown.count, "putAway": outcome.parked.union(outcome.hidden).count, "missing": outcome.missing.count]
+            return ["putAway": outcome.parked.union(outcome.hidden).count, "skipped": outcome.missing.count]
         }
         guard operation.kind == "open", operation.mode == "launch" else {
             throw EditorBridgeError("invalid_request", "Unsupported operation.")
@@ -1467,7 +1467,7 @@ class WorkspaceManager: ObservableObject {
                 Preferences.shared.terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
             }
         }
-        return ["launchesRequested": operation.entryIndices.count]
+        return [:] // Launch acceptance is not proof that a window opened.
     }
 
     // MARK: - App Launch Helper

@@ -73,4 +73,37 @@ final class EditorActionsTests: XCTestCase {
         XCTAssertTrue(arguments.contains("--disable-slash-commands"))
     }
 
+    func testConfirmedOpenHasUndoReceiptAndStackCannotReplay() throws {
+        let snap = try snapshot()
+        var effects = 0
+        let actions = EditorActions(execute: { _ in effects += 1; return [:] }, reveal: { [:] },
+                                    journalFactory: { EditorMutationJournal(parked: []) })
+        let plan = try actions.plan(["kind": "open", "layerId": "web"], snapshot: snap)
+        let result = actions.confirm(plan["planId"] as! String, snapshot: { snap })
+        let id = try XCTUnwrap(result["actionId"] as? String)
+        XCTAssertEqual(result["kind"] as? String, "open")
+        XCTAssertEqual(result["undoable"] as? Bool, true)
+        XCTAssertEqual(actions.history()["newestUndoableActionId"] as? String, id)
+        let undo = actions.undo(id)
+        XCTAssertEqual(undo["kind"] as? String, "undo")
+        XCTAssertEqual(undo["undoOfActionId"] as? String, id)
+        XCTAssertEqual(undo["ok"] as? Bool, true)
+        XCTAssertTrue((undo["message"] as? String)?.contains("Opened apps stay open") == true)
+        XCTAssertEqual(actions.undo(id)["ok"] as? Bool, false)
+        XCTAssertEqual(effects, 1)
+    }
+
+    func testUndoCapabilityRequiresNativeJournal() throws {
+        let snap = try snapshot()
+        for enabled in [false, true] {
+            let bridge = EditorBridge(capture: { snap })
+            bridge.actions = EditorActions(execute: { _ in [:] }, reveal: { [:] },
+                journalFactory: enabled ? { EditorMutationJournal(parked: []) } : nil)
+            let reply = bridge.reply(to: ["v": 1, "requestId": "caps", "subjectId": NSNull(),
+                "revision": NSNull(), "kind": "capabilities", "payload": [:]])
+            let payload = reply["payload"] as! [String: Any]
+            XCTAssertEqual((payload["methods"] as! [String]).contains("action.undo"), enabled)
+        }
+    }
+
 }

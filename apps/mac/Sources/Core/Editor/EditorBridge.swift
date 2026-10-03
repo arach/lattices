@@ -103,7 +103,7 @@ final class EditorBridge {
                   (request["subjectId"] is NSNull || request["subjectId"] is String) else {
                 throw EditorBridgeError("invalid_request", "Expected a v1 Editor request envelope.")
             }
-            let actionMethods = actions == nil ? [] : ["action.plan", "action.confirm", "action.reveal", "actions.list"]
+            let actionMethods = actions == nil ? [] : ["action.plan", "action.confirm", "action.reveal", "actions.list"] + (actions?.supportsUndo == true ? ["action.undo"] : [])
             let assistantMethods = assistantSend == nil ? [] : ["assistant.send", "assistant.state"]
             guard kind == "capabilities" || Self.methods.contains(kind) || actionMethods.contains(kind)
                 || assistantMethods.contains(kind) || (hostChrome && kind == "ui.state") else {
@@ -141,11 +141,14 @@ final class EditorBridge {
                 return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
                                 kind: "actions.list.result", payload: actions.history())
             }
-            if kind == "action.confirm" || kind == "action.reveal", let actions {
+            if kind == "action.confirm" || kind == "action.reveal" || kind == "action.undo", let actions {
                 let result: [String: Any]
                 if kind == "action.confirm" {
                     guard let id = payload["planId"] as? String, !id.isEmpty else { throw EditorBridgeError("invalid_plan", "A planId is required.") }
                     result = actions.confirm(id, snapshot: actionCapture ?? capture)
+                } else if kind == "action.undo" {
+                    guard let id = payload["actionId"] as? String else { throw EditorBridgeError("invalid_request", "An actionId is required.") }
+                    result = actions.undo(id)
                 } else { result = actions.showAll() }
                 onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "action.result", payload: result))
                 return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),

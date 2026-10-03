@@ -1,3 +1,21 @@
+# Act acceptance — 2026-10-03
+
+- Imported Hudson 8614115c85ac8114e4736ba226163968b7c685c6. All six approved SHA-256 values match after import and are recorded in Resources/Editor/provenance.json.
+- Swift tests: 436 executed, 13 skipped, zero failures (16.91s).
+- Release bundle build passed (288.52s). Dev packaging/install passed; only dev.lattices.app.dev was quit/relaunched. Running dev PID at capture: 29380.
+- Talkie Gather planning popover opened, captured, then **Cancel** clicked. No confirmation submitted.
+- One real tool-free assistant question answered: why 3 windows and 4 rules? Answer correctly explains one rule matching two windows and two rules matching none.
+- Screenshots: EditorSlice1LiveEvidence/act-confirm.png and EditorSlice1LiveEvidence/act-chat.png.
+- action.undo is advertised by the production bridge with the native journal enabled. Automated tests cover token/order/single-use, frame restoration, moved/closed-window skips, already-hidden protection, Open's no-close undo and capability gating. Real Gather/Open/Undo remain untested by instruction; the user's first live run is still pending.
+- No Gather, Open, Undo or Show all action was executed during acceptance. Dev app remains open on Talkie's chat.
+- workspace.json SHA-256 unchanged: 08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc; mtime_ns unchanged: 1790863638274089681.
+- No release app, permissions, LaunchAgent or KeyboardRemapController changes. No push/merge/PR.
+
+Logs: /tmp/lattices-editor-slice-1/act-journal-full.log,
+act-release.log and act-install.log.
+
+---
+
 # Should-be live acceptance resumed — 2026-10-03
 
 The coordinator cleared the one-off stalled hidutil child (51918). The existing
