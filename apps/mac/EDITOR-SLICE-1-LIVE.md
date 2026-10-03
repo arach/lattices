@@ -1,3 +1,53 @@
+# Layers polish acceptance — 2026-10-02
+
+Branch `feat/layers-polish` was created from `origin/main` at `e2f0dc93` in
+`/Users/arach/dev/lattices-editor-host-slice-1`. Implementation/import commit:
+`7cfd1400`. Main checkout was not changed.
+
+- **Pass:** approved Hudson `5dcb6a696195a6f7bb919b078fe6949ff55d2eff` imported.
+  All six approved SHA-256 values match repository and installed dev resources.
+- **Pass:** Swift **421 tests, 13 skipped, 0 failures**. Two Bun importer tests
+  pass. Release build passed (327.29s); dev packaging/install/relaunch passed.
+  An earlier render-test run failed because its output directory did not exist;
+  creating that temporary directory and rerunning the suite resolved all failures.
+- **Pass:** native title bar retains gradient, hairline and READ ONLY tag.
+  Full real display geometry and eligible pure preview targets remain unchanged.
+- **Pass:** optional unmatchedRules data uses full native predicates and canonical
+  entry keys; duplicates are omitted rather than guessed. No membership or effects
+  changed. **Web follow-up:** this bundle ignores candidate-window suggestions;
+  Waiting renders actual unmatched criteria from existing source entries instead.
+- **Pass:** the real Talkie page renders the polished display stage, main-screen
+  emerald border, rule chips and two real Waiting rows (Devin and Xcode) in the
+  full-height capture. Display sizes are proportional and bottoms aligned as
+  requested, not a depiction of the displays' differing vertical desktop origins.
+- **Pass fallback / pending target acceptance:** Talkie's three windows have
+  last-known rather than live current-desktop positions. Now shows the displays
+  and explicitly says three windows lack live positions; no green live windows
+  or destinations are invented. Would go is disabled, and each target is
+  Unavailable. No `polish-preview-go.png` is claimed: a true target-state capture
+  needs naturally eligible windows. No layer was activated or window relocated
+  to manufacture this state.
+- **Pending temporal acceptance:** no captured white/blank state, but screenshots
+  cannot prove absence of transient flash or flicker. Pointer automation became
+  unreliable during later captures; stopped rather than treating mislabeled
+  screenshots as passing evidence. Design canvas remained inaccessible, so
+  exact board-fidelity comparison is not claimed.
+- **Pass:** workspace.json SHA-256 remains
+  `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+  mtime_ns `1790863638274089681`. Release app not launched; no config writes,
+  permission changes, layer activation or placement actions. Dev Layers remains open.
+
+Evidence under `apps/mac/EditorSlice1LiveEvidence/`:
+- `polish-layer.png` — layer page with proportional display stage.
+- `polish-preview-now.png` — Now-only unavailable-target view, scrolled to rows/footer.
+- `polish-waiting.png` — two actual Waiting rows and placed-by table.
+
+Logs: `/tmp/lattices-editor-slice-1/polish-tests-final.log`,
+`polish-release-final.log`, `polish-install.log`. Hash provenance is in
+`apps/mac/Resources/Editor/provenance.json`.
+
+---
+
 # Pass 2 geometry and side-nav corrections — 2026-10-02
 
 Native implementation: `a9faf49d`. Approved Hudson bundle:
