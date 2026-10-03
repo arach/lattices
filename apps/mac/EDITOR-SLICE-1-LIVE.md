@@ -1,3 +1,56 @@
+# Should-be layout — 2026-10-03
+
+Native commit `1dd81b99`; imported bundle commit `f9553aac` on
+`feat/layers-polish`. Approved Hudson bundle:
+`e388ffdab3cbd290feeb588f0a8eafe628cb8fec`.
+
+## Completed
+
+- Read-only group.layout design projection, frozen with the Hudson builder.
+  Open slots ignore desktop eligibility; native reason/status remains truthful.
+  All-entry reservations use the same LayerLayout.frames function, skip missing
+  app names and preserve resolvable explicit placements. No layout effects run.
+- Talkie tests: two Ghostty slots stacked in the left half, Talkie in the right
+  half; Xcode/Devin all-entry case uses 30/40/30. Tests also cover missing app,
+  explicit secondary display, duplicates, no-layout, moves/stays and exclusions.
+- **425 Swift tests, 13 skipped, zero failures**. Release build passed (229.68s).
+- Imported six assets and verified every reported SHA-256 against both repository
+  and installed dev resources. Dev packaging and installation succeeded.
+- Native titlebar unchanged. Main checkout, release app, permissions and
+  LaunchAgent were not modified. No configuration or workspace writes performed.
+
+## Live acceptance blocked by unrelated startup hang
+
+The dev app launched as pid 51891, but no main window opened after explicit
+`open -b dev.lattices.app.dev 'lattices://editor'` requests. The daemon responds;
+main-thread sample shows it inside:
+
+`KeyboardRemapController.refresh → CapsLockHIDTransportController.enable →
+runHIDUtil → Process.waitUntilExit`.
+
+File: `apps/mac/Sources/Core/Input/KeyboardRemapController.swift:643`.
+The child pid 51918 remained in `/usr/bin/hidutil property --get UserKeyMapping`
+for over two minutes. This is outside the Editor code; the sampled main thread
+has not reached the Editor deep-link handler. I did not kill the HID subprocess,
+change remapping/preferences, or modify unrelated input code to bypass it.
+
+**Pending:** `shouldbe-open.png`, `shouldbe-all.png`, `shouldbe-now.png` and live
+visual acceptance. No screenshots are presented as passing when the new UI has
+not opened. The dev process is still running in this blocked state; release
+remains untouched. Coordinator/Arach must resolve or authorize work on the
+startup blocker before capture can continue.
+
+Evidence: `EditorSlice1LiveEvidence/shouldbe-startup-blocker.txt` (main-thread
+sample excerpt); full sample `/tmp/lattices-editor-slice-1/shouldbe-launch-sample.txt`.
+Logs: `/tmp/lattices-editor-slice-1/shouldbe-tests-full.log`,
+`shouldbe-release.log`, `shouldbe-install.log`.
+
+Workspace unchanged after launch: SHA-256
+`08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+mtime_ns `1790863638274089681`, size 3172.
+
+---
+
 # Layers polish acceptance — 2026-10-02
 
 Branch `feat/layers-polish` was created from `origin/main` at `e2f0dc93` in
