@@ -333,3 +333,12 @@ Native verification: 417 tests, 13 skipped, zero failures with OVERVIEW_RENDER_D
 set; release build passed (265.01s). Logs: /tmp/lattices-editor-slice-1/pass2-tests.log
 and pass2-release.log. Physical Command-click remains awaiting Arach's response to
 coordinator request msg-murqtton-vkjuyo; keyboard selection is not mouse evidence.
+
+## Pass 2 approved bundle installed
+
+Imported Hudson `cdce3a22029fa5cff522f8b3587a621d12b412cf` after native
+`a9faf49d`. All six asset hashes match the approved dist and installed dev app;
+full hashes are recorded in `Resources/Editor/provenance.json`. No Cormorant
+assets were reintroduced. Swift tests: 417, 13 skipped, zero failures; release
+build and dev installation passed. Live evidence and remaining manual checks
+are recorded at the top of `EDITOR-SLICE-1-LIVE.md`.

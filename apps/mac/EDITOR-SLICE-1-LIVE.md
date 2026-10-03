@@ -1,3 +1,61 @@
+# Pass 2 geometry and side-nav corrections — 2026-10-02
+
+Native implementation: `a9faf49d`. Approved Hudson bundle:
+`cdce3a22029fa5cff522f8b3587a621d12b412cf`. All six SHA-256 values in
+`Resources/Editor/provenance.json` match the source dist, repository copy and
+installed dev app. The release app was not targeted.
+
+## Results
+
+- **Pass:** Swift tests: 417 tests, 13 skipped, 0 failures, with
+  `OVERVIEW_RENDER_DIR=/tmp/lattices-editor-slice-1/pass2-renders`.
+  Includes pure layout planning, geometry provenance, ambiguous rule mapping,
+  eligibility exclusions and corrected native scope names/counts.
+- **Pass:** release Swift build (265.01s), dev packaging, installation and launch.
+- **Pass:** panel scope names/counts now use actual indexed windows, not missing
+  rules. Both Overview and Layers status bars use the same index total and label
+  it **content windows**. All uses an outline square; Unassigned uses a grey dot.
+  Initial captures show 12 in both index and status; the later live capture
+  shows 11 in both after the live inventory changed.
+- **Pass:** real display map matches the native arrangement in top-left points:
+  main DELL S3422DWG `(0,0,3440,1440)`, U32J59x
+  `(-3840,-396,3840,2160)`, Action Agent Layer `(3440,0,1440,900)`.
+  The left display is larger and extends above the main display; the smaller
+  right display starts at the main display's top edge.
+- **Pass:** last-known window positions are explicitly labelled Last known,
+  not represented as live positions. Missing destinations are not invented.
+- **Pending live proposed-stage comparison:** the selected Lattices windows
+  are not eligible current-main-desktop windows. Preview therefore correctly
+  displays “No eligible destinations were supplied”, with Would go unavailable.
+  The side-effect-free planner is tested; no windows were moved to manufacture
+  a live preview fixture.
+- **Pass:** Unassigned and 600pt narrow views render without a blank page.
+  No white captured state; still screenshots cannot prove absence of a transient
+  white flash. Design-canvas pixel matching remains unverified (canvas unavailable).
+- **Pending physical Command-click:** pointer automation cannot send modifiers
+  with the available permission/daemon interface. Coordinator asked Arach to
+  click Lattices, then hold Command and click fab; no result received at this
+  checkpoint. Earlier Command-down evidence is not a physical-click test.
+- **Pass:** workspace.json unchanged: SHA-256
+  `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+  mtime_ns `1790863638274089681`, size 3172. No configuration writes or layer
+  activation/placement actions were performed. Dev app remains running with
+  Layers open at wide width.
+
+## Screenshots
+
+Under `apps/mac/EditorSlice1LiveEvidence/`:
+- `pass2-overview.png` — Lattices display map and rules.
+- `pass2-preview.png` — honest unavailable layout preview, last-known provenance.
+- `pass2-unassigned.png` — Unassigned map and membership.
+- `pass2-narrow.png` — narrow layout preview.
+- `pass2-counts-live.png` — subsequent live index/status count agreement.
+
+Logs: `/tmp/lattices-editor-slice-1/pass2-tests.log`, `pass2-release.log`,
+`pass2-install.log`. Older acceptance records below describe previous revisions.
+
+---
+
 # Shared layer index acceptance
 
 Native Overview now has a 212pt layer index, All windows, Unassigned and additive
