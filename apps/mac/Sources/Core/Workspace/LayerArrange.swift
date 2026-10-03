@@ -22,34 +22,17 @@ extension WorkspaceManager {
         let bounds = CGDisplayBounds(main)
         let others = Self.displayBounds(except: main)
 
-        // The layer's windows (`memberWindows`, content only) with a title,
-        // by the stage's test: centred on the main display, or hanging off
-        // its bottom-right corner where parked windows wait.
-        let candidates = memberWindows(of: layer, in: windows).compactMap { member -> WindowEntry? in
-            let entry = member.entry
-            guard !member.placed, !except.contains(entry.wid), entry.hasTitle,
-                  entry.spaceIds.contains(display.currentSpaceId) else { return nil }
-            let rect = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
-            let centre = CGPoint(x: rect.midX, y: rect.midY)
-            if bounds.contains(centre) { return entry }
-            if others.contains(where: { $0.contains(centre) }) { return nil }
-            return rect.minX >= bounds.maxX - 40 || bounds.intersects(rect) ? entry : nil
-        }
-
-        let axByWid = Self.standardWindows(of: Set(candidates.map(\.pid)))
-        let arranged = candidates.filter { axByWid[$0.wid] != nil }
-        guard let focus = arranged.first else { return false }
-
+        let members = memberWindows(of: layer, in: windows)
+        let axByWid = Self.standardWindows(of: Set(members.map { $0.entry.pid }))
+        let visible = WindowTiler.tileFrame(fractions: (0, 0, 1, 1), on: screen)
+        let plan = LayerLayout.plan(kind, members: members, excluding: except,
+            main: bounds, otherDisplays: others, currentSpace: display.currentSpaceId,
+            visibleFrame: visible, standardWindows: Set(axByWid.keys))
+        guard let focus = plan.first?.entry else { return false }
         let size = screen.visibleFrame.size
-        let boxes = LayerLayout.frames(
-            kind,
-            types: arranged.map { AppTypeClassifier.classify($0.app) },
-            aspect: size.width / max(size.height, 1)
-        )
-        let moves: [(wid: UInt32, pid: Int32, frame: CGRect, axWindow: AXUIElement)] = zip(arranged, boxes).compactMap { entry, box in
-            guard let axWindow = axByWid[entry.wid] else { return nil }
-            let frame = WindowTiler.tileFrame(fractions: (box.minX, box.minY, box.width, box.height), on: screen)
-            return (entry.wid, entry.pid, Self.pixelAligned(frame), axWindow)
+        let moves: [(wid: UInt32, pid: Int32, frame: CGRect, axWindow: AXUIElement)] = plan.compactMap { item in
+            guard let axWindow = axByWid[item.entry.wid] else { return nil }
+            return (item.entry.wid, item.entry.pid, item.frame, axWindow)
         }
         // Batch activation goes app by app in order of first appearance, so
         // the first window's app goes last, and the first window after the
@@ -63,7 +46,7 @@ extension WorkspaceManager {
     }
 
     /// Each app's standard windows by window id, leaving out minimized ones.
-    private static func standardWindows(of pids: Set<Int32>) -> [UInt32: AXUIElement] {
+    static func standardWindows(of pids: Set<Int32>) -> [UInt32: AXUIElement] {
         var byWid: [UInt32: AXUIElement] = [:]
         for pid in pids {
             var value: CFTypeRef?
@@ -82,13 +65,6 @@ extension WorkspaceManager {
             }
         }
         return byWid
-    }
-
-    /// Whole points, rounding each edge, so neighbours neither overlap nor
-    /// leave a gap.
-    private static func pixelAligned(_ rect: CGRect) -> CGRect {
-        let (minX, minY) = (rect.minX.rounded(), rect.minY.rounded())
-        return CGRect(x: minX, y: minY, width: rect.maxX.rounded() - minX, height: rect.maxY.rounded() - minY)
     }
 
     /// CG bounds of every active display but `main`.

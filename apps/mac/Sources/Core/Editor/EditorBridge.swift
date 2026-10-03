@@ -178,7 +178,7 @@ final class EditorBridge {
         }
         let sources = LayerMembership.Sources(group: { groups[$0] }, projectWindows: { companions[$0] ?? [] },
                                               isContent: DesktopModel.isContent, isRunning: { running[$0] ?? false })
-        return Snapshot(subject: subject, projection: try subject.project(windows: windows, sources: sources))
+        return Snapshot(subject: subject, projection: try subject.project(windows: windows, sources: sources, geometry: EditorGeometry.live(windows: windows.filter(DesktopModel.isContent))))
     }
 }
 

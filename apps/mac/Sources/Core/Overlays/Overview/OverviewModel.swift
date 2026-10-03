@@ -331,6 +331,8 @@ final class OverviewModel: ObservableObject {
         scope = next
     }
 
+    var layerIndexRows: [LayerIndexState.Row] { ownsSharedSelection ? LayerIndexState.shared.rows : indexFixtureRows }
+
     var indexFixtureRows: [LayerIndexState.Row] {
         let assigned = Set(inputs.layers.flatMap { $0.windows.map(\.wid) })
         return inputs.layers.map { LayerIndexState.Row(id: $0.id, label: $0.label, windows: $0.windows.map(\.wid)) }

@@ -485,14 +485,15 @@ struct OverviewWorkingList: View {
 
     /// "Lattices", or "All windows".
     static func name(_ model: OverviewModel) -> String {
-        guard let id = model.scope.layerId else { return "All windows" }
-        return model.layers.first { $0.id == id }?.label ?? id
+        let ids = model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? []
+        guard !ids.isEmpty else { return "All windows" }
+        return ids.map { id in model.layerIndexRows.first { $0.id == id }?.label ?? id }.joined(separator: " + ")
     }
 
     /// What the list holds now: entries and windows, in the subset if any.
     static func count(_ model: OverviewModel) -> Int {
-        if model.scope.layerId != nil { return model.workingMembership?.count ?? 0 }
-        return model.workingRows.count
+        if let ids = model.scope.scopedWindowIds { return Set(ids).count }
+        return Set(model.layerIndexRows.flatMap(\.windows)).count
     }
 
     var body: some View {

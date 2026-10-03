@@ -108,7 +108,11 @@ struct OverviewLayerIndex: View {
             choose(id, NSEvent.modifierFlags.contains(.command))
         } label: {
             HStack(spacing: 10) {
-                Group {
+                if id == nil {
+                    RoundedRectangle(cornerRadius: 1).strokeBorder(faint, lineWidth: 1).frame(width: 7, height: 7)
+                } else if id == rows.last?.id {
+                    Circle().fill(faint).frame(width: 7, height: 7)
+                } else {
                     Circle().fill(count > 0 ? Color(red: 51 / 255, green: 199 / 255, blue: 115 / 255) : .clear)
                         .overlay(Circle().strokeBorder(count > 0 ? .clear : Color(red: 108 / 255, green: 113 / 255, blue: 120 / 255), lineWidth: 1))
                         .frame(width: 7, height: 7)

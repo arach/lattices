@@ -102,17 +102,23 @@ struct EditorSubject {
 
     /// The only membership decision is the native resolver. Its index is used
     /// only to locate the already content-addressed entry in this same snapshot.
-    func project(windows: [WindowEntry], sources: LayerMembership.Sources) throws -> [String: Any] {
+    func project(windows: [WindowEntry], sources: LayerMembership.Sources, geometry: EditorGeometry? = nil) throws -> [String: Any] {
         let resolution = LayerMembership.resolve(layers, windows: windows, sources: sources)
-        func row(_ window: WindowEntry, layerId: String?, key: String?) -> [String: Any] {
-            ["id": "window:\(window.wid)", "windowId": window.wid, "app": window.app,
+        let ambiguousKeys = Set(entries.filter { $0["ambiguous"] as? Bool == true }.compactMap { $0["key"] as? String })
+        func row(_ window: WindowEntry, layerId: String?, key: String?, rule: Int? = nil) -> [String: Any] {
+            var value: [String: Any] = ["id": "window:\(window.wid)", "windowId": window.wid, "app": window.app,
              "title": window.title, "layerId": layerId as Any? ?? NSNull(),
-             "entryKeys": key.map { [$0] } ?? []]
+             "entryKeys": key.map { [$0] } ?? [],
+             "matchedRule": (key.map { ambiguousKeys.contains($0) } == true ? nil : rule) as Any? ?? NSNull()]
+            if let geometry { value.merge(geometry.window(window.wid)) { _, next in next } }
+            return value
         }
         var projected: [[String: Any]] = layers.enumerated().map { i, layer in
-            ["id": layer.id, "label": layer.label, "rows": resolution.layers[i].map { member in
-                row(member.entry, layerId: layer.id, key: entryKeys[i][member.project])
+            var group: [String: Any] = ["id": layer.id, "label": layer.label, "rows": resolution.layers[i].map { member in
+                row(member.entry, layerId: layer.id, key: entryKeys[i][member.project], rule: member.project)
             }]
+            if let preview = geometry?.preview(layer, members: resolution.layers[i]) { group["preview"] = preview }
+            return group
         }
         var seen = Set<UInt32>()
         let unassigned = windows.sorted { ($0.zIndex, $0.wid) < ($1.zIndex, $1.wid) }.filter {
@@ -123,7 +129,8 @@ struct EditorSubject {
         while layers.contains(where: { $0.id == unassignedID }) { unassignedID += "_" }
         projected.append(["id": unassignedID, "label": "Unassigned",
                           "rows": unassigned.map { row($0, layerId: nil, key: nil) }])
-        let body: [String: Any] = ["groups": projected, "entries": entries]
+        var body: [String: Any] = ["groups": projected, "entries": entries]
+        if let geometry { body["displays"] = geometry.wireDisplays }
         return body.merging(["snapshotId": Self.hash(try Self.canonical(body))]) { _, new in new }
     }
 }

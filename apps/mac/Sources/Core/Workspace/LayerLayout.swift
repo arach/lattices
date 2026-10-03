@@ -168,3 +168,37 @@ enum LayerLayout {
         }
     }
 }
+
+/// Read-only planning shared by native arrange and the Editor projection.
+/// All external state (including AX eligibility) is supplied as immutable inputs.
+extension LayerLayout {
+    struct PlannedWindow {
+        let entry: WindowEntry
+        let frame: CGRect
+    }
+
+    static func plan(_ kind: Kind, members: [LayerMembership.Member], excluding: Set<UInt32>,
+                     main: CGRect, otherDisplays: [CGRect], currentSpace: Int,
+                     visibleFrame: CGRect, standardWindows: Set<UInt32>) -> [PlannedWindow] {
+        guard currentSpace > 0, visibleFrame.width > 0, visibleFrame.height > 0,
+              [visibleFrame.minX, visibleFrame.minY, visibleFrame.width, visibleFrame.height].allSatisfy(\.isFinite) else { return [] }
+        let candidates = members.compactMap { member -> WindowEntry? in
+            let entry = member.entry
+            guard !member.placed, !excluding.contains(entry.wid), entry.hasTitle,
+                  entry.spaceIds.contains(currentSpace), standardWindows.contains(entry.wid) else { return nil }
+            let rect = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
+            let centre = CGPoint(x: rect.midX, y: rect.midY)
+            if main.contains(centre) { return entry }
+            if otherDisplays.contains(where: { $0.contains(centre) }) { return nil }
+            return rect.minX >= main.maxX - 40 || main.intersects(rect) ? entry : nil
+        }
+        let boxes = frames(kind, types: candidates.map { AppTypeClassifier.classify($0.app) },
+                           aspect: visibleFrame.width / visibleFrame.height)
+        return zip(candidates, boxes).map { entry, box in
+            let raw = WindowTiler.tileFrame(fractions: (box.minX, box.minY, box.width, box.height), inDisplay: visibleFrame)
+            let x = raw.minX.rounded(), y = raw.minY.rounded()
+            return PlannedWindow(entry: entry, frame: CGRect(x: x, y: y,
+                width: raw.maxX.rounded() - x, height: raw.maxY.rounded() - y))
+        }
+    }
+}

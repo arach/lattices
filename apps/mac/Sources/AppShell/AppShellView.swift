@@ -72,6 +72,7 @@ enum AppPage: String, CaseIterable {
 // MARK: - App Shell View
 
 struct AppShellView: View {
+    @ObservedObject private var layerIndex = LayerIndexState.shared
     @ObservedObject var controller: ScreenMapController
     @ObservedObject var windowController = ScreenMapWindowController.shared
     @ObservedObject private var scanner = ProjectScanner.shared
@@ -143,7 +144,7 @@ struct AppShellView: View {
             } content: {
                 contentArea
             } statusBar: {
-                if windowController.activePage == .layers {
+                if windowController.activePage == .layers || windowController.activePage == .overview {
                     layersStatusBar
                 } else {
                     statusBar(availableWidth: proxy.size.width - HudSidebarLayout.railWidth
@@ -296,7 +297,8 @@ struct AppShellView: View {
     // MARK: - Status Bar
 
     private var layersStatusBar: some View {
-        let summary = "\(sessionHealthText) · \(desktop.windows.count) windows · \(NSScreen.screens.count) displays"
+        let count = Set(layerIndex.rows.flatMap(\.windows)).count
+        let summary = "\(sessionHealthText) · \(count) content windows · \(NSScreen.screens.count) displays"
         return HStack(spacing: 12) {
             Text(summary).lineLimit(1).truncationMode(.tail).help(summary)
             Spacer(minLength: 0)

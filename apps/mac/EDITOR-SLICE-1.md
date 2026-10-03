@@ -300,3 +300,36 @@ selected layers instead of offering a misleading single-layer edit action.
 Imported approved Hudson f5fbca135131ababb1a0a5386b2c49247db1b336; six copied hashes
 match the builder's report and Resources/Editor/provenance.json. Geometry additions
 and the earlier Pass 2 preview stage remain cancelled.
+
+## Pass 2 geometry and index corrections
+
+Contract agreed with Hudson on hudson-editor-spec-20261001:
+- projection.displays: id (decimal CG display ID string), name, main, frame.
+- rows: nullable frame and displayId, nullable zero-based matchedRule, frameSource
+  (live / lastKnown / savedHome / unavailable). Ambiguous duplicate rules have no
+  matchedRule index. Existing entryKeys and exact UTF-16 source ranges remain.
+- group.preview, when available: layout, displayId, frames [{windowId, frame}].
+- All frames are global top-left points. No fabricated destinations; unavailable
+  eligibility means omitted preview, not a claim that a window would stay.
+
+EditorGeometry uses OverviewModel.liveDisplays and OverviewProjection.make, with
+LayerStage's read-only homes. Thus current/last-known/saved-home interpretation
+is the native desk's, including missing geometry for minimized/full-screen windows.
+Preview uses LayerLayout.plan, extracted from native arrange and now shared with
+it. The planner accepts immutable resolver members, bounds, current Space, visible
+frame, exclusion IDs and read-only AX eligibility. It produces frames only; it
+cannot write config, rebind membership, activate, stage, or move windows. Unknown
+layouts, unavailable displays or no eligible windows omit preview. Known frames
+are not presented as measured Now unless frameSource is live. Projection hashing
+includes geometry, with the existing 500ms cache and change-only invalidations.
+
+Corrections: the panel toggle names multi-selection and counts window IDs rather
+than unmatched rules. Both Overview and Layers status now count the same content
+windows as All windows, explicitly labelled "content windows"; other shell pages
+retain their existing desktop status. All uses a square outline; Unassigned a
+neutral grey filled dot. This replaces the prior proposed tracked-window wording.
+
+Native verification: 417 tests, 13 skipped, zero failures with OVERVIEW_RENDER_DIR
+set; release build passed (265.01s). Logs: /tmp/lattices-editor-slice-1/pass2-tests.log
+and pass2-release.log. Physical Command-click remains awaiting Arach's response to
+coordinator request msg-murqtton-vkjuyo; keyboard selection is not mouse evidence.
