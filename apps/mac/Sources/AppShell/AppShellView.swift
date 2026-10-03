@@ -252,13 +252,6 @@ struct AppShellView: View {
             HStack(spacing: 8) {
                 Text(windowController.activePage.label)
                     .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
-                if layers {
-                    Text("READ ONLY")
-                        .font(Typo.mono(9)).tracking(0.8)
-                        .foregroundColor(Palette.textMuted)
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
-                }
                 Spacer(minLength: 8)
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }

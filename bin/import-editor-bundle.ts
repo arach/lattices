@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, lstatSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { validateEditorCSS } from "./editor-bundle-assets";
 
 const input = process.argv[2];
 if (!input) throw new Error("Usage: bun bin/import-editor-bundle.ts <Hudson editor dist directory>");
@@ -31,10 +32,7 @@ const assets = files.map(name => {
   return { name, data, sha256: createHash("sha256").update(data).digest("hex") };
 });
 const css = assets.find(asset => asset.name === "editor.css")!.data.toString("utf8");
-for (const match of css.matchAll(/url\(\s*["']?([^"')\s]+)["']?\s*\)/g)) {
-  const name = match[1].replace(/^\.\//, "");
-  if (!files.includes(name)) throw new Error(`CSS references an unbundled asset: ${match[1]}`);
-}
+validateEditorCSS(css, files);
 const revision = execFileSync("git", ["-C", dirname(source), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const sourceDirty = execFileSync("git", ["-C", dirname(source), "status", "--porcelain"], { encoding: "utf8" }).trim().length > 0;
 mkdirSync(destination, { recursive: true });

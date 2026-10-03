@@ -2198,7 +2198,10 @@ enum WindowTiler {
                     continue
                 }
 
+                let capture = EditorMutationJournal.begin(wid: wm.wid, ax: axWin)
+                if EditorMutationJournal.current != nil && capture == nil { continue }
                 applyFrameToAXWindow(axWin, wid: wm.wid, target: wm.target)
+                EditorMutationJournal.end(capture)
                 moved += 1
             }
         }
@@ -2556,7 +2559,10 @@ enum WindowTiler {
         if let cid { _ = _SLSDisableUpdate?(cid) }
 
         for move in moves {
+            let capture = EditorMutationJournal.begin(wid: move.wid, ax: move.axWindow)
+            if EditorMutationJournal.current != nil && capture == nil { continue }
             setFrameTriplet(move.axWindow, to: move.frame)
+            EditorMutationJournal.end(capture)
             AXUIElementPerformAction(move.axWindow, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(move.axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
             processed += 1

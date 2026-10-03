@@ -1,3 +1,166 @@
+# Act acceptance — 2026-10-03
+
+- Imported Hudson 8614115c85ac8114e4736ba226163968b7c685c6. All six approved SHA-256 values match after import and are recorded in Resources/Editor/provenance.json.
+- Swift tests: 436 executed, 13 skipped, zero failures (16.91s).
+- Release bundle build passed (288.52s). Dev packaging/install passed; only dev.lattices.app.dev was quit/relaunched. Running dev PID at capture: 29380.
+- Talkie Gather planning popover opened, captured, then **Cancel** clicked. No confirmation submitted.
+- One real tool-free assistant question answered: why 3 windows and 4 rules? Answer correctly explains one rule matching two windows and two rules matching none.
+- Screenshots: EditorSlice1LiveEvidence/act-confirm.png and EditorSlice1LiveEvidence/act-chat.png.
+- action.undo is advertised by the production bridge with the native journal enabled. Automated tests cover token/order/single-use, frame restoration, moved/closed-window skips, already-hidden protection, Open's no-close undo and capability gating. Real Gather/Open/Undo remain untested by instruction; the user's first live run is still pending.
+- No Gather, Open, Undo or Show all action was executed during acceptance. Dev app remains open on Talkie's chat.
+- workspace.json SHA-256 unchanged: 08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc; mtime_ns unchanged: 1790863638274089681.
+- No release app, permissions, LaunchAgent or KeyboardRemapController changes. No push/merge/PR.
+
+Logs: /tmp/lattices-editor-slice-1/act-journal-full.log,
+act-release.log and act-install.log.
+
+---
+
+# Should-be live acceptance resumed — 2026-10-03
+
+The coordinator cleared the one-off stalled hidutil child (51918). The existing
+installed dev app (51891) resumed; no rebuild or relaunch was needed for this
+capture. **KeyboardRemapController was not changed in this branch.** Its
+synchronous, no-timeout main-thread hidutil call at
+`apps/mac/Sources/Core/Input/KeyboardRemapController.swift:643` remains a separate
+robustness issue. The earlier blocker record below is retained for audit and is
+now superseded for live acceptance.
+
+Opened Layers via `open -b dev.lattices.app.dev "lattices://editor"`, with Talkie
+selected, and captured all three requested states:
+
+- **Pass — shouldbe-open.png:** two Ghostty windows stack in the left 50%; Talkie
+  occupies the right 50%. All three retain the truthful “on another desktop”
+  exclusion, rather than being reported as moves. Target geometry remains visible.
+- **Pass — shouldbe-all.png:** the ruler is 30/40/30. Xcode and Devin occupy the
+  two hatched Not open middle slots. Ghostty and Talkie are explicitly labelled
+  open reservations, not Moves/Stays. The two live Ghostty windows share their
+  one configured-entry reservation as agreed.
+- **Pass — shouldbe-now.png:** same display stage, no invented live positions;
+  the footer correctly reports three windows with no live position.
+- Switching Should be / Now and Include 2 not open works without reloading the
+  page. No blank/white captured state; stills do not establish a temporal
+  flash/flicker guarantee.
+
+All screenshot paths are under
+`/Users/arach/dev/lattices-editor-host-slice-1/apps/mac/EditorSlice1LiveEvidence/`.
+Dev app is left running on **Layers → Talkie → Should be**, Include not open off.
+No workspace or configuration writes, layer activation, or window-placement
+operations were performed; release app was not launched.
+
+workspace.json remains identical: SHA-256
+`08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+mtime_ns `1790863638274089681`, size 3172.
+
+No implementation changes in this capture round. Existing verified result:
+**425 Swift tests, 13 skipped, zero failures**; release build passed; all six
+installed Hudson `e388ffda` asset hashes verified.
+
+---
+
+# Should-be layout — 2026-10-03
+
+Native commit `1dd81b99`; imported bundle commit `f9553aac` on
+`feat/layers-polish`. Approved Hudson bundle:
+`e388ffdab3cbd290feeb588f0a8eafe628cb8fec`.
+
+## Completed
+
+- Read-only group.layout design projection, frozen with the Hudson builder.
+  Open slots ignore desktop eligibility; native reason/status remains truthful.
+  All-entry reservations use the same LayerLayout.frames function, skip missing
+  app names and preserve resolvable explicit placements. No layout effects run.
+- Talkie tests: two Ghostty slots stacked in the left half, Talkie in the right
+  half; Xcode/Devin all-entry case uses 30/40/30. Tests also cover missing app,
+  explicit secondary display, duplicates, no-layout, moves/stays and exclusions.
+- **425 Swift tests, 13 skipped, zero failures**. Release build passed (229.68s).
+- Imported six assets and verified every reported SHA-256 against both repository
+  and installed dev resources. Dev packaging and installation succeeded.
+- Native titlebar unchanged. Main checkout, release app, permissions and
+  LaunchAgent were not modified. No configuration or workspace writes performed.
+
+## Live acceptance blocked by unrelated startup hang
+
+The dev app launched as pid 51891, but no main window opened after explicit
+`open -b dev.lattices.app.dev 'lattices://editor'` requests. The daemon responds;
+main-thread sample shows it inside:
+
+`KeyboardRemapController.refresh → CapsLockHIDTransportController.enable →
+runHIDUtil → Process.waitUntilExit`.
+
+File: `apps/mac/Sources/Core/Input/KeyboardRemapController.swift:643`.
+The child pid 51918 remained in `/usr/bin/hidutil property --get UserKeyMapping`
+for over two minutes. This is outside the Editor code; the sampled main thread
+has not reached the Editor deep-link handler. I did not kill the HID subprocess,
+change remapping/preferences, or modify unrelated input code to bypass it.
+
+**Pending:** `shouldbe-open.png`, `shouldbe-all.png`, `shouldbe-now.png` and live
+visual acceptance. No screenshots are presented as passing when the new UI has
+not opened. The dev process is still running in this blocked state; release
+remains untouched. Coordinator/Arach must resolve or authorize work on the
+startup blocker before capture can continue.
+
+Evidence: `EditorSlice1LiveEvidence/shouldbe-startup-blocker.txt` (main-thread
+sample excerpt); full sample `/tmp/lattices-editor-slice-1/shouldbe-launch-sample.txt`.
+Logs: `/tmp/lattices-editor-slice-1/shouldbe-tests-full.log`,
+`shouldbe-release.log`, `shouldbe-install.log`.
+
+Workspace unchanged after launch: SHA-256
+`08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+mtime_ns `1790863638274089681`, size 3172.
+
+---
+
+# Layers polish acceptance — 2026-10-02
+
+Branch `feat/layers-polish` was created from `origin/main` at `e2f0dc93` in
+`/Users/arach/dev/lattices-editor-host-slice-1`. Implementation/import commit:
+`7cfd1400`. Main checkout was not changed.
+
+- **Pass:** approved Hudson `5dcb6a696195a6f7bb919b078fe6949ff55d2eff` imported.
+  All six approved SHA-256 values match repository and installed dev resources.
+- **Pass:** Swift **421 tests, 13 skipped, 0 failures**. Two Bun importer tests
+  pass. Release build passed (327.29s); dev packaging/install/relaunch passed.
+  An earlier render-test run failed because its output directory did not exist;
+  creating that temporary directory and rerunning the suite resolved all failures.
+- **Pass:** native title bar retains gradient, hairline and READ ONLY tag.
+  Full real display geometry and eligible pure preview targets remain unchanged.
+- **Pass:** optional unmatchedRules data uses full native predicates and canonical
+  entry keys; duplicates are omitted rather than guessed. No membership or effects
+  changed. **Web follow-up:** this bundle ignores candidate-window suggestions;
+  Waiting renders actual unmatched criteria from existing source entries instead.
+- **Pass:** the real Talkie page renders the polished display stage, main-screen
+  emerald border, rule chips and two real Waiting rows (Devin and Xcode) in the
+  full-height capture. Display sizes are proportional and bottoms aligned as
+  requested, not a depiction of the displays' differing vertical desktop origins.
+- **Pass fallback / pending target acceptance:** Talkie's three windows have
+  last-known rather than live current-desktop positions. Now shows the displays
+  and explicitly says three windows lack live positions; no green live windows
+  or destinations are invented. Would go is disabled, and each target is
+  Unavailable. No `polish-preview-go.png` is claimed: a true target-state capture
+  needs naturally eligible windows. No layer was activated or window relocated
+  to manufacture this state.
+- **Pending temporal acceptance:** no captured white/blank state, but screenshots
+  cannot prove absence of transient flash or flicker. Pointer automation became
+  unreliable during later captures; stopped rather than treating mislabeled
+  screenshots as passing evidence. Design canvas remained inaccessible, so
+  exact board-fidelity comparison is not claimed.
+- **Pass:** workspace.json SHA-256 remains
+  `08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+  mtime_ns `1790863638274089681`. Release app not launched; no config writes,
+  permission changes, layer activation or placement actions. Dev Layers remains open.
+
+Evidence under `apps/mac/EditorSlice1LiveEvidence/`:
+- `polish-layer.png` — layer page with proportional display stage.
+- `polish-preview-now.png` — Now-only unavailable-target view, scrolled to rows/footer.
+- `polish-waiting.png` — two actual Waiting rows and placed-by table.
+
+Logs: `/tmp/lattices-editor-slice-1/polish-tests-final.log`,
+`polish-release-final.log`, `polish-install.log`. Hash provenance is in
+`apps/mac/Resources/Editor/provenance.json`.
+
+---
+
 # Pass 2 geometry and side-nav corrections — 2026-10-02
 
 Native implementation: `a9faf49d`. Approved Hudson bundle:

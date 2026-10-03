@@ -1,6 +1,6 @@
 import Foundation
 
-/// A deliberately closed read-only API. The injected capture seam lets tests
+/// Closed Editor API: reads plus explicitly injected, confirmation-gated actions. The injected capture seam lets tests
 /// exercise every call without starting the app, observing the desktop or writing.
 final class EditorBridge {
     struct Snapshot {
@@ -12,6 +12,10 @@ final class EditorBridge {
     var onEvent: (([String: Any]) -> Void)?
     let hostChrome: Bool
     var selectedLayerIds: () -> [String] = { [] }
+    var actionCapture: (() throws -> Snapshot)?
+    var actions: EditorActions?
+    var assistantSend: ((String, String, Snapshot) throws -> Void)?
+    var assistantState: ((String?) -> [String: Any])?
     var onUIState: ((EditorUIState) -> Void)?
     private let capture: () throws -> Snapshot
     private var subscribed = false
@@ -33,6 +37,11 @@ final class EditorBridge {
         var payload: [String: Any] = ["command": command]
         if let value { payload["value"] = value }
         onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "ui.command", payload: payload))
+    }
+
+    func publishAssistantState(layerId: String? = nil) {
+        guard let state = assistantState?(layerId) else { return }
+        onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "assistant.state", payload: state))
     }
 
     func selectLayers(_ ids: [String]) {
@@ -94,7 +103,10 @@ final class EditorBridge {
                   (request["subjectId"] is NSNull || request["subjectId"] is String) else {
                 throw EditorBridgeError("invalid_request", "Expected a v1 Editor request envelope.")
             }
-            guard kind == "capabilities" || Self.methods.contains(kind) || (hostChrome && kind == "ui.state") else {
+            let actionMethods = actions == nil ? [] : ["action.plan", "action.confirm", "action.reveal", "actions.list"] + (actions?.supportsUndo == true ? ["action.undo"] : [])
+            let assistantMethods = assistantSend == nil ? [] : ["assistant.send", "assistant.state"]
+            guard kind == "capabilities" || Self.methods.contains(kind) || actionMethods.contains(kind)
+                || assistantMethods.contains(kind) || (hostChrome && kind == "ui.state") else {
                 throw EditorBridgeError("unsupported", "This Editor is read-only; method is not supported.")
             }
             guard kind == "capabilities" || request["subjectId"] as? String == EditorSubject.id else {
@@ -108,7 +120,7 @@ final class EditorBridge {
                 let subject: [String: Any] = ["id": EditorSubject.id, "kind": "lattices.workspace-layers",
                                              "label": "Workspace Layers", "revision": revision]
                 var payload: [String: Any] = [
-                    "readOnly": true, "methods": Self.methods + (hostChrome ? ["ui.state"] : []),
+                    "readOnly": actions == nil, "methods": Self.methods + actionMethods + assistantMethods + (hostChrome ? ["ui.state"] : []),
                     "subject": subject, "terminal": false
                 ]
                 if hostChrome { payload["chrome"] = "host"; payload["selectedLayerIds"] = selectedLayerIds() }
@@ -120,6 +132,43 @@ final class EditorBridge {
                 return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
                                 kind: "ui.state.result", payload: [:])
             }
+            let payload = request["payload"] as! [String: Any]
+            if kind == "assistant.state", let assistantState {
+                return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
+                                kind: "assistant.state.result", payload: assistantState(payload["layerId"] as? String))
+            }
+            if kind == "actions.list", let actions {
+                return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
+                                kind: "actions.list.result", payload: actions.history())
+            }
+            if kind == "action.confirm" || kind == "action.reveal" || kind == "action.undo", let actions {
+                let result: [String: Any]
+                if kind == "action.confirm" {
+                    guard let id = payload["planId"] as? String, !id.isEmpty else { throw EditorBridgeError("invalid_plan", "A planId is required.") }
+                    result = actions.confirm(id, snapshot: actionCapture ?? capture)
+                } else if kind == "action.undo" {
+                    guard let id = payload["actionId"] as? String else { throw EditorBridgeError("invalid_request", "An actionId is required.") }
+                    result = actions.undo(id)
+                } else { result = actions.showAll() }
+                onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "action.result", payload: result))
+                return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
+                                kind: kind + ".result", payload: result)
+            }
+            if kind == "action.plan", let actions {
+                let snapshot = try (actionCapture ?? capture)()
+                return envelope(requestId: requestId, revision: snapshot.subject.revision, kind: "action.plan.result",
+                                payload: try actions.plan(payload, snapshot: snapshot))
+            }
+            if kind == "assistant.send", let assistantSend {
+                guard let text = payload["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      text.utf8.count <= 16000, let layerId = payload["layerId"] as? String else {
+                    throw EditorBridgeError("invalid_request", "Expected a question and layer ID.")
+                }
+                let snapshot = try observe()
+                guard snapshot.subject.layers.contains(where: { $0.id == layerId }) else { throw EditorBridgeError("invalid_request", "Unknown layer.") }
+                try assistantSend(text, layerId, snapshot)
+                return envelope(requestId: requestId, revision: snapshot.subject.revision, kind: "assistant.send.result", payload: [:])
+            }
             // Register before capture. Events may precede this reply; the client
             // installs its listener before sending events.subscribe.
             if kind == "events.subscribe" {
@@ -127,6 +176,7 @@ final class EditorBridge {
                 // Subscription survives an unreadable initial file; recovery
                 // must arrive without requiring a reload or a new webview.
                 _ = try? observe()
+                publishAssistantState()
                 return envelope(requestId: requestId, revision: lastRevision as Any? ?? NSNull(),
                                 kind: "events.subscribe.result", payload: ["subscriptionId": subscriptionId])
             }
