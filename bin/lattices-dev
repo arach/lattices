@@ -293,6 +293,12 @@ cmd_build() {
     if [ -d "$DECK_BUILDER_RESOURCES" ]; then
         cp -R "$DECK_BUILDER_RESOURCES" "$RESOURCES_DIR/DeckBuilder"
     fi
+    # Include SwiftPM resources (including the static Editor bundle) in the
+    # installed app, matching package and release builds.
+    for resource_bundle in "$APP_DIR"/.build/release/*.bundle; do
+        [ -d "$resource_bundle" ] || continue
+        cp -R "$resource_bundle" "$RESOURCES_DIR/"
+    done
     bun "$ROOT/bin/embedded-helpers.ts" embed "$BUNDLE"
     write_info_plist
     # Re-sign so TCC permissions persist across rebuilds

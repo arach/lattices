@@ -53,6 +53,7 @@ logs to the console.
 | `enter` | `(kind: string, durationMs: number) => void` | Play a content entrance effect (see **Entrances** below): `"shimmer"` \| `"drop"` \| `"draw"` \| `"none"`. Sets a transient `data-enter` on `<body>` that the CSS animates, self-clearing after the run. Unknown kinds and `"none"` are instant no-ops. No echo message. |
 | `typeOn` | `(base: string, suffix: string, source?: string \| null) => void` | Install `base + suffix` as the complete document immediately, then reveal only `suffix` at ~180 characters/sec with a blinking caret. **Never** echoes `contentChanged`. `source` shows `✳ source · just now` during the reveal and for four seconds after. A new call snaps and supersedes the old reveal. |
 | `finishTypeOn` | `() => void` | Snap an in-flight typed reveal to the already-installed complete document. Silent and idempotent. Real user edits invoke this before their `contentChanged` message is posted. |
+| `setUntrusted` | `(value: boolean) => void` | Render the document as untrusted text (the reader layer's terminal selections): raw HTML is escaped, only `http(s)`/`mailto` links stay clickable, images show their alt text, and single newlines are kept (`breaks: true`). Re-renders in read mode. No echo message. |
 
 ### JS -> native: `postMessage`
 

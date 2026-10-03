@@ -184,6 +184,36 @@ final class LayerStage {
     /// switch to the layer acts on it.
     func setTucked(_ wid: UInt32, _ tucked: Bool, layer layerId: String) {
         lock.lock(); defer { lock.unlock() }
+        Self.applyTuck(wid, tucked, layer: layerId, to: &state)
+        persistLocked()
+    }
+
+    /// Tuck and untuck several members of `layerId` in one write. The ledger
+    /// in memory changes only once the write lands, so a failed one leaves
+    /// both as they were.
+    func setTucks(tuck: Set<UInt32>, untuck: Set<UInt32>, layer layerId: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        state = try Self.committingTucks(tuck: tuck, untuck: untuck, layer: layerId, to: state, path: statePath)
+    }
+
+    /// `state` with the tucks applied, once it's written to `path`. Throws,
+    /// and writes nothing, when the write fails.
+    static func committingTucks(
+        tuck: Set<UInt32>,
+        untuck: Set<UInt32>,
+        layer layerId: String,
+        to state: State,
+        path: String
+    ) throws -> State {
+        var next = state
+        for wid in tuck.sorted() { applyTuck(wid, true, layer: layerId, to: &next) }
+        for wid in untuck.sorted() { applyTuck(wid, false, layer: layerId, to: &next) }
+        guard next != state else { return state }
+        try write(next, to: path)
+        return next
+    }
+
+    private static func applyTuck(_ wid: UInt32, _ tucked: Bool, layer layerId: String, to state: inout State) {
         var wids = state.tucked[layerId] ?? []
         let was = wids.contains(wid)
         wids.removeAll { $0 == wid }
@@ -192,13 +222,37 @@ final class LayerStage {
         var freed = (state.untucked[layerId] ?? []).filter { $0 != wid }
         if was && !tucked { freed.append(wid) }
         state.untucked[layerId] = freed.isEmpty ? nil : freed
-        persistLocked()
     }
 
     /// What `layerId` was let show again since it was last switched to.
     func untucked(_ layerId: String) -> Set<UInt32> {
         lock.lock(); defer { lock.unlock() }
         return Set(state.untucked[layerId] ?? [])
+    }
+
+    /// Each parked window's home: where it was before it was parked (CG,
+    /// top-left origin). Read only; Overview outlines parked windows there.
+    func homes() -> [UInt32: CGRect] {
+        lock.lock(); defer { lock.unlock() }
+        var homes: [UInt32: CGRect] = [:]
+        for window in state.parked {
+            homes[window.wid] = CGRect(x: window.frame.x, y: window.frame.y, width: window.frame.w, height: window.frame.h)
+        }
+        return homes
+    }
+
+    /// The windows `layerId` had showing beyond its members, on any desktop:
+    /// its scenes' extras, which nothing claims. Read only.
+    func extras(of layerId: String) -> Set<UInt32> {
+        lock.lock(); defer { lock.unlock() }
+        let prefix = "\(layerId)@"
+        return Set(state.scenes.filter { $0.key.hasPrefix(prefix) }.values.joined())
+    }
+
+    /// Every layer's tucked members, by layer id. Read only.
+    func tuckedByLayer() -> [String: Set<UInt32>] {
+        lock.lock(); defer { lock.unlock() }
+        return state.tucked.mapValues { Set($0) }
     }
 
     /// What the last stage hid or parked, until its look.
@@ -991,11 +1045,16 @@ final class LayerStage {
     }
 
     private func persistLocked() {
+        try? Self.write(state, to: statePath)
+    }
+
+    /// Writes the ledger atomically, making its folder if need be.
+    static func write(_ state: State, to path: String) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(state) else { return }
-        let url = URL(fileURLWithPath: statePath)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        let data = try encoder.encode(state)
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
     }
 }

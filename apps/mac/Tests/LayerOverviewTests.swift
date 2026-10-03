@@ -171,6 +171,23 @@ final class LayerOverviewTests: XCTestCase {
         XCTAssertEqual(overviews[0].windows, [])
     }
 
+    /// A member Spaces can't place is kept, apart, as unknown with its
+    /// tier; the confirmed windows and counts are as they were.
+    func testAMemberSpacesCantPlaceIsUnknownNotDropped() {
+        let pinned = window(3, "Notes", "Ideas")
+        var entry = app("Notes")
+        entry.pins = [LayerPin(pinned)]
+        let layers = [Layer(id: "notes", label: "Notes", projects: [entry, app("Zed")])]
+        let nowhere = window(2, "Zed", "Todo", space: 77)
+        let overviews = build(layers, [pinned, nowhere])
+        XCTAssertEqual(overviews[0].windows.map(\.wid), [3])
+        XCTAssertEqual(overviews[0].windows.first?.tier, .pin)
+        XCTAssertEqual(overviews[0].entries[1].windows, [])
+        XCTAssertEqual(overviews[0].entries[1].unknown.map(\.wid), [2])
+        XCTAssertEqual(overviews[0].entries[1].unknown.first?.tier, .app)
+        XCTAssertEqual(overviews.map(\.windows.count), [1])
+    }
+
     func testEntryNames() {
         func name(_ project: LayerProject, _ index: Int = 0) -> String {
             LayerOverview.name(of: project, at: index, groupLabel: { $0 == "g1" ? "Tideline tabs" : nil })

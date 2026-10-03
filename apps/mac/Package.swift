@@ -71,6 +71,7 @@ let package = Package(
                 .copy("../Resources/tap.wav"),
                 .copy("../Resources/Pets"),
                 .copy("../Resources/DeckBuilder"),
+                .copy("../Resources/Editor"),
             ],
             swiftSettings: latticesDefines
         ),

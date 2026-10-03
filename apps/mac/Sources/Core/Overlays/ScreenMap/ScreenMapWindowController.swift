@@ -39,7 +39,7 @@ final class ScreenMapWindowController: ObservableObject {
             return NSSize(width: 980, height: 720)
         case .settings, .companionSettings, .docs, .activity, .runs:
             return NSSize(width: 900, height: 640)
-        case .screenMap, .desktopInventory, .assistant:
+        case .overview, .assistant, .layers:
             return workspaceWindowSize
         }
     }
@@ -55,7 +55,7 @@ final class ScreenMapWindowController: ObservableObject {
     /// Show the window on the current page (defaults to Home).
     func show() {
         if let existing = window {
-            if activePage == .screenMap {
+            if activePage == .overview {
                 controller?.enter()
             }
             existing.makeKeyAndOrderFront(nil)
@@ -67,7 +67,7 @@ final class ScreenMapWindowController: ObservableObject {
         ctrl.onDismiss = { [weak self] in
             self?.close()
         }
-        if activePage == .screenMap {
+        if activePage == .overview {
             ctrl.enter()
         }
 
@@ -104,7 +104,7 @@ final class ScreenMapWindowController: ObservableObject {
     }
 
     func showScreenMapOverview() {
-        activePage = .screenMap
+        activePage = .overview
         show()
         DispatchQueue.main.async { [weak self] in
             self?.controller?.focusViewportPreset(.overview)
@@ -113,7 +113,7 @@ final class ScreenMapWindowController: ObservableObject {
 
     /// Open screen map focused on a specific window.
     func showWindow(wid: UInt32) {
-        activePage = .screenMap
+        activePage = .overview
         show()
 
         // Avoid overlapping the command bar — nudge screen map below it

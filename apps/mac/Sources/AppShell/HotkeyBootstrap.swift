@@ -5,12 +5,12 @@ enum HotkeyBootstrap {
         let store = HotkeyStore.shared
         store.register(action: .workspaceAssistant) { AssistantAccess.show() }
         store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
-        store.register(action: .screenMap) { ScreenMapWindowController.shared.showPage(.screenMap) }
+        store.register(action: .screenMap) { ScreenMapWindowController.shared.showPage(.overview) }
         store.register(action: .bezel) { WorkspaceInspectorPresenter.show() }
         store.register(action: .cheatSheet) { SettingsWindowController.shared.show(section: "shortcuts") }
         store.register(action: .desktopInventory) {
             DiagnosticLog.shared.info("Hotkey: desktopInventory triggered")
-            ScreenMapWindowController.shared.showPage(.desktopInventory)
+            ScreenMapWindowController.shared.showPage(.overview)
         }
         store.register(action: .voiceCommand) {
             DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")

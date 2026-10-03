@@ -32,6 +32,9 @@ struct BlinkConfig: Codable, Equatable {
         // C for constellation — G belongs to Lattices (in-place window tools).
         // The machine-wide Hyper namespace map lives in project memory.
         var grid: String = "hyper+c"
+        /// Read the frontmost app's selection in the reader layer. E for eye —
+        /// R belongs to Talkie (Screen Recording HUD).
+        var reader: String = "hyper+e"
         var toggleMode: String = "cmd+shift+p"
         var focus: String = "cmd+."
         /// Pin the detached chrome rail so it stays up after hover leaves.
@@ -44,6 +47,7 @@ struct BlinkConfig: Codable, Equatable {
             newNote = try c.decodeIfPresent(String.self, forKey: .newNote) ?? "hyper+n"
             blink = try c.decodeIfPresent(String.self, forKey: .blink) ?? "hyper+b"
             grid = try c.decodeIfPresent(String.self, forKey: .grid) ?? "hyper+c"
+            reader = try c.decodeIfPresent(String.self, forKey: .reader) ?? "hyper+e"
             toggleMode = try c.decodeIfPresent(String.self, forKey: .toggleMode) ?? "cmd+shift+p"
             focus = try c.decodeIfPresent(String.self, forKey: .focus) ?? "cmd+."
             toggleChrome = try c.decodeIfPresent(String.self, forKey: .toggleChrome) ?? "cmd+shift+t"
@@ -113,6 +117,22 @@ struct BlinkConfig: Codable, Equatable {
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             dim = try c.decodeIfPresent(Double.self, forKey: .dim) ?? 0.30
+        }
+    }
+
+    /// The reader layer: a selection lifted out of the frontmost app (usually a
+    /// terminal) and set as a centered reading column over a blurred screen.
+    struct Reader: Codable, Equatable {
+        var width: Double = 760  // column width in points, capped to the screen
+        var fontSize: Double = 17
+        var dim: Double = 0.35  // 0–1 tint over the blurred backdrop
+
+        init() {}
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            width = try c.decodeIfPresent(Double.self, forKey: .width) ?? 760
+            fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? 17
+            dim = try c.decodeIfPresent(Double.self, forKey: .dim) ?? 0.35
         }
     }
 
@@ -277,6 +297,7 @@ struct BlinkConfig: Codable, Equatable {
     var hotkeys = Hotkeys()
     var panel = Panel()
     var focus = Focus()
+    var reader = Reader()
     var drape = Drape()
     var motion = Motion()
     var physics = Physics()
@@ -296,6 +317,7 @@ struct BlinkConfig: Codable, Equatable {
         hotkeys = try c.decodeIfPresent(Hotkeys.self, forKey: .hotkeys) ?? Hotkeys()
         panel = try c.decodeIfPresent(Panel.self, forKey: .panel) ?? Panel()
         focus = try c.decodeIfPresent(Focus.self, forKey: .focus) ?? Focus()
+        reader = try c.decodeIfPresent(Reader.self, forKey: .reader) ?? Reader()
         drape = try c.decodeIfPresent(Drape.self, forKey: .drape) ?? Drape()
         motion = try c.decodeIfPresent(Motion.self, forKey: .motion) ?? Motion()
         physics = try c.decodeIfPresent(Physics.self, forKey: .physics) ?? Physics()

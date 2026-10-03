@@ -52,7 +52,8 @@ final class LayerMembershipTests: XCTestCase {
         let resolution = resolve(layers, [window(1, "Talkie", "Main"), window(2, "Talkie Agent Dev", "Console")])
         XCTAssertEqual(wids(resolution, "talkie"), [1])
         XCTAssertEqual(wids(resolution, "agent"), [2])
-        XCTAssertEqual(resolution.owners[2], LayerMembership.Owner(layerId: "agent", project: 0))
+        // A bare appEquals rule ranks as its app.
+        XCTAssertEqual(resolution.owners[2], LayerMembership.Owner(layerId: "agent", project: 0, tier: .app))
     }
 
     func testAnAppOnlyRuleLeavesTitledEntriesTheirWindows() {
@@ -168,10 +169,28 @@ final class LayerMembershipTests: XCTestCase {
         XCTAssertEqual(wids(resolve(code, [window(3, "Visual Studio Code", "main.swift")]), "vscode"), [3])
     }
 
+    func testOwnersSayWhetherAPinOrARuleHoldsTheWindow() {
+        let notes = window(2, "Notes", "Todo")
+        let layers = [
+            layer("pins", [app("Notes", pins: [pin(notes)])]),
+            layer("rules", [LayerProject(clause: StudioLayerClause(appEquals: "Safari", titleContains: "News"))]),
+            layer("apps", [LayerProject(clause: StudioLayerClause(appEquals: "Mail"))]),
+        ]
+        let resolution = resolve(layers, [notes, window(3, "Safari", "News"), window(4, "Mail", "Inbox")])
+        XCTAssertEqual(resolution.owners[2]?.tier, .pin)
+        XCTAssertEqual(resolution.owners[3]?.tier, .match)
+        XCTAssertEqual(resolution.owners[4]?.tier, .app, "a bare appEquals rule ranks as its app")
+        // Same holder, different claim: identity matches, equality doesn't.
+        let pinned = LayerMembership.Owner(layerId: "pins", project: 0, tier: .pin)
+        let byApp = LayerMembership.Owner(layerId: "pins", project: 0, tier: .app)
+        XCTAssertTrue(pinned.sameHolder(as: byApp))
+        XCTAssertNotEqual(pinned, byApp)
+    }
+
     func testTiesGoToTheEarlierLayerThenEntry() {
         let layers = [layer("a", [app("Notes"), app("Notes")]), layer("b", [app("Notes")])]
         let resolution = resolve(layers, [window(1, "Notes", "Todo")])
-        XCTAssertEqual(resolution.owners[1], LayerMembership.Owner(layerId: "a", project: 0))
+        XCTAssertEqual(resolution.owners[1], LayerMembership.Owner(layerId: "a", project: 0, tier: .app))
         XCTAssertEqual(wids(resolution, "b"), [])
     }
 
@@ -320,7 +339,9 @@ final class LayerMembershipTests: XCTestCase {
         XCTAssertEqual(Set(all), [1, 2, 3, 4])
         for layer in layers {
             for member in resolution.members(of: layer.id) {
-                XCTAssertEqual(resolution.owners[member.entry.wid], LayerMembership.Owner(layerId: layer.id, project: member.project))
+                let owner = resolution.owners[member.entry.wid]
+                XCTAssertEqual(owner?.layerId, layer.id)
+                XCTAssertEqual(owner?.project, member.project)
             }
         }
         // The title beats the app-only rule, which claims as its app

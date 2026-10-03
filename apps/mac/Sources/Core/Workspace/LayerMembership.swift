@@ -22,10 +22,21 @@ enum LayerMembership {
         var isRunning: (Int32) -> Bool = { pid in pid > 0 && (kill(pid, 0) == 0 || errno == EPERM) }
     }
 
-    /// The layer and entry that hold a window.
+    /// What kind of claim holds a window, strongest first: a pin (the
+    /// window's own wid, generated when it was added by hand), a `match`
+    /// rule, a tab group's tab, a project's session or companions, an app.
+    enum Tier: Int { case pin, match, group, path, app }
+
+    /// The layer and entry that hold a window, and the kind of claim.
     struct Owner: Equatable {
         let layerId: String
         let project: Int
+        let tier: Tier
+
+        /// Holds the window in the same layer and entry, however it claimed it.
+        func sameHolder(as other: Owner) -> Bool {
+            layerId == other.layerId && project == other.project
+        }
     }
 
     /// A pin whose window is gone, bound to a live window of the same app
@@ -94,7 +105,7 @@ enum LayerMembership {
 
     /// How strongly an entry claims a window; the lower rank wins.
     private struct Rank: Comparable {
-        enum Tier: Int { case pin, match, group, path, app }
+        typealias Tier = LayerMembership.Tier
         let tier: Tier
         /// Needle lengths: a longer needle is the more specific claim.
         let title: Int
@@ -232,7 +243,7 @@ enum LayerMembership {
         for (order, window) in content.enumerated() {
             guard let held = best[window.wid] else { continue }
             members[held.rank.layer].append((order, (window, held.placed, held.rank.project)))
-            resolution.owners[window.wid] = Owner(layerId: layers[held.rank.layer].id, project: held.rank.project)
+            resolution.owners[window.wid] = Owner(layerId: layers[held.rank.layer].id, project: held.rank.project, tier: held.rank.tier)
             if held.rank.tier == .pin { resolution.pinned.insert(window.wid) }
         }
         resolution.layers = members.map { list in
