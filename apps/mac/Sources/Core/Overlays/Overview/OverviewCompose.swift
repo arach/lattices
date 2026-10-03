@@ -71,6 +71,7 @@ struct OverviewComposeSheet: View {
             ForEach(draft.windows, id: \.wid) { window in
                 HStack {
                     Text(window.app + " · " + window.title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        .onDrag { OverviewMembershipDrag(session: "", windows: [window.wid], sourceLayer: nil, move: false).provider() }
                     Picker("Slot", selection: Binding(get: { draft.slots[window.wid] ?? .right },
                                                      set: { draft.slots[window.wid] = $0 })) {
                         ForEach(OverviewComposition.Slot.allCases) { Text($0.rawValue).tag($0) }
@@ -87,6 +88,22 @@ struct OverviewComposeSheet: View {
                     }
                 }
             }.frame(height: 160)
+            .overlay(alignment: .bottom) {
+            HStack(spacing: 4) {
+                ForEach([OverviewComposition.Slot.left, .middle, .right]) { slot in
+                    Text("Drop: " + slot.rawValue).font(.caption)
+                        .frame(maxWidth: .infinity).padding(10)
+                        .background(Palette.surface)
+                        .onDrop(of: [OverviewMembershipDrag.type], isTargeted: nil) { providers in
+                            OverviewMembershipDrag.receive(providers) { payload in
+                                for wid in payload.windows where draft.windows.contains(where: { $0.wid == wid }) {
+                                    draft.slots[wid] = slot
+                                }
+                            }
+                        }
+                }
+            }
+            }
             Text("Saves membership and slots only. Nothing moves until Gather. Full slots may overlap.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {

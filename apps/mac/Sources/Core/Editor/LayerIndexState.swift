@@ -54,7 +54,12 @@ struct OverviewLayerIndex: View {
     let selected: [String]
     let readAt: Date
     var live = true
+    var membershipDrop: ((OverviewMembershipDrag, String) -> Void)? = nil
+    var addSelected: ((String) -> Void)? = nil
+    var selectionCount = 0
+    var previewDropTarget: String? = nil
     let choose: (String?, Bool) -> Void
+    @State private var dropTarget: String?
     @FocusState private var focused: Bool
     private let ink = Color(red: 176 / 255, green: 179 / 255, blue: 184 / 255)
     private let faint = Color(red: 146 / 255, green: 150 / 255, blue: 157 / 255)
@@ -117,14 +122,26 @@ struct OverviewLayerIndex: View {
                         .overlay(Circle().strokeBorder(count > 0 ? .clear : Color(red: 108 / 255, green: 113 / 255, blue: 120 / 255), lineWidth: 1))
                         .frame(width: 7, height: 7)
                 }
-                Text(label).font(.system(size: 13)).lineLimit(1)
+                Text((dropTarget ?? previewDropTarget) == id && id != nil ? (id == "__unassigned__" ? "Remove from layers" : "Add to " + label) : label).font(.system(size: 13)).lineLimit(1)
                 Spacer(minLength: 4)
                 Text(count > 0 || id == nil ? "\(count)" : "—").font(.system(size: 11, design: .monospaced)).foregroundColor(faint)
             }
             .foregroundColor(active ? Color(red: 236 / 255, green: 237 / 255, blue: 239 / 255) : ink)
             .padding(.horizontal, 12).frame(height: 36)
-            .background(RoundedRectangle(cornerRadius: 6).fill(active ? Color(red: 36 / 255, green: 40 / 255, blue: 46 / 255) : .clear))
+            .background(RoundedRectangle(cornerRadius: 6).fill((dropTarget ?? previewDropTarget) == id && id != nil ? Color.green.opacity(0.2) : active ? Color(red: 36 / 255, green: 40 / 255, blue: 46 / 255) : .clear))
             .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityAddTraits(active ? .isSelected : [])
+        .onDrop(of: [OverviewMembershipDrag.type], isTargeted: Binding(
+            get: { id != nil && dropTarget == id },
+            set: { dropTarget = $0 ? id : nil }
+        )) { providers in
+            guard let id, let membershipDrop else { return false }
+            return OverviewMembershipDrag.receive(providers) { membershipDrop($0, id) }
+        }
+        .contextMenu {
+            if let id, id != "__unassigned__", let addSelected {
+                Button("Add selected windows here") { addSelected(id) }.disabled(selectionCount == 0)
+            }
+        }
     }
 }

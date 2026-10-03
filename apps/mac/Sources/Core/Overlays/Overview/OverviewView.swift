@@ -23,7 +23,10 @@ struct OverviewView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            OverviewLayerIndex(rows: indexRows, selected: selectedLayers, readAt: index.readAt, live: live) { id, additive in
+            OverviewLayerIndex(rows: indexRows, selected: selectedLayers, readAt: index.readAt, live: live,
+                               membershipDrop: live ? model.receiveMembership : nil,
+                               addSelected: live ? { model.addComposition(Array(model.selection), to: $0) } : nil,
+                               selectionCount: model.selection.count) { id, additive in
                 if live { index.choose(id, additive: additive); applyIndex() }
                 else {
                     let ids = id.map { additive ? (selectedLayers.contains($0) ? selectedLayers.filter { $0 != id } : selectedLayers + [$0]) : [$0] } ?? []
@@ -63,10 +66,14 @@ struct OverviewView: View {
             }
             .overlayPreferenceValue(OverviewCapsuleAnchorKey.self) { anchors in
                 GeometryReader { geo in
-                    if let anchor = anchors.first(where: { !$0.inTray }) ?? anchors.first {
-                        // Kept clear of the list when it's open.
-                        let room = CGSize(width: geo.size.width - (model.membershipShown ? 300 : 0), height: geo.size.height)
-                        OverviewCapsule(model: model, target: geo[anchor.bounds], inTray: anchor.inTray, room: room)
+                    let room = CGSize(width: geo.size.width - (model.membershipShown ? 300 : 0), height: geo.size.height)
+                    let anchor = anchors.first(where: { !$0.inTray }) ?? anchors.first
+                    OverviewStableToolbar(model: model, proposed: anchor.map { geo[$0.bounds] },
+                                          inTray: anchor?.inTray ?? false, room: room)
+                }
+                .onChange(of: anchors.count, initial: true) { _, count in
+                    if let wid = model.focusedWid {
+                        DiagnosticLog.shared.info("Overview toolbar: selected=\(wid) anchors=\(count)")
                     }
                 }
             }
@@ -297,6 +304,26 @@ struct OverviewView: View {
 /// scope hides it; tile it on its monitor or carry it to another Desktop,
 /// each saying why when it can't; and its layers. None of them saves a
 /// layer; many windows tile or distribute from the box below.
+/// The menu owner remains mounted while selection survives. Anchor preferences
+/// can disappear during projection refresh or when a list row is off canvas.
+private struct OverviewStableToolbar: View {
+    @ObservedObject var model: OverviewModel
+    let proposed: CGRect?
+    let inTray: Bool
+    let room: CGSize
+    @State private var latched: CGRect?
+    @State private var latchedTray = false
+    var body: some View {
+        OverviewCapsule(model: model,
+                        target: latched ?? proposed ?? CGRect(x: room.width / 2, y: room.height - 200, width: 1, height: 1),
+                        inTray: latched == nil ? inTray : latchedTray, room: room)
+            .onChange(of: model.focusedWid, initial: true) { _, _ in
+                latched = proposed ?? CGRect(x: room.width / 2, y: room.height - 200, width: 1, height: 1)
+                latchedTray = inTray
+            }
+    }
+}
+
 private struct OverviewCapsule: View {
     @ObservedObject var model: OverviewModel
     let target: CGRect
@@ -393,6 +420,8 @@ private struct OverviewCapsule: View {
             }
         }
         .padding(4)
+        .contentShape(Rectangle())
+        .onTapGesture { } // Consume toolbar gaps instead of clearing the selected canvas window.
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(red: 30 / 255, green: 30 / 255, blue: 34 / 255).opacity(0.97))

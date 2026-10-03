@@ -391,6 +391,7 @@ struct OverviewMap: View {
         .frame(width: tile.rect.width, height: tile.rect.height)
         .opacity(tile.row.inScope ? 1 : (scoped ? 0.18 : 0.4))
         .contentShape(Rectangle())
+        .modifier(OverviewMembershipInteractions(model: model, wid: wid))
         .onTapGesture { OverviewDeskRow.pick(wid, model: model) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.focus(wid) })
         .help(tile.row.title.isEmpty ? tile.row.app : "\(tile.row.app) — \(tile.row.title)")
@@ -695,6 +696,7 @@ struct OverviewTray: View {
         )
         .opacity(row.inScope ? 1 : 0.45)
         .contentShape(Rectangle())
+        .modifier(OverviewMembershipInteractions(model: model, wid: row.wid))
         .onTapGesture { OverviewDeskRow.pick(row.wid, model: model) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.focus(row.wid) })
         .anchorPreference(key: OverviewCapsuleAnchorKey.self, value: .bounds) { anchor in
@@ -921,6 +923,7 @@ struct OverviewDeskRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(row.app), \(row.title.isEmpty ? "Untitled" : row.title), \(model.projection.location(of: row))")
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .modifier(OverviewMembershipInteractions(model: model, wid: row.wid))
         .accessibilityAction(named: selected ? "Remove from selection" : "Add to selection") { model.toggle(row.wid) }
     }
 

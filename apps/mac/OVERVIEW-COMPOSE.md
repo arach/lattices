@@ -19,7 +19,7 @@ calculation; no editing code was duplicated.
 
 ## Validation
 
-441 Swift tests executed, 13 skipped, zero failures. Three new fixture-only composition tests plus two render tests
+Baseline: 441 Swift tests executed, 13 skipped, zero failures. Three new fixture-only composition tests plus two render tests
  cover terminal + Chrome lane geometry, off-desktop pinned membership,
 slot/preview consistency, defaults and deduplication. No real layer was created,
 added, removed or edited during development.
@@ -61,3 +61,80 @@ New layer with this window. Cancel dismisses the sheet without saving.
   1790863638274089681.
 - Logs: /tmp/lattices-editor-slice-1/compose-final-tests.log,
   compose-release.log and compose-install.log.
+
+## Picker, drag and right-click addendum
+
+### Picker diagnosis and fix
+The toolbar was mounted only when a child emitted a geometry anchor. A missing
+anchor removed the entire menu owner even while focusedWid remained selected.
+Its position also followed geometry refreshes beneath an open menu. No
+hover-driven visibility or mouse-out selection clearing exists in this view.
+A diagnostic render was built/run before the fix (compose-picker-trace.log).
+The intermittent pointer symptom was not reliably reproduced live.
+
+The toolbar now stays mounted for the selected window, including when its
+canvas anchor is missing. Its placement is latched per selection, with a
+fallback for an off-canvas/last-known window, so refresh does not drag an open
+menu away. Toolbar gaps consume clicks instead of falling through to canvas
+selection clearing. A render regression selects an unplaced window then
+changes desktop scope.
+
+### Membership drag
+Canvas tiles, tray rows and All windows rows supply an own-process membership
+payload. Dragging a selected window carries the entire selection; dragging an
+unselected one carries only it. A per-model session token rejects foreign
+payloads. Drop routes through the same add/remove/move methods as the menus:
+- Layer row: add. Hover shows Add to <layer>.
+- Unassigned: remove removable memberships; rule-held memberships remain and
+  are reported.
+- Option held at drag start, from a scoped layer: move to the target using
+  moveWindow. If source rules retain membership, the confirmation says so.
+- Sheet: drag a staged window row onto Drop: Left/Middle/Right inside the preview.
+  This changes only the draft. Cancel never saves it.
+
+A drag never calls a window placement or activation API.
+
+### Context menus
+Canvas tiles and list rows offer Add to Layer, New Layer, removable memberships
+and New layer from N selected. Layer index rows offer Add selected windows here.
+All share addWindows/createLayer/moveWindow/removeWindow paths.
+
+### Undo decision
+Membership Undo is deliberately omitted. addWindows/createLayer may remove pins
+from other layers, and move/remove may rewrite multiple entries. A safe inverse
+requires revision-checked configuration transactions rather than a cheap
+single-entry reversal. No desktop Undo is reused for configuration edits.
+
+### Exact user paths
+- Picker: select a window → Layer ▾ → Add to → target layer. Or New layer with
+  this window → name/slot → Create.
+- Drag: drag a window tile or list row onto Talkie in the left index. Select
+  several with Command-click first to carry all. Hold Option **before starting**
+  from one scoped layer to move instead of add. Unassigned removes membership
+  where rules permit.
+- Right-click: right-click a window → Add to Layer → target, or New Layer.
+  Right-click a layer index row → Add selected windows here.
+- Compose: select Ghostty + Chrome → New layer from 2 windows → name →
+  Ghostty Left / Chrome Right → Create. Gather remains a separate step.
+
+### Addendum validation and remaining acceptance
+- Final suite: **446 tests executed, 13 skipped, zero failures** (20.164s).
+  Release build passed (226.24s), dev bundle installed from this worktree.
+- `compose-drag-hover.png`, `compose-new-layer-sheet.png`, and
+  `compose-unplaced-toolbar.png` are fixture renders, not live drag evidence.
+  Tests also cover multi-selection payloads, serialization, and rejection of
+  another model's drag session without configuration writes.
+- Live right-click and picker traversal remain **pending**. A daemon AX click
+  intended for Overview crashed the dev app: the crash report identifies
+  `ComputerUseController.swift:3345` (`pressViaAX`) invoking AppKit off the main
+  thread ("Must only be used from the main thread"). This existing automation
+  path was not changed. No further AX automation was attempted. Crash report:
+  `/Users/arach/Library/Logs/DiagnosticReports/Lattices-2026-10-03-133353.ips`.
+- The earlier pointer click's focus helper moved the dev app's own main window
+  to the current Space; no other window was moved. Dev was relaunched afterward
+  (PID 69793), with Layers open. Release app was not launched.
+- Real drag/drop, Command-click, menu stability, and sheet Cancel still need
+  manual acceptance. No actual membership drop or Create/Add/Remove ran live.
+- Real workspace hash and mtime remain identical to the baseline above.
+- Logs: `/tmp/lattices-editor-slice-1/compose-drag-final-tests.log`,
+  `compose-drag-release.log`, `compose-drag-install.log`.

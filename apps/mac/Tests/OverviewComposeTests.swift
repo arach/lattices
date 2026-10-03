@@ -37,4 +37,23 @@ final class OverviewComposeTests: XCTestCase {
         let w = window(1, "Ghostty")
         XCTAssertEqual(OverviewComposition(windows: [w, w]).windows.count, 1)
     }
+    func testDragCarriesSelectionOnlyWhenDraggingASelectedWindow() {
+        XCTAssertEqual(OverviewMembershipDrag.carried(clicked: 2, selected: [1, 2]), [1, 2])
+        XCTAssertEqual(OverviewMembershipDrag.carried(clicked: 3, selected: [1, 2]), [3])
+    }
+    func testDragRoundTripPreservesOptionMoveSource() throws {
+        let payload = OverviewMembershipDrag(session: "fixture", windows: [1, 2], sourceLayer: "a", move: true)
+        XCTAssertEqual(try JSONDecoder().decode(OverviewMembershipDrag.self,
+            from: JSONEncoder().encode(payload)), payload)
+    }
+    func testForeignDragCannotEditWorkspace() {
+        let suite = "compose-drag." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, inputs: .init(windows: [], displays: [], main: .zero))
+        model.receiveMembership(.init(session: "foreign", windows: [1], sourceLayer: nil, move: false), into: "test")
+        XCTAssertNil(model.compositionNotice)
+        XCTAssertNil(model.actionError)
+    }
+
 }

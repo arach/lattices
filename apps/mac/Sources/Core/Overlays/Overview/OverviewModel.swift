@@ -169,6 +169,7 @@ final class OverviewModel: ObservableObject {
     /// draft open; a failed rearrange comes after the draft closed.
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
+    let membershipDragSession = UUID().uuidString
     @Published var composition: OverviewComposition?
     @Published var compositionNotice: String?
     var compositionWindows: [WindowEntry] {
@@ -201,6 +202,22 @@ final class OverviewModel: ObservableObject {
             refresh()
         } catch { actionError = error.localizedDescription }
     }
+    func moveComposition(_ ids: [UInt32], from source: String, to destination: String) {
+        do {
+            let manager = WorkspaceManager.shared
+            guard let from = manager.layerIndex(id: source), let to = manager.layerIndex(id: destination) else {
+                throw OverviewEditError.layerGone(destination)
+            }
+            var copied = 0
+            for window in ids.compactMap({ aliveWindows[$0] }) {
+                if try manager.moveWindow(window, from: from, to: to) == .copied { copied += 1 }
+            }
+            compositionNotice = copied == 0 ? "Moved membership to \(manager.layers[to].label)" : "Added to \(manager.layers[to].label); some source rules still hold these windows"
+            LayerIndexState.shared.select([destination])
+            refresh()
+        } catch { actionError = error.localizedDescription }
+    }
+
     func canRemoveComposition(_ wid: UInt32, from id: String) -> Bool {
         let manager = WorkspaceManager.shared
         guard let at = manager.layerIndex(id: id) else { return false }

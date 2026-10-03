@@ -228,6 +228,35 @@ final class OverviewRenderTests: XCTestCase {
     func testWideSidebar() throws { try render("wide-sidebar", width: 1590, height: 688, sidebar: true) }
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
 
+
+    func testComposeDragHover() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
+            throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")
+        }
+        let rows = [LayerIndexState.Row(id: "talkie", label: "Talkie", windows: [1]),
+                    .init(id: "__unassigned__", label: "Unassigned", windows: [])]
+        let view = OverviewLayerIndex(rows: rows, selected: [], readAt: Date(), live: false,
+                                      previewDropTarget: "talkie", choose: { _, _ in })
+            .frame(width: 212, height: 440).environment(\.colorScheme, .dark)
+        let host = NSHostingView(rootView: view)
+        host.frame = CGRect(x: 0, y: 0, width: 212, height: 440)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("compose-drag-hover.png"))
+        _ = window
+    }
+
+    func testComposeToolbarSurvivesUnplacedSelection() throws {
+        try render("compose-unplaced-toolbar", width: 1590, height: 688, sidebar: true) { model in
+            model.select(18)
+            model.chooseDesktop(21)
+            XCTAssertEqual(model.focusedWid, 18)
+        }
+    }
     func testComposeSelectionFooter() throws {
         try render("compose-multi-footer", width: 1590, height: 688, sidebar: true) { model in
             model.select(1)
