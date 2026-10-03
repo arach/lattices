@@ -403,3 +403,9 @@ The open-only design is intentionally not a promise that every real switch moves
 all these windows: actual arrange still filters eligible windows first, while
 this design shows every held window and labels the exclusions. All-entry slots
 are reservations for a hypothetical set of entries, not an execution forecast.
+
+Should-be UI imported from approved Hudson
+`e388ffdab3cbd290feeb588f0a8eafe628cb8fec`; six hashes verified against the
+builder's report. The separate Preview page is replaced by inline Should be / Now
+and optional all-entry reservations. Swift suite: 425 tests, 13 skipped, zero
+failures; release build passed (229.68s). See LIVE report for app captures.
