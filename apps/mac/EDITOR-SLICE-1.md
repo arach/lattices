@@ -368,3 +368,38 @@ LayerMembership.resolve. This is advisory data, not a new claim or an action.
 Builder agreement: 5dcb6a69 does not consume unmatchedRules; Waiting uses existing
 canonical entries and resolved row counts. Candidate-window rendering therefore
 remains a web follow-up, not claimed as delivered by this import.
+
+## Should-be design projection
+
+`groups[].layout` describes the layer's intended arrangement independently of
+which desktop is currently showing. It never executes an arrangement. The old
+eligible-only `preview` remains for wire compatibility; the new UI uses `layout`.
+
+- `kind`, `displayId`, `visibleFrame`: canonical layout kind (or `none`) and main
+  display's global top-left visible bounds. Missing block means unavailable,
+  including unknown layout names or missing display geometry.
+- `lanes.open` / `lanes.all`: `{x,w,label}` normalized ruler spans derived from
+  LayerLayout.frames output. No independent layout/width algorithm.
+- `openTargets`: one per resolved member in entry order. Includes `windowId`,
+  `entryIndex`, canonical `entryKey`, `ambiguous`, normalized `unitFrame`, global
+  absolute `frame`, destination `displayId`, and `status` (`moves`, `stays`,
+  `wontMove`). Every wontMove has a reason. Three-point edge tolerance for stays.
+  Target slots exist even for windows on another desktop; live/AX/display/tucked
+  exclusions explain why those slots are not an executable move plan.
+- `allTargets`: one illustrative reservation per app-bearing entry, not one per
+  live window. Never inherit open-plan statuses when drawing these reservations.
+- `skipped`: entryIndex, entryKey and reason for missing app names, ambiguous
+  canonical duplicates or unresolved explicit placement. Open duplicate targets
+  remain marked ambiguous rather than silently choosing a source range.
+
+Both target sets call LayerLayout.frames. Explicit tile/display entries stay out
+of the automatic layout, as in the native engine. Resolvable explicit tiles use
+PlacementSpec and the current grid-preset snapshot; display-only placements keep
+known current coordinates. Unknown fixed positions remain null/omitted with an
+explanation. Secondary-display destinations include absolute target frames, so
+web drawing never guesses the secondary display's visible bounds.
+
+The open-only design is intentionally not a promise that every real switch moves
+all these windows: actual arrange still filters eligible windows first, while
+this design shows every held window and labels the exclusions. All-entry slots
+are reservations for a hypothetical set of entries, not an execution forecast.

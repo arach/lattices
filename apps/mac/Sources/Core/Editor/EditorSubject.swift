@@ -152,6 +152,9 @@ struct EditorSubject {
             }
             if !unmatched.isEmpty { group["unmatchedRules"] = unmatched }
             if let preview = geometry?.preview(layer, members: resolution.layers[i]) { group["preview"] = preview }
+            if let layout = geometry?.layout(layer, members: resolution.layers[i], entryKeys: entryKeys[i], ambiguousKeys: ambiguousKeys) {
+                group["layout"] = layout
+            }
             return group
         }
         var seen = Set<UInt32>()

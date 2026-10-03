@@ -6,15 +6,20 @@ struct EditorGeometry {
     let mainID: UInt32
     let rows: [UInt32: OverviewRow]
     let visibleFrame: CGRect?
+    let visibleFrames: [UInt32: CGRect]
+    let placements: [String: PlacementSpec]
     let standardWindows: Set<UInt32>
     let tucked: [String: Set<UInt32>]
 
     init(windows: [WindowEntry], displays: [OverviewDisplay], mainID: UInt32,
          homes: [UInt32: CGRect] = [:], visibleFrame: CGRect? = nil,
-         standardWindows: Set<UInt32> = [], tucked: [String: Set<UInt32>] = [:]) {
+         standardWindows: Set<UInt32> = [], visibleFrames: [UInt32: CGRect] = [:],
+         placements: [String: PlacementSpec] = [:], tucked: [String: Set<UInt32>] = [:]) {
         self.displays = displays
         self.mainID = mainID
         self.visibleFrame = visibleFrame
+        self.visibleFrames = visibleFrame.map { visibleFrames.merging([mainID: $0]) { _, new in new } } ?? visibleFrames
+        self.placements = placements
         self.standardWindows = standardWindows
         self.tucked = tucked
         let main = displays.first { $0.displayId == mainID }?.bounds ?? .zero
@@ -72,8 +77,15 @@ struct EditorGeometry {
         let visible = screen.map { WindowTiler.tileFrame(fractions: (0, 0, 1, 1), on: $0) }
         // AX reads only: no permission requests, window mutations, or rebinds.
         let standard = AXIsProcessTrusted() ? Set(WorkspaceManager.standardWindows(of: Set(windows.map(\.pid))).keys) : []
+        let visibleFrames = Dictionary(uniqueKeysWithValues: displays.compactMap { display -> (UInt32, CGRect)? in
+            guard let screen = OverviewModel.screen(forDisplayID: display.displayId) else { return nil }
+            return (display.displayId, WindowTiler.tileFrame(fractions: (0, 0, 1, 1), on: screen))
+        })
+        let placements = WorkspaceManager.shared.gridPresets.compactMapValues { preset -> PlacementSpec? in
+            FractionalPlacement(x: preset.x, y: preset.y, w: preset.w, h: preset.h).map(PlacementSpec.fractions)
+        }
         return Self(windows: windows, displays: displays, mainID: main,
                     homes: LayerStage.shared.homes(), visibleFrame: visible,
-                    standardWindows: standard, tucked: LayerStage.shared.tuckedByLayer())
+                    standardWindows: standard, visibleFrames: visibleFrames, placements: placements, tucked: LayerStage.shared.tuckedByLayer())
     }
 }
