@@ -995,14 +995,14 @@ class WorkspaceManager: ObservableObject {
     /// had showing (see `LayerStage`), from a fresh inventory. Staging the
     /// active layer again reconciles it the same way.
     @discardableResult
-    private func stageSwitch(to index: Int, in layers: [Layer]) -> LayerStage.Outcome {
+    private func stageSwitch(to index: Int, in layers: [Layer], persistRebinds: Bool = true) -> LayerStage.Outcome {
         let windows = DesktopModel.shared.refreshNow()
         let resolution = LayerMembership.resolve(layers, windows: windows, sources: membershipSources)
         var members: [String: Set<UInt32>] = [:]
         for (layer, held) in zip(layers, resolution.layers) {
             members[layer.id, default: []].formUnion(held.map(\.entry.wid))
         }
-        keepRebinds(resolution, of: layers)
+        if persistRebinds { keepRebinds(resolution, of: layers) }
         let outgoing = layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
         return LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows)
     }
@@ -1022,10 +1022,11 @@ class WorkspaceManager: ObservableObject {
         to index: Int,
         in layers: [Layer],
         listApps: Bool = true,
+        persistRebinds: Bool = true,
         place: (_ held: [LayerMembership.Member], _ pinned: Set<UInt32>, _ tucked: Set<UInt32>) -> Void = { _, _, _ in }
     ) -> LayerStage.Outcome {
         let layer = layers[index]
-        let outcome = stageSwitch(to: index, in: layers)
+        let outcome = stageSwitch(to: index, in: layers, persistRebinds: persistRebinds)
 
         let windows = DesktopModel.shared.refreshNow()
         let (held, pinned) = membership(of: layer, in: windows)
@@ -1429,6 +1430,44 @@ class WorkspaceManager: ObservableObject {
             DiagnosticLog.shared.error("WorkspaceManager: failed to decode windows in \(configPath) — \(error.localizedDescription)")
             return []
         }
+    }
+
+    /// Editor-only confirmed path. Never persists rebound pins or changes the
+    /// workspace configuration. Opening entries does not stage or arrange.
+    func executeEditorAction(_ operation: EditorActions.Operation) throws -> [String: Any] {
+        let subject = try EditorSubject(data: Data(contentsOf: URL(fileURLWithPath: configPath)))
+        guard let index = subject.layers.firstIndex(where: { $0.id == operation.layerId }) else {
+            throw EditorBridgeError("stale_plan", "The layer no longer exists.")
+        }
+        if operation.kind == "gather", operation.mode == "focus" {
+            let outcome = switchLayer(to: index, in: subject.layers, persistRebinds: false)
+            return ["shown": outcome.shown.count, "putAway": outcome.parked.union(outcome.hidden).count, "missing": outcome.missing.count]
+        }
+        guard operation.kind == "open", operation.mode == "launch" else {
+            throw EditorBridgeError("invalid_request", "Unsupported operation.")
+        }
+        let layer = subject.layers[index]
+        // Validate every index before any launch. Missingness and canonical
+        // identities were already checked against the fresh confirmed snapshot.
+        guard operation.entryIndices.allSatisfy({ layer.projects.indices.contains($0) }) else {
+            throw EditorBridgeError("stale_plan", "Entries changed.")
+        }
+        for entryIndex in operation.entryIndices {
+            let project = layer.projects[entryIndex]
+            if let url = project.url, let target = URL(string: url) {
+                NSWorkspace.shared.open(target)
+            } else if let app = project.launch ?? project.app ?? project.match?.appEquals ?? project.match?.app {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                task.arguments = ["-a", app]
+                task.standardOutput = FileHandle.nullDevice
+                task.standardError = FileHandle.nullDevice
+                try task.run()
+            } else if let path = project.path {
+                Preferences.shared.terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
+            }
+        }
+        return ["launchesRequested": operation.entryIndices.count]
     }
 
     // MARK: - App Launch Helper

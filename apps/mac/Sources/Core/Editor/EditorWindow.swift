@@ -143,11 +143,49 @@ final class LayersPageModel: ObservableObject {
     static let shared = LayersPageModel()
     @Published private(set) var state: EditorUIState?
     private let bridge = EditorBridge(hostChrome: true, capture: { try LayerIndexState.shared.snapshot() })
+    private var assistantWatches: [String: AnyCancellable] = [:]
+    private var assistants: [String: WorkspaceAssistantSession] = [:]
+    private var assistantLayerId: String?
+    private func assistant(for layerId: String) -> WorkspaceAssistantSession {
+        if let session = assistants[layerId] { return session }
+        let session = WorkspaceAssistantSession.makeEditorSession()
+        assistants[layerId] = session
+        assistantWatches[layerId] = session.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async { self?.bridge.publishAssistantState(layerId: layerId) }
+        }
+        return session
+    }
     private var selectionWatch: AnyCancellable?
     private var retainedHost: EditorWebHost?
 
     var host: EditorWebHost {
         if let retainedHost { return retainedHost }
+        bridge.actionCapture = { try EditorBridge.liveSnapshot() }
+        bridge.actions = EditorActions(execute: { try WorkspaceManager.shared.executeEditorAction($0) }, reveal: {
+            let outcome = LayerStage.shared.showAll()
+            return ["restored": outcome.unparked.count, "stillParked": outcome.stillParked]
+        })
+        bridge.assistantState = { [weak self] requested in
+            guard let self, let layerId = requested ?? self.assistantLayerId else {
+                return ["layerId": NSNull(), "messages": [], "isSending": false, "error": NSNull(), "suggestions": []]
+            }
+            let assistant = self.assistant(for: layerId)
+            return
+            ["layerId": layerId, "messages": assistant.messages.map { ["id": $0.id.uuidString, "role": String(describing: $0.role), "text": $0.text] },
+             "isSending": assistant.isSending, "error": assistant.editorError as Any? ?? NSNull(),
+             "suggestions": assistant.editorSuggestions]
+        }
+        bridge.assistantSend = { [weak self] text, layerId, snapshot in
+            guard let self else { throw EditorBridgeError("unavailable", "Editor closed.") }
+            self.assistantLayerId = layerId
+            let assistant = self.assistant(for: layerId)
+            guard !assistant.isSending else { throw EditorBridgeError("busy", "Wait for the current answer.") }
+            let group = (snapshot.projection["groups"] as? [[String: Any]])?.first { $0["id"] as? String == layerId }
+            let context: [String: Any] = ["layerId": layerId, "source": snapshot.subject.source,
+                "projection": group as Any? ?? NSNull()]
+            let data = try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
+            assistant.send(text, editorContext: String(decoding: data, as: UTF8.self), layerId: layerId)
+        }
         bridge.selectedLayerIds = { LayerIndexState.shared.selected }
         bridge.onUIState = { [weak self] state in
             DispatchQueue.main.async {
