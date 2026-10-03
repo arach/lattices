@@ -64,6 +64,38 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertTrue(model.actionError?.contains("no longer available") == true)
     }
 
+    func testOverlayKeepsActualLayerButtonAndMenuCallbackWhenMapAnchorDisappears() throws {
+        var selectedModel: OverviewModel?
+        let (host, window, cleanup) = self.host(width: 1590, height: 688, sidebar: false) { model in
+            model.select(5)
+            selectedModel = model
+        }
+        defer { cleanup(); _ = window }
+        let model = try XCTUnwrap(selectedModel)
+        func picker(in view: NSView) -> NSButton? {
+            if let button = view as? NSButton, button.title == "Layer ▾" { return button }
+            return view.subviews.lazy.compactMap { picker(in: $0) }.first
+        }
+        let button = try XCTUnwrap(picker(in: host))
+        let coordinator = try XCTUnwrap(button.target as? OverviewLayerPicker.Coordinator)
+        let menu = coordinator.make()
+        let submenu = try XCTUnwrap(menu.items.first { $0.title == "Add to" }?.submenu)
+        let item = try XCTUnwrap(submenu.items.firstIndex { $0.title == "Lattices" })
+        var calls = 0
+        model.compositionAdder = { _, _ in calls += 1; return (1, "Lattices") }
+
+        model.chooseDesktop(21) // The selected window no longer has a map anchor.
+        model.update(inputs())
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(model.focusedWid, 5)
+        XCTAssertTrue(picker(in: host) === button, "refresh must not replace the menu's owning NSButton")
+        submenu.performActionForItem(at: item)
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(model.actionError)
+    }
+
     private func window(_ wid: UInt32, _ app: String, _ title: String, space: Int?, _ frame: CGRect,
                         hidden: Bool = false) -> WindowEntry {
         WindowEntry(
@@ -233,6 +265,34 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertEqual(differing, 0, "opening the list moved the stage at \(width)", file: file, line: line)
     }
 
+    private func assertSelectionOverlay(width: CGFloat, height: CGFloat,
+                                        file: StaticString = #filePath, line: UInt = #line) throws {
+        func pixels(selected: Bool, error: Bool) throws -> NSBitmapImageRep {
+            let (host, window, cleanup) = self.host(width: width, height: height, sidebar: false) { model in
+                if selected { model.select(15) }
+                if error { model.rejectMove("Fixture failure. Original position restored.") }
+            }
+            defer { cleanup(); _ = window }
+            return try snapshot(host)
+        }
+        let plain = try pixels(selected: false, error: false)
+        for state in [(true, false), (true, true)] {
+            let overlay = try pixels(selected: state.0, error: state.1)
+            var differing = 0
+            // Inside the left display map, below the floating controls and
+            // above the tray. The right-hand selected window is elsewhere.
+            for y in stride(from: 165, to: Int(height - OverviewTray.height - OverviewStage.hintHeight - 12), by: 2) {
+                for x in stride(from: 240, to: min(380, Int(width * 0.38)), by: 2) {
+                    if plain.colorAt(x: x, y: y) != overlay.colorAt(x: x, y: y) { differing += 1 }
+                }
+            }
+            XCTAssertEqual(differing, 0, "selection or failure shifted the map", file: file, line: line)
+        }
+    }
+
+    func testSelectionAndFailureOverlayWide() throws { try assertSelectionOverlay(width: 1590, height: 688) }
+    func testSelectionAndFailureOverlayLaptop() throws { try assertSelectionOverlay(width: 1110, height: 648) }
+
     func testPanelOverlaysWide() throws { try assertPanelOverlays(width: 1590, height: 688) }
     func testPanelOverlaysLaptop() throws { try assertPanelOverlays(width: 1110, height: 648) }
 
@@ -399,7 +459,7 @@ private struct RenderActions: OverviewActions {
     func distribute(_ windows: [(wid: UInt32, pid: Int32)], displayId: UInt32, shape: [Int]?) {}
     func focus(wid: UInt32, pid: Int32) {}
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32) {}
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {}
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void) {}
     func saveLayer(_ plan: LayerEditPlan) throws {}
     func rearrange(layerId: String) throws {}
 }

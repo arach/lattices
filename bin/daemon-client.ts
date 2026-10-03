@@ -10,6 +10,12 @@ import { join } from "node:path";
 
 const DAEMON_HOST = "127.0.0.1";
 const DAEMON_PORT = 9399;
+const RELOCATION_METHODS = new Set(["window.move", "window.place", "actions.execute", "actions.undo", "window.present"]);
+
+/** Relocation includes source staging, verification, and possible rollback. */
+export function daemonTimeoutMs(method: string, fallback = 3000): number {
+  return RELOCATION_METHODS.has(method) ? 60_000 : fallback;
+}
 
 // The Voice helper (bundle dev.lattices.Speech) writes this capability when it
 // runs. The daemon forwards voice output verbs only for clients that present it.
@@ -40,13 +46,14 @@ interface ParsedFrame {
 export async function daemonCall(
   method: string,
   params?: Record<string, unknown> | null,
-  timeoutMs = 3000
+  timeoutMs = daemonTimeoutMs(method),
+  endpoint: { host: string; port: number } = { host: DAEMON_HOST, port: DAEMON_PORT },
 ): Promise<unknown> {
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host: DAEMON_HOST, port: DAEMON_PORT });
+    const socket = createConnection(endpoint);
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
@@ -55,7 +62,7 @@ export async function daemonCall(
       if (!settled) {
         settled = true;
         socket.destroy();
-        reject(new Error("Daemon request timed out"));
+        reject(new Error("Daemon request timed out; the operation may still finish. Check its result before retrying"));
       }
     }, timeoutMs);
 
@@ -72,12 +79,20 @@ export async function daemonCall(
       }
     });
 
+    socket.on("close", () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(new Error("Daemon connection closed before a response; the operation may still finish"));
+      }
+    });
+
     socket.on("connect", () => {
       // Send HTTP upgrade request
       const key = randomBytes(16).toString("base64");
       const upgrade = [
         `GET / HTTP/1.1`,
-        `Host: ${DAEMON_HOST}:${DAEMON_PORT}`,
+        `Host: ${endpoint.host}:${endpoint.port}`,
         `Upgrade: websocket`,
         `Connection: Upgrade`,
         `Sec-WebSocket-Key: ${key}`,

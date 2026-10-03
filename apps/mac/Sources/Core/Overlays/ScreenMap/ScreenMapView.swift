@@ -2056,6 +2056,7 @@ struct ScreenMapView: View {
                 WindowMovementMenuSection(
                     model: model,
                     onMove: { display in moveStudioTargets(model.targets, to: display) },
+                    onMoveDesktop: { desktop in moveStudioTargets(model.targets, to: desktop) },
                     onPlace: { display, slot in placeStudioTarget(model.targets, on: display, slot: slot) }
                 )
             }
@@ -4153,12 +4154,22 @@ struct ScreenMapView: View {
             w: win.originalFrame.width,
             h: win.originalFrame.height
         )
-        return WindowMovementService.menuModel(windowFrame: liveFrame, targets: targets)
+        return WindowMovementService.menuModel(
+            windowFrame: liveFrame, targets: targets, anchorWid: win.id,
+            hostScreen: ScreenMapWindowController.shared.nsWindow?.screen
+        )
     }
 
     private func moveStudioTargets(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
         let fingerprints = stagedFingerprints(for: targets)
         WindowMovementService.moveTargets(targets, to: display) { outcome in
+            finishStudioMovement(outcome, expectedFingerprints: fingerprints)
+        }
+    }
+
+    private func moveStudioTargets(_ targets: [WindowMoveMenuModel.Target], to desktop: WindowMoveMenuModel.Desktop) {
+        let fingerprints = stagedFingerprints(for: targets)
+        WindowMovementService.moveTargets(targets, to: desktop) { outcome in
             finishStudioMovement(outcome, expectedFingerprints: fingerprints)
         }
     }
@@ -4224,6 +4235,7 @@ struct ScreenMapView: View {
                 to: menu,
                 model: moveModel,
                 onMove: { display in moveStudioTargets(moveModel.targets, to: display) },
+                onMoveDesktop: { desktop in moveStudioTargets(moveModel.targets, to: desktop) },
                 onPlace: { display, slot in placeStudioTarget(moveModel.targets, on: display, slot: slot) }
             )
             menu.addItem(.separator())

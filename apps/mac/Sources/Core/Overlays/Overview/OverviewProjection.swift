@@ -62,6 +62,16 @@ struct OverviewDisplay: Equatable {
     }
 }
 
+/// Display identity and absolute Space ID, never a relative desktop number.
+struct OverviewMoveDestination: Equatable {
+    let displayIndex: Int
+    let displayId: UInt32
+    let displayName: String
+    let spaceId: Int
+    let desktop: Int
+    var title: String { "\(displayName) — Desktop \(desktop)" }
+}
+
 /// Where a window's outline comes from. A position is never invented.
 enum PositionSource: Equatable {
     case live
@@ -565,13 +575,15 @@ extension OverviewProjection {
         }
     }
 
-    /// The desktops one window can be carried to: the other desktops of its
-    /// own monitor. Empty when it can't move.
-    func moveTargets(for wid: UInt32) -> [(spaceId: Int, desktop: Int)] {
-        guard let row = all[wid], Self.moveExclusion(row) == nil,
-              let display = displays.first(where: { $0.index == row.display }) else { return [] }
-        return display.desktops.enumerated().compactMap { offset, space in
-            space == row.spaceId ? nil : (space, offset + 1)
+    /// Explicit normal-desktop destinations across all attached displays.
+    func moveTargets(for wid: UInt32) -> [OverviewMoveDestination] {
+        guard let row = all[wid], Self.moveExclusion(row) == nil else { return [] }
+        return displays.flatMap { display in
+            display.desktops.enumerated().compactMap { offset, space in
+                guard space != row.spaceId else { return nil }
+                return OverviewMoveDestination(displayIndex: display.index, displayId: display.displayId,
+                    displayName: display.name, spaceId: space, desktop: offset + 1)
+            }
         }
     }
 

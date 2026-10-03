@@ -1,3 +1,5 @@
+import { daemonTimeoutMs } from "../daemon-client.ts";
+
 // `lattices window move` / `lattices window place` — CLI front-ends for the
 // daemon's canonical window movement APIs (window.move / window.place).
 //
@@ -226,7 +228,7 @@ export function describeMoveReceipt(receipt: any): string {
   return lines.join("\n");
 }
 
-type DaemonCallFn = (method: string, params?: Record<string, unknown> | null) => Promise<unknown>;
+type DaemonCallFn = (method: string, params?: Record<string, unknown> | null, timeoutMs?: number) => Promise<unknown>;
 
 /** Execute already-parsed move/place args against the daemon. */
 export async function runWindowMovement(
@@ -238,7 +240,10 @@ export async function runWindowMovement(
   if (parsed.placement !== undefined) params.placement = parsed.placement;
   if (parsed.display !== undefined) params.display = parsed.display;
   if (parsed.dryRun) params.dryRun = true;
-  const receipt = await daemonCall(method === "move" ? "window.move" : "window.place", params);
+  // A relocation can carry from an inactive source desktop, cross displays,
+  // then carry to the destination. Wait for verification (and recovery).
+  const rpcMethod = method === "move" ? "window.move" : "window.place";
+  const receipt = await daemonCall(rpcMethod, params, daemonTimeoutMs(rpcMethod));
   if (parsed.json) {
     console.log(JSON.stringify(receipt, null, 2));
     return;

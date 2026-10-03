@@ -57,6 +57,15 @@ final class WindowMoveGeometryTests: XCTestCase {
         XCTAssertNil(index)
     }
 
+    func testStrictRelocationNeverFallsBackToAnUnrelatedDisplayIndex() {
+        XCTAssertNil(DisplayGeometryMapper.matchIndex(displayId: "disconnected", displayIndex: 0,
+            identifiers: [uuidA, uuidB], allowIndexFallback: false))
+        XCTAssertNil(DisplayGeometryMapper.matchIndex(displayId: "", displayIndex: 0,
+            identifiers: [nil], allowIndexFallback: false))
+        XCTAssertEqual(DisplayGeometryMapper.matchIndex(displayId: uuidB, displayIndex: 0,
+            identifiers: [uuidA, uuidB], allowIndexFallback: false), 1)
+    }
+
     // MARK: - Normalized frame remap for display-only window.move
 
     func testNormalizedFractionsOfInteriorWindow() {

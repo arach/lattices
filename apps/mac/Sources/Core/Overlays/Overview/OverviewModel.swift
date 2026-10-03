@@ -9,9 +9,9 @@ protocol OverviewActions {
     func focus(wid: UInt32, pid: Int32)
     /// Tiles one window to `position` on the monitor `displayId`.
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32)
-    /// Carries one window to `spaceId` on its own monitor. Slow: calls
+    /// Relocates to an explicit display and Space. Slow: calls
     /// `completion` on the main queue with nil, or why it failed.
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void)
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void)
     /// Writes the layer's layout and tucked lists. Never activates it.
     /// Resolves `plan.layerId` again, so a reorder can't edit another layer.
     func saveLayer(_ plan: LayerEditPlan) throws
@@ -104,13 +104,23 @@ struct LiveOverviewActions: OverviewActions {
         WindowTiler.tileWindowById(wid: wid, pid: pid, to: position, on: screen)
     }
 
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {
-        // The carry drives Mission Control and blocks for seconds.
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void) {
+        // Overview indices follow NSScreen order, not SkyLight API order.
+        // Resolve the exact CG display identity again before dispatching.
+        guard let display = WindowTiler.displaySpaces(forDisplayID: displayId, in: WindowTiler.getDisplaySpaces()),
+              display.spaces.contains(where: { $0.id == spaceId }) else {
+            completion("Destination display or desktop changed; refresh and retry")
+            return
+        }
+        let params = JSON.object(["wid": .int(Int(wid)), "display": .int(display.displayIndex),
+                                  "spaceId": .int(spaceId)])
         DispatchQueue.global(qos: .userInitiated).async {
-            let outcome = WindowSpaceCarry.carry(wid: wid, pid: pid, to: spaceId)
-            DispatchQueue.main.async {
-                if case .failed(let reason) = outcome { completion(reason) } else { completion(nil) }
-            }
+            let failure: String?
+            do {
+                let receipt = try ActionRuntime.shared.executeWindowMove(params: params, source: "app.overview")
+                failure = WindowMovementService.failureMessage(for: receipt)
+            } catch { failure = error.localizedDescription }
+            DispatchQueue.main.async { completion(failure) }
         }
     }
 
@@ -719,6 +729,8 @@ final class OverviewModel: ObservableObject {
     func tucked(_ layerId: String) -> Set<UInt32> { inputs.tucked[layerId] ?? [] }
     func extras(_ layerId: String) -> Set<UInt32> { inputs.extras[layerId] ?? [] }
 
+    func rejectMove(_ reason: String) { actionError = reason }
+
     // MARK: Actions
 
     func plan(_ action: OverviewBulkAction) -> OverviewBulkPlan {
@@ -760,14 +772,24 @@ final class OverviewModel: ObservableObject {
         return true
     }
 
-    /// Carries one window to another desktop on its own monitor.
+    /// Menus and physical drops share this verified relocation path.
     @discardableResult
     func move(_ wid: UInt32, toSpace spaceId: Int) -> Bool {
-        guard !moving.contains(wid), let row = projection.all[wid],
-              projection.moveTargets(for: wid).contains(where: { $0.spaceId == spaceId }) else { return false }
+        guard let destination = projection.moveTargets(for: wid).first(where: { $0.spaceId == spaceId }) else { return false }
+        return move(wid, to: destination)
+    }
+
+    @discardableResult
+    func move(_ wid: UInt32, to destination: OverviewMoveDestination) -> Bool {
+        guard moving.isEmpty, let row = projection.all[wid],
+              projection.moveTargets(for: wid).contains(destination) else {
+            rejectMove("Window or destination changed, or a move is in progress; refresh and retry")
+            return false
+        }
+        let spaceId = destination.spaceId
         actionError = nil
         moving.insert(wid)
-        actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId) { [weak self] failure in
+        actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId, displayId: destination.displayId) { [weak self] failure in
             guard let self else { return }
             self.moving.remove(wid)
             // The desktop watch picks up where it landed.

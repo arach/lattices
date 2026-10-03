@@ -496,17 +496,17 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(model.projection.placeExclusion(99), .gone)
     }
 
-    func testMoveGoesToAnotherDesktopOfTheSameMonitor() {
+    func testMoveTargetsExplicitDesktopsAcrossDisplays() {
         let projection = project()
-        XCTAssertEqual(projection.moveTargets(for: 1).map(\.desktop), [2, 3])
-        XCTAssertEqual(projection.moveTargets(for: 2).map(\.desktop), [1, 2])
-        XCTAssertEqual(projection.moveTargets(for: 3).map(\.desktop), [1])
+        XCTAssertEqual(projection.moveTargets(for: 1).map(\.spaceId), [2, 3, 10, 11])
+        XCTAssertEqual(projection.moveTargets(for: 2).map(\.spaceId), [1, 2, 10, 11])
+        XCTAssertEqual(projection.moveTargets(for: 3).map(\.spaceId), [1, 2, 3, 10])
         for wid: UInt32 in [4, 5, 6, 7] { XCTAssertEqual(projection.moveTargets(for: wid).count, 0, "window \(wid)") }
         XCTAssertEqual(OverviewProjection.moveExclusion(projection.all[7]!), .fullScreen)
         XCTAssertEqual(OverviewProjection.moveExclusion(projection.all[5]!), .parked)
 
         let model = model()
-        XCTAssertFalse(model.move(1, toSpace: 11), "another monitor's desktop")
+        XCTAssertFalse(model.move(1, toSpace: 12), "full-screen desktop")
         XCTAssertFalse(model.move(1, toSpace: 1), "its own desktop")
         XCTAssertTrue(model.move(1, toSpace: 3))
         XCTAssertEqual(model.moving, [1])
@@ -515,6 +515,63 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(model.moving, [])
         XCTAssertEqual(model.actionError, "Couldn't move Ghostty: Mission Control didn't open")
         XCTAssertEqual(spy.calls, ["move 1 to 3"])
+    }
+
+    func testMenuAndPhysicalDropUseTheSameExplicitDestination() throws {
+        let model = model()
+        let target = try XCTUnwrap(model.projection.moveTargets(for: 1).first { $0.spaceId == 11 })
+        XCTAssertEqual(target.title, "Side — Desktop 2")
+        XCTAssertEqual(target.displayId, 2)
+        XCTAssertTrue(model.move(1, toSpace: target.spaceId))
+        XCTAssertEqual(spy.moveDisplayIds, [2])
+        spy.finishMove?(nil)
+        XCTAssertTrue(model.receiveWindowDrop([.init(session: model.membershipDragSession, wid: 1)], to: target))
+        XCTAssertEqual(spy.calls, ["move 1 to 11", "move 1 to 11"])
+        XCTAssertEqual(spy.moveDisplayIds, [2, 2])
+        XCTAssertFalse(model.move(2, toSpace: 2), "another window must not start while a move is pending")
+        spy.finishMove?(nil)
+    }
+
+    func testDropRejectsForeignMultiWindowAndStaleDisplay() throws {
+        let model = model()
+        let target = try XCTUnwrap(model.projection.moveTargets(for: 1).first { $0.spaceId == 11 })
+        let own = OverviewWindowDragPayload(session: model.membershipDragSession, wid: 1)
+        XCTAssertFalse(model.receiveWindowDrop([.init(session: "other session", wid: 1)], to: target))
+        XCTAssertFalse(model.receiveWindowDrop([own, own], to: target))
+        let stale = OverviewMoveDestination(displayIndex: target.displayIndex, displayId: 999,
+            displayName: target.displayName, spaceId: target.spaceId, desktop: target.desktop)
+        XCTAssertFalse(model.receiveWindowDrop([own], to: stale))
+        XCTAssertTrue(spy.calls.isEmpty)
+        XCTAssertNotNil(model.actionError)
+    }
+
+    func testMembershipProviderOffersPhysicalMoveOnlyForEligibleSingleWindow() {
+        let model = model()
+        let single = model.windowDragProvider(1)
+        XCTAssertTrue(single.hasItemConformingToTypeIdentifier(OverviewMembershipDrag.type))
+        XCTAssertTrue(single.hasItemConformingToTypeIdentifier(OverviewWindowDragPayload.type))
+        model.setSelection([1, 2])
+        let multiple = model.windowDragProvider(1)
+        XCTAssertTrue(multiple.hasItemConformingToTypeIdentifier(OverviewMembershipDrag.type))
+        XCTAssertFalse(multiple.hasItemConformingToTypeIdentifier(OverviewWindowDragPayload.type))
+        let parked = model.windowDragProvider(5)
+        XCTAssertTrue(parked.hasItemConformingToTypeIdentifier(OverviewMembershipDrag.type))
+        XCTAssertFalse(parked.hasItemConformingToTypeIdentifier(OverviewWindowDragPayload.type))
+    }
+
+    func testPhysicalDragRepresentationRoundTripsThroughActualProvider() {
+        let model = model()
+        let done = expectation(description: "provider decoded")
+        let provider = model.windowDragProvider(1)
+        let session = model.membershipDragSession
+        provider.loadDataRepresentation(forTypeIdentifier: OverviewWindowDragPayload.type) { data, error in
+            XCTAssertNil(error)
+            let value = data.flatMap { OverviewWindowDragPayload.decode($0, session: session) }
+            XCTAssertEqual(value?.wid, 1)
+            if let data { XCTAssertNil(OverviewWindowDragPayload.decode(data, session: "foreign")) }
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 2)
     }
 
     // MARK: Edit layer (plan 23)
@@ -881,6 +938,7 @@ final class LayerStageTuckTests: XCTestCase {
 private final class SpyActions: OverviewActions {
     var calls: [String] = []
     var distributed: [(wids: [UInt32], displayId: UInt32, shape: [Int]?)] = []
+    var moveDisplayIds: [UInt32] = []
     var finishMove: ((String?) -> Void)?
     var saveError: Error?
     var rearrangeError: Error?
@@ -896,8 +954,9 @@ private final class SpyActions: OverviewActions {
         calls.append("place \(wid) \(position.rawValue) on \(displayId)")
     }
 
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void) {
         calls.append("move \(wid) to \(spaceId)")
+        moveDisplayIds.append(displayId)
         finishMove = completion
     }
 

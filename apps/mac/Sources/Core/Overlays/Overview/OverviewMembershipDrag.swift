@@ -8,11 +8,17 @@ struct OverviewMembershipDrag: Codable, Equatable {
     let sourceLayer: String?
     let move: Bool
 
-    func provider() -> NSItemProvider {
+    func provider(relocation: OverviewWindowDragPayload? = nil) -> NSItemProvider {
         let provider = NSItemProvider()
         let data = try? JSONEncoder().encode(self)
         provider.registerDataRepresentation(forTypeIdentifier: Self.type, visibility: .ownProcess) { completion in
             completion(data, nil); return nil
+        }
+        if let relocation, windows == [relocation.wid], relocation.session == session,
+           let relocationData = try? JSONEncoder().encode(relocation) {
+            provider.registerDataRepresentation(forTypeIdentifier: OverviewWindowDragPayload.type, visibility: .ownProcess) { completion in
+                completion(relocationData, nil); return nil
+            }
         }
         return provider
     }
@@ -61,12 +67,20 @@ struct OverviewMembershipInteractions: ViewModifier {
     let wid: UInt32
     func body(content: Content) -> some View {
         content
-            .onDrag { model.membershipDrag(wid).provider() }
+            .onDrag { model.windowDragProvider(wid) }
             .contextMenu { OverviewWindowMembershipMenu(model: model, wid: wid) }
     }
 }
 
 extension OverviewModel {
+    func windowDragProvider(_ wid: UInt32) -> NSItemProvider {
+        let membership = membershipDrag(wid)
+        let relocation: OverviewWindowDragPayload? =
+            membership.windows.count == 1 && moving.isEmpty && !projection.moveTargets(for: wid).isEmpty
+                ? .init(session: membershipDragSession, wid: wid) : nil
+        return membership.provider(relocation: relocation)
+    }
+
     func membershipDrag(_ wid: UInt32) -> OverviewMembershipDrag {
         .init(session: membershipDragSession,
               windows: OverviewMembershipDrag.carried(clicked: wid, selected: selection),

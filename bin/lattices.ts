@@ -1602,9 +1602,9 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
     console.log('  lattices call window.place \'{"session":"vox","placement":"left"}\'');
     return;
   }
-  await withDaemon(async ({ daemonCall }) => {
+  await withDaemon(async ({ daemonCall, daemonTimeoutMs }) => {
     const params = rest[0] ? JSON.parse(rest[0]) : null;
-    const result = await daemonCall(method, params, 15000);
+    const result = await daemonCall(method, params, daemonTimeoutMs(method, 15_000));
     console.log(JSON.stringify(result, null, 2));
   });
 }

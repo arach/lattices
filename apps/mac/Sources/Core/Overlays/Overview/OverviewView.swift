@@ -54,22 +54,30 @@ struct OverviewView: View {
     private var deskBody: some View {
         VStack(spacing: 0) {
             scopeBar
-            if model.focusedWid != nil {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    OverviewCapsule(model: model).padding(6)
-                }
-                .frame(height: 44)
-                .background(Palette.surface)
-            }
-            if let notice = model.actionError ?? model.compositionNotice {
-                Text(notice).font(.caption).foregroundColor(Palette.text)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(8)
-            }
             Divider().overlay(Palette.border)
             VStack(spacing: 0) {
                 stage
                 Divider().overlay(Palette.border)
                 OverviewTray(model: model)
+            }
+            .overlay(alignment: .topLeading) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if model.focusedWid != nil {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            OverviewCapsule(model: model).padding(6)
+                        }
+                        .frame(height: 44)
+                    }
+                    if let notice = model.actionError ?? model.compositionNotice {
+                        Text(notice).font(.caption).foregroundColor(Palette.text)
+                            .padding(8).background(Palette.surface)
+                    }
+                    if !model.moving.isEmpty {
+                        Text("Moving window…").font(.caption).foregroundColor(Palette.text)
+                            .padding(8).background(Palette.surface)
+                    }
+                }
+                .padding(8)
             }
             // The list lies over the stage and tray, under the scope bar
             // and its toggle; opening or closing it moves nothing.
@@ -432,13 +440,13 @@ private struct OverviewCapsule: View {
         } else {
             Menu {
                 ForEach(targets, id: \.spaceId) { target in
-                    Button("Desktop \(target.desktop)") { model.move(row.wid, toSpace: target.spaceId) }
+                    Button(target.title) { model.move(row.wid, to: target) }
                 }
             } label: {
                 OverviewMenuLabel(title: "Move", selected: true)
             }
             .overviewMenu(quiet: true)
-            .disabled(targets.isEmpty)
+            .disabled(targets.isEmpty || !model.moving.isEmpty)
             .help(OverviewProjection.moveExclusion(row).map { "Can't move: \($0.label)" }
                 ?? "Carries the window to another Desktop through Mission Control; takes a few seconds")
             .accessibilityLabel("Move to desktop")
@@ -964,12 +972,13 @@ private struct OverviewSelectionPanel: View {
         } else if !targets.isEmpty {
             Menu {
                 ForEach(targets, id: \.spaceId) { target in
-                    Button("Desktop \(target.desktop)") { model.move(row.wid, toSpace: target.spaceId) }
+                    Button(target.title) { model.move(row.wid, to: target) }
                 }
             } label: {
                 OverviewMenuLabel(title: "Move", selected: true)
             }
             .overviewMenu()
+            .disabled(!model.moving.isEmpty)
             .help("Carries the window to another Desktop through Mission Control; takes a few seconds")
             .accessibilityLabel("Move to desktop")
         } else if let block = OverviewProjection.moveExclusion(row) {

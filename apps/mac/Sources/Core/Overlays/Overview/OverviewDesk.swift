@@ -149,6 +149,7 @@ struct OverviewDisplayBlock: View {
             if let viewed {
                 OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
                     .opacity(scopedOut ? 0.55 : 1)
+                    .modifier(OverviewWindowDropTarget(model: model, display: monitor.display, spaceId: viewed.spaceId))
             }
             desktops
         }
@@ -243,6 +244,7 @@ struct OverviewDisplayBlock: View {
         .buttonStyle(.plain)
         .help(focused ? "\(space.title) on \(monitor.display.name) · click for every Desktop" : "\(space.title) on \(monitor.display.name), \(state)")
         .accessibilityLabel("\(space.title) on \(monitor.display.name), \(state), \(count == 0 ? "nothing in scope" : "\(count) in scope")")
+        .modifier(OverviewWindowDropTarget(model: model, display: monitor.display, spaceId: space.spaceId))
         .accessibilityHint(focused ? "Show every Desktop" : "Focus the list on this Desktop")
         .accessibilityAddTraits(focused ? .isSelected : [])
     }

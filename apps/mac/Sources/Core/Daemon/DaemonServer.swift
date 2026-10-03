@@ -12,12 +12,16 @@ final class DaemonServer: ObservableObject {
     @Published var clientCount: Int = 0
     @Published var isListening: Bool = false
 
+    /// Injectable handler lets socket boundary tests exercise slow/error paths
+    /// without invoking AX, Mission Control, or the running everyday app.
+    private let requestHandler: (DaemonRequest) -> DaemonResponse
     private let port: UInt16
     private let speechCapabilityURL: URL
     private let speechEndpoint: URL
     private(set) var listeningPort: UInt16 = 0
 
-    init(port: UInt16 = LatticesLocalEndpoints.agentAPIPort, speechCapabilityURL: URL = SpeechCompanionConnection.capabilityURL, speechEndpoint: URL = LatticesLocalEndpoints.speechCompanionURL) {
+    init(port: UInt16 = LatticesLocalEndpoints.agentAPIPort, speechCapabilityURL: URL = SpeechCompanionConnection.capabilityURL, speechEndpoint: URL = LatticesLocalEndpoints.speechCompanionURL, requestHandler: ((DaemonRequest) -> DaemonResponse)? = nil) {
+        self.requestHandler = requestHandler ?? { LatticesApi.shared.handle($0) }
         self.port = port
         self.speechCapabilityURL = speechCapabilityURL
         self.speechEndpoint = speechEndpoint
@@ -35,9 +39,12 @@ final class DaemonServer: ObservableObject {
     private static let blockingMethods: Set<String> = [
         "window.pick.start",
         "session.launch",
-        // Carrying a window across Spaces takes about a second per Space.
+        // Relocation and undo can carry windows across Spaces, taking seconds.
         "window.move",
+        "window.place",
         "window.present",
+        "actions.execute",
+        "actions.undo",
     ]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -374,8 +381,9 @@ final class DaemonServer: ObservableObject {
         // serial socket queue so other clients, events, and RPCs still flow.
         if Self.blockingMethods.contains(request.method) {
             blockingRequestQueue.async { [weak self] in
-                let response = LatticesApi.shared.handle(request)
-                self?.queue.async { [weak self] in
+                guard let self, self.isConnected(client) else { return }
+                let response = self.requestHandler(request)
+                self.queue.async { [weak self] in
                     guard let self, self.isConnected(client) else { return }
                     self.sendResponse(response, to: client)
                 }
@@ -383,7 +391,7 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        let response = LatticesApi.shared.handle(request)
+        let response = requestHandler(request)
         sendResponse(response, to: client)
     }
 
