@@ -17,6 +17,62 @@ final class EditorBridgeTests: XCTestCase {
          "revision": revision as Any? ?? NSNull(), "kind": kind, "payload": [String: Any]()]
     }
 
+    func testAdvisoryTitleCandidatesAreNotMembership() throws {
+        let subject = try subject(#"{"app":"Xcode","title":"Talkie"}"#)
+        let windows = [window(1, app: "Google Chrome", title: "Talkie docs"),
+                       window(2, app: "Xcode", title: "Unrelated"),
+                       window(3, app: "Xcode", title: "Talkie utility")]
+        let candidates = EditorSubject.titleCandidates(for: subject.layers[0].projects[0],
+            windows: windows + [windows[0]], isContent: { $0.wid != 3 })
+        XCTAssertTrue(candidates.isEmpty)
+        let projected = try subject.project(windows: windows, sources: .init(isContent: { $0.wid != 3 }))
+        let group = (projected["groups"] as! [[String: Any]])[0]
+        XCTAssertTrue((group["rows"] as! [[String: Any]]).isEmpty)
+        let unmatched = try XCTUnwrap(group["unmatchedRules"] as? [[String: Any]])
+        XCTAssertEqual(unmatched.count, 1)
+        XCTAssertEqual(unmatched[0]["ruleIndex"] as? Int, 0)
+        XCTAssertEqual(unmatched[0]["entryKey"] as? String, subject.entries[0]["key"] as? String)
+        XCTAssertEqual((unmatched[0]["titleCandidates"] as? [[String: Any]])?.count, 0)
+    }
+
+    func testTitleSuggestionsOmitMatchedAndDuplicateEntries() throws {
+        let entry = #"{"app":"Xcode","title":"Talkie"}"#
+        for (entries, windows) in [(entry, [window(1, app: "Xcode", title: "Talkie")]),
+                                   (entry + "," + entry, [window(1, title: "Talkie")])] {
+            let subject = try subject(entries)
+            let projection = try subject.project(windows: windows, sources: .init(isContent: { _ in true }))
+            XCTAssertNil((projection["groups"] as! [[String: Any]])[0]["unmatchedRules"])
+        }
+    }
+
+    func testUnmatchedRuleCanSuggestAWindowOwnedByAStrongerRule() throws {
+        let subject = try subject(#"{"match":{"appEquals":"Xcode","titleEquals":"Talkie"}},{"app":"Xcode","title":"Talkie"}"#)
+        let projection = try subject.project(windows: [window(1, app: "Xcode", title: "Talkie")],
+                                             sources: .init(isContent: { _ in true }))
+        let group = (projection["groups"] as! [[String: Any]])[0]
+        let rows = group["rows"] as! [[String: Any]]
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0]["matchedRule"] as? Int, 0)
+        let rules = try XCTUnwrap(group["unmatchedRules"] as? [[String: Any]])
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(rules[0]["ruleIndex"] as? Int, 1)
+        let candidates = rules[0]["titleCandidates"] as! [[String: Any]]
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0]["windowId"] as? UInt32, 1)
+    }
+
+    func testAdvisoryTitleCandidatesRequireValidTitlePredicate() throws {
+        for entry in [#"{"app":"Safari"}"#, #"{"match":{"titleRegex":"["}}"#,
+                      #"{"title":"  "}"#] {
+            let subject = try subject(entry)
+            XCTAssertTrue(EditorSubject.titleCandidates(for: subject.layers[0].projects[0],
+                windows: [window(1)], isContent: { _ in true }).isEmpty)
+        }
+        let subject = try subject(#"{"match":{"appEquals":"Safari","titleRegex":"^page$"}}"#)
+        XCTAssertEqual(EditorSubject.titleCandidates(for: subject.layers[0].projects[0],
+            windows: [window(1)], isContent: { _ in true }).map(\.wid), [1])
+    }
+
     func testHostChromeUIStateDoesNotCaptureOrMutateSubject() throws {
         var captures = 0
         let bridge = EditorBridge(hostChrome: true) {

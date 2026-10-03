@@ -342,3 +342,29 @@ full hashes are recorded in `Resources/Editor/provenance.json`. No Cormorant
 assets were reintroduced. Swift tests: 417, 13 skipped, zero failures; release
 build and dev installation passed. Live evidence and remaining manual checks
 are recorded at the top of `EDITOR-SLICE-1-LIVE.md`.
+
+## Layers polish (fresh branch from e2f0dc93)
+
+Approved Hudson bundle: `5dcb6a696195a6f7bb919b078fe6949ff55d2eff`.
+All six imported asset hashes match the builder's report; see provenance.json.
+The importer now recognizes complete quoted inline SVG URLs, so the grain's
+nested `url(%23grain)` is not mistaken for a missing local file. Missing fonts
+and external asset URLs still fail validation (two Bun regression tests).
+
+Existing display geometry, pure eligible layout targets and title-bar finish
+already meet the native brief and remain unchanged: gradient #1A1C20 → #15171A,
+white .07 bottom line, READ ONLY tag. No target means Now only; absent or
+last-known geometry must not be called Stays. The web derives movement labels
+from the existing target frames and live provenance.
+
+Optional group.unmatchedRules now contains `{entryKey, ruleIndex,
+titleCandidates:[{windowId,app,title}]}` for unmatched unambiguous project entries.
+Candidates use the full native app/title or StudioLayerClause predicate, never
+weakened title-only matching. Empty candidate arrays remain present; ambiguous
+canonical duplicate entries are omitted. Saved pins and indirect group/session
+entries are not approximated as title rules. Membership still comes solely from
+LayerMembership.resolve. This is advisory data, not a new claim or an action.
+
+Builder agreement: 5dcb6a69 does not consume unmatchedRules; Waiting uses existing
+canonical entries and resolved row counts. Candidate-window rendering therefore
+remains a web follow-up, not claimed as delivered by this import.

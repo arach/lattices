@@ -96,6 +96,29 @@ struct EditorSubject {
         entries = records.keys.sorted().compactMap { records[$0] }
     }
 
+    /// Read-only suggestions for an unmatched rule, not membership. Use the full
+    /// native predicate; a title in the wrong app is not a candidate. Saved pins,
+    /// project sessions and tab groups are not approximated as title rules.
+    static func titleCandidates(for project: LayerProject, windows: [WindowEntry],
+                                isContent: (WindowEntry) -> Bool) -> [WindowEntry] {
+        let matches: (WindowEntry) -> Bool
+        if let clause = project.match {
+            guard [clause.titleContains, clause.titleEquals, clause.titleRegex].contains(where: {
+                !($0?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            }) else { return [] }
+            matches = clause.matches
+        } else {
+            guard !project.isSaved, project.group == nil, let app = project.app,
+                  let title = project.title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return [] }
+            matches = { LayerMembership.reads(app: app, title: title, $0) }
+        }
+        var seen = Set<UInt32>()
+        return windows.sorted { ($0.zIndex, $0.wid) < ($1.zIndex, $1.wid) }.filter {
+            isContent($0) && seen.insert($0.wid).inserted && matches($0)
+        }
+    }
+
     var descriptor: [String: Any] {
         ["id": Self.id, "kind": "lattices.workspace-layers", "label": "Workspace Layers", "revision": revision]
     }
@@ -117,6 +140,17 @@ struct EditorSubject {
             var group: [String: Any] = ["id": layer.id, "label": layer.label, "rows": resolution.layers[i].map { member in
                 row(member.entry, layerId: layer.id, key: entryKeys[i][member.project], rule: member.project)
             }]
+            let held = Set(resolution.layers[i].map(\.project))
+            let unmatched: [[String: Any]] = layer.projects.enumerated().compactMap { index, project in
+                let key = entryKeys[i][index]
+                // A duplicate canonical entry cannot be identified unambiguously.
+                guard !held.contains(index), !ambiguousKeys.contains(key) else { return nil }
+                let candidates = Self.titleCandidates(for: project, windows: windows, isContent: sources.isContent)
+                return ["entryKey": key, "ruleIndex": index, "titleCandidates": candidates.map {
+                    ["windowId": $0.wid, "app": $0.app, "title": $0.title] as [String: Any]
+                }]
+            }
+            if !unmatched.isEmpty { group["unmatchedRules"] = unmatched }
             if let preview = geometry?.preview(layer, members: resolution.layers[i]) { group["preview"] = preview }
             return group
         }
