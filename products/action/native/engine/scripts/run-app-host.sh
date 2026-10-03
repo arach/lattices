@@ -34,7 +34,7 @@ run_via_open() {
   # raise-window itself cannot use -g: a background Action process sees an
   # empty AX window list, so the raise would never land.
   local open_flags=(-n)
-  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" ]]; then
+  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "agent-layer" || "$COMMAND" == blink-* ]]; then
     open_flags+=(-g)
   fi
   open "${open_flags[@]}" "$APP_DIR" --args "$@" --reply-file "$reply_file" >/dev/null

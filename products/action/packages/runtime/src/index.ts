@@ -2,6 +2,7 @@ export * from "./guided.js";
 export * from "./inspection.js";
 export * from "./macos.js";
 export * from "./stage.js";
+export * from "./agent-layer.js";
 export * from "./adapters/index.js";
 export * from "./providers/index.js";
 export * from "./interaction/index.js";

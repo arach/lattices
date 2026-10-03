@@ -293,10 +293,20 @@ export function inferAxTier(input: {
   actionKind?: string;
   channel?: string;
   targetMode?: string;
+  /**
+   * The act will run as a blink act on the agent layer (see `blinkRouteFor`). Blink acts
+   * restore the cursor and frontmost app within one act, so they are allowed in
+   * background leases instead of needing attention approval.
+   */
+  blink?: boolean;
 }): AxActionTier {
   const channel = input.channel?.toLowerCase();
   const kind = input.actionKind?.toLowerCase() ?? "";
   const targetMode = input.targetMode?.toLowerCase();
+
+  if (input.blink && (kind === "click" || kind === "type" || kind === "press-key")) {
+    return "blink";
+  }
 
   if (channel === "hid" || targetMode === "coordinate" || kind === "drag") {
     return "attention";
