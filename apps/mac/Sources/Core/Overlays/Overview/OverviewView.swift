@@ -54,7 +54,14 @@ struct OverviewView: View {
     private var deskBody: some View {
         VStack(spacing: 0) {
             scopeBar
-            if let notice = model.compositionNotice {
+            if model.focusedWid != nil {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    OverviewCapsule(model: model).padding(6)
+                }
+                .frame(height: 44)
+                .background(Palette.surface)
+            }
+            if let notice = model.actionError ?? model.compositionNotice {
                 Text(notice).font(.caption).foregroundColor(Palette.text)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(8)
             }
@@ -63,19 +70,6 @@ struct OverviewView: View {
                 stage
                 Divider().overlay(Palette.border)
                 OverviewTray(model: model)
-            }
-            .overlayPreferenceValue(OverviewCapsuleAnchorKey.self) { anchors in
-                GeometryReader { geo in
-                    let room = CGSize(width: geo.size.width - (model.membershipShown ? 300 : 0), height: geo.size.height)
-                    let anchor = anchors.first(where: { !$0.inTray }) ?? anchors.first
-                    OverviewStableToolbar(model: model, proposed: anchor.map { geo[$0.bounds] },
-                                          inTray: anchor?.inTray ?? false, room: room)
-                }
-                .onChange(of: anchors.count, initial: true) { _, count in
-                    if let wid = model.focusedWid {
-                        DiagnosticLog.shared.info("Overview toolbar: selected=\(wid) anchors=\(count)")
-                    }
-                }
             }
             // The list lies over the stage and tray, under the scope bar
             // and its toggle; opening or closing it moves nothing.
@@ -306,30 +300,8 @@ struct OverviewView: View {
 /// layer; many windows tile or distribute from the box below.
 /// The menu owner remains mounted while selection survives. Anchor preferences
 /// can disappear during projection refresh or when a list row is off canvas.
-private struct OverviewStableToolbar: View {
-    @ObservedObject var model: OverviewModel
-    let proposed: CGRect?
-    let inTray: Bool
-    let room: CGSize
-    @State private var latched: CGRect?
-    @State private var latchedTray = false
-    var body: some View {
-        OverviewCapsule(model: model,
-                        target: latched ?? proposed ?? CGRect(x: room.width / 2, y: room.height - 200, width: 1, height: 1),
-                        inTray: latched == nil ? inTray : latchedTray, room: room)
-            .onChange(of: model.focusedWid, initial: true) { _, _ in
-                latched = proposed ?? CGRect(x: room.width / 2, y: room.height - 200, width: 1, height: 1)
-                latchedTray = inTray
-            }
-    }
-}
-
 private struct OverviewCapsule: View {
     @ObservedObject var model: OverviewModel
-    let target: CGRect
-    let inTray: Bool
-    let room: CGSize
-    @State private var size: CGSize = .zero
 
     private static let placements: [(TilePosition, String)] = [
         (.left, "rectangle.lefthalf.filled"), (.right, "rectangle.righthalf.filled"),
@@ -339,19 +311,8 @@ private struct OverviewCapsule: View {
     var body: some View {
         if let wid = model.focusedWid, let row = model.projection.all[wid] {
             content(row)
-                .fixedSize()
-                .onGeometryChange(for: CGSize.self, of: \.size) { size = $0 }
-                .position(position)
-                .opacity(size == .zero ? 0 : 1)
+                .fixedSize(horizontal: true, vertical: false)
         }
-    }
-
-    private var position: CGPoint {
-        let top = inTray
-            ? room.height - OverviewTray.height - size.height - 4
-            : target.maxY - 8 - size.height
-        let x = min(max(target.midX, size.width / 2 + 8), room.width - size.width / 2 - 8)
-        return CGPoint(x: x, y: max(size.height / 2 + 4, top + size.height / 2))
     }
 
     private func showReason(_ row: OverviewRow) -> Exclusion? {
@@ -421,7 +382,6 @@ private struct OverviewCapsule: View {
         }
         .padding(4)
         .contentShape(Rectangle())
-        .onTapGesture { } // Consume toolbar gaps instead of clearing the selected canvas window.
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(red: 30 / 255, green: 30 / 255, blue: 34 / 255).opacity(0.97))
@@ -487,40 +447,9 @@ private struct OverviewCapsule: View {
 
     /// The layers it's in, and the way to edit one in the list.
     private func layerMenu(_ row: OverviewRow) -> some View {
-        let member = model.layers.filter { row.layerIds.contains($0.id) }
-        let scoped = model.scope.layerId.flatMap { id in model.layers.first { $0.id == id } }
-        let editable = (scoped.map { [$0] } ?? []) + member.filter { $0.id != scoped?.id }
-        return Menu {
-            Text(member.isEmpty ? "In no layer" : "In " + member.map(\.label).joined(separator: ", "))
-            Menu("Add to") {
-                ForEach(model.layers.filter { !row.layerIds.contains($0.id) }, id: \.id) { layer in
-                    Button(layer.label) { model.addComposition([row.wid], to: layer.id) }
-                }
-            }
-            ForEach(member, id: \.id) { layer in
-                if model.canRemoveComposition(row.wid, from: layer.id) {
-                    Button("Remove from \(layer.label)") { model.removeComposition(row.wid, from: layer.id) }
-                } else {
-                    Button("Held by an app or project rule in \(layer.label)") {}.disabled(true)
-                }
-            }
-            Button("New layer with this window…") { model.compose([row.wid]) }
-            Divider()
-
-            if model.editing == nil {
-                ForEach(editable, id: \.id) { layer in
-                    Button("Edit \(layer.label)…") {
-                        model.beginEditing(layer)
-                        model.membershipShown = true
-                    }
-                }
-            }
-        } label: {
-            OverviewMenuLabel(title: "Layer", selected: true)
-        }
-        .overviewMenu(quiet: true)
-        .help(member.isEmpty ? "In no layer" : "In " + member.map(\.label).joined(separator: ", "))
+        OverviewLayerPicker(model: model, row: row).frame(width: 64, height: 24)
     }
+
 }
 
 // MARK: - List sidebar

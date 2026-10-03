@@ -177,10 +177,13 @@ final class OverviewModel: ObservableObject {
     }
     func compose(_ ids: [UInt32]? = nil) {
         let windows = ids.map { $0.compactMap { aliveWindows[$0] } } ?? compositionWindows
-        guard !windows.isEmpty else { return }
+        guard !windows.isEmpty else { actionError = "No selected windows are available"; return }
+        actionError = nil
         composition = OverviewComposition(windows: windows)
     }
     func createComposition(_ draft: OverviewComposition) -> Bool {
+        actionError = nil
+        compositionNotice = nil
         do {
             let manager = WorkspaceManager.shared
             let at = try manager.createLayer(label: draft.name, windows: draft.windows, tiles: draft.tiles)
@@ -191,18 +194,36 @@ final class OverviewModel: ObservableObject {
             return true
         } catch { actionError = error.localizedDescription; return false }
     }
+    /// Fixture seam: exercises the menu/model path without accessing the real workspace.
+    var compositionAdder: (([WindowEntry], String) throws -> (Int, String))?
     func addComposition(_ ids: [UInt32], to layerId: String) {
+        actionError = nil
+        compositionNotice = nil
+        DiagnosticLog.shared.info("Overview add: requested ids=\(ids) layer=\(layerId)")
         do {
-            let manager = WorkspaceManager.shared
-            guard let at = manager.layerIndex(id: layerId) else { throw OverviewEditError.layerGone(layerId) }
             let windows = ids.compactMap { aliveWindows[$0] }
-            let count = try manager.addWindows(windows, toLayer: at)
-            compositionNotice = "Added \(count) windows to \(manager.layers[at].label)"
-            LayerIndexState.shared.select([layerId])
-            refresh()
-        } catch { actionError = error.localizedDescription }
+            guard !ids.isEmpty, windows.count == ids.count else {
+                throw NSError(domain: "Overview", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not add: a selected window is no longer available. Select it again."])
+            }
+            let result: (Int, String)
+            if let compositionAdder { result = try compositionAdder(windows, layerId) }
+            else {
+                let manager = WorkspaceManager.shared
+                guard let at = manager.layerIndex(id: layerId) else { throw OverviewEditError.layerGone(layerId) }
+                result = (try manager.addWindows(windows, toLayer: at), manager.layers[at].label)
+            }
+            compositionNotice = result.0 == 0 ? "Selected windows already belong to \(result.1)" : "Added \(result.0) windows to \(result.1)"
+            DiagnosticLog.shared.info("Overview add: \(compositionNotice!)")
+            if compositionAdder == nil { LayerIndexState.shared.select([layerId]); refresh() }
+        } catch {
+            actionError = error.localizedDescription
+            DiagnosticLog.shared.error("Overview add failed: \(error.localizedDescription)")
+        }
     }
+
     func moveComposition(_ ids: [UInt32], from source: String, to destination: String) {
+        actionError = nil
+        compositionNotice = nil
         do {
             let manager = WorkspaceManager.shared
             guard let from = manager.layerIndex(id: source), let to = manager.layerIndex(id: destination) else {
@@ -225,6 +246,8 @@ final class OverviewModel: ObservableObject {
             live: Array(aliveWindows.values), sources: manager.membershipSources).removed
     }
     func removeComposition(_ wid: UInt32, from id: String) {
+        actionError = nil
+        compositionNotice = nil
         do {
             let manager = WorkspaceManager.shared
             guard let at = manager.layerIndex(id: id) else { throw OverviewEditError.layerGone(id) }

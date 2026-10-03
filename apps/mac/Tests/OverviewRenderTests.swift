@@ -10,6 +10,60 @@ import XCTest
 /// Skipped unless OVERVIEW_RENDER_DIR names a folder. No live reads.
 @MainActor
 final class OverviewRenderTests: XCTestCase {
+    func testActualLayerSubmenuActionSurvivesRefreshAndWritesOnlyFixture() throws {
+        _ = NSApplication.shared
+        let suite = "picker.fixture." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let model = OverviewModel(defaults: defaults, inputs: inputs())
+        var calls = 0
+        model.compositionAdder = { windows, id in
+            calls += 1
+            XCTAssertEqual(id, "lattices")
+            let (layers, count) = WorkspaceManager.adding(windows, to: 0,
+                in: [Layer(id: "lattices", label: "Lattices", projects: [])],
+                live: windows, sources: .init())
+            try JSONEncoder().encode(layers).write(to: file)
+            return (count, "Lattices")
+        }
+        let menu = OverviewLayerMenu.make(model: model, row: try XCTUnwrap(model.projection.all[5]))
+        let submenu = try XCTUnwrap(menu.items.first { $0.title == "Add to" }?.submenu)
+        let item = try XCTUnwrap(submenu.items.firstIndex { $0.title == "Lattices" })
+        model.clearSelection()
+        model.update(inputs()) // Real refresh while the menu snapshot exists.
+        submenu.performActionForItem(at: item) // AppKit's actual target/action, not direct addComposition.
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(model.compositionNotice, "Added 1 windows to Lattices")
+        XCTAssertNil(model.actionError)
+        let layers = try JSONDecoder().decode([Layer].self, from: Data(contentsOf: file))
+        XCTAssertEqual(layers[0].projects.flatMap { $0.pins ?? [] }.map(\.wid), [5])
+    }
+
+    func testActualLayerSubmenuReportsStaleWindowAndWriteFailure() throws {
+        _ = NSApplication.shared
+        let suite = "picker.failure." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, inputs: inputs())
+        var calls = 0
+        model.compositionAdder = { _, _ in
+            calls += 1
+            throw NSError(domain: "fixture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Fixture write denied"])
+        }
+        let menu = OverviewLayerMenu.make(model: model, row: try XCTUnwrap(model.projection.all[5]))
+        let submenu = try XCTUnwrap(menu.items.first { $0.title == "Add to" }?.submenu)
+        let item = try XCTUnwrap(submenu.items.firstIndex { $0.title == "Lattices" })
+        submenu.performActionForItem(at: item)
+        XCTAssertEqual(model.actionError, "Fixture write denied")
+        XCTAssertNil(model.compositionNotice)
+        model.update(.init(windows: [], displays: [], main: .zero))
+        submenu.performActionForItem(at: item)
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(model.actionError?.contains("no longer available") == true)
+    }
+
     private func window(_ wid: UInt32, _ app: String, _ title: String, space: Int?, _ frame: CGRect,
                         hidden: Bool = false) -> WindowEntry {
         WindowEntry(
