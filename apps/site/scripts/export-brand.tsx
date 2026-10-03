@@ -20,7 +20,7 @@ import { ActionMark } from '../src/components/ActionMark'
 import { BlinkMark } from '../src/components/blink/BlinkMark'
 import { LatticesMark } from '../src/components/LatticesMark'
 import { SpeechMark } from '../src/components/SpeechMark'
-import { blinkIcon, blinkPalette, latticesPalette, speechPalette } from '../src/lib/marks'
+import { actionMarkBox, latticesPalette, speechPalette } from '../src/lib/marks'
 
 type Theme = 'light' | 'dark'
 type Box = { x: number; y: number; width: number; height: number }
@@ -35,10 +35,19 @@ const ladder = [16, 24, 32, 48, 64, 80, 128, 256, 512, 1024]
  * The app icon grid every product shares: Apple's 824-pixel tile in a 1024
  * canvas. The corners are superellipse quadrants reaching 34.5% along each
  * edge with exponent 2.85, fitted to the mask macOS 26 draws around system
- * icons (within a pixel at 1024). ActionBrandMark.swift draws Action's in-app
- * chip with the same numbers.
+ * icons (within a pixel at 1024). Every mark fills the same square of its own
+ * box, so one glyph share puts them all on the same guides, and every tile is
+ * the family's light ink with a hairline just inside the edge, so it holds its
+ * shape on a dark Dock. ActionBrandMark.swift draws Action's in-app chip with
+ * the same numbers.
  */
-const grid = { canvas: 1024, inset: 100, cornerRatio: 0.345, exponent: 2.85, samples: 48 }
+const grid = {
+  canvas: 1024, inset: 100, cornerRatio: 0.345, exponent: 2.85, samples: 48,
+  /** The glyph's longer side as a share of the tile. */
+  glyph: 0.56,
+  tile: latticesPalette.light.ink,
+  edge: 'rgba(255,255,255,.08)',
+}
 
 /** Favicons have no margin to spare, so the glyph grows to fill the tile. */
 const faviconGlyphScale = 1.18
@@ -52,15 +61,6 @@ interface Product {
   mark: (theme: Theme) => ReactElement
   /** The mark as it sits on the icon tile. */
   iconMark: (box?: Box) => ReactElement
-  tile: string
-  /** A hairline just inside the tile edge, so it holds its shape on a Dock of the same colour. */
-  edge: string
-  /** An optional shade toward the foot of the tile. */
-  wash?: { color: string; opacity: number }
-  /** The glyph's longer side as a share of the tile. Tuned per mark by eye. */
-  glyph: number
-  /** Optical lift as a share of the tile. Positive raises the glyph. */
-  lift?: number
   /** Repo-relative paths of the .icns files the native builds copy. */
   icns: string[]
   /** Extra flat icon PNGs some product folders keep beside their .icns. */
@@ -71,7 +71,7 @@ interface Product {
   notes: string[]
 }
 
-const actionKitProps = { guides: false, background: false, viewBox: '15 35 590 590' } as const
+const actionKitProps = { guides: false, background: false, viewBox: actionMarkBox.join(' ') } as const
 
 const products: Product[] = [
   {
@@ -81,16 +81,13 @@ const products: Product[] = [
     viewBox: [0, 0, 20, 20],
     mark: (theme) => h(LatticesMark, { theme, size: 512 }),
     iconMark: (box) => h(LatticesMark, { theme: 'dark', ...box }),
-    tile: latticesPalette.light.ink,
-    edge: 'rgba(255,255,255,.08)',
-    glyph: 0.56,
     icns: ['assets/AppIcon.icns'],
     colours: [
       ['Ink on light', latticesPalette.light.ink],
       ['Dim cells on light', `${latticesPalette.light.dim} at ${latticesPalette.light.dimOpacity * 100}%`],
       ['Ink on dark', latticesPalette.dark.ink],
       ['Dim cells on dark', `${latticesPalette.dark.dim} at ${latticesPalette.dark.dimOpacity * 100}%`],
-      ['Icon tile', latticesPalette.light.ink],
+      ['Icon tile', grid.tile],
     ],
     notes: [
       'A 3 × 3 grid with the left column and bottom row lit: the L. The site header draws the same component with `theme` unset, so it follows the `--logo-ink` and `--logo-dim` tokens and their hover states.',
@@ -101,30 +98,25 @@ const products: Product[] = [
     slug: 'action',
     name: 'Action',
     source: 'src/components/ActionMark.tsx',
-    viewBox: [15, 35, 590, 590],
+    viewBox: actionMarkBox,
     mark: (theme) => h(ActionMark, { theme, ...actionKitProps, width: 512, height: 512 }),
     iconMark: (box) => h(ActionMark, {
-      theme: 'light', ...actionKitProps, decorative: true,
+      theme: 'dark', ...actionKitProps, decorative: true,
       // The component styles itself to fill its container; inside the icon the
       // placement attributes have to win.
       style: { width: undefined, height: undefined },
       ...box,
     }),
-    tile: '#f4efe6',
-    edge: 'rgba(25,40,42,.08)',
-    wash: { color: '#dccfb9', opacity: 0.45 },
-    glyph: 0.66,
-    lift: 0.012,
     icns: ['products/action/assets/brand/Action.icns'],
     iconPngs: { dir: 'products/action/assets/brand', sizes: [512, 1024] },
     colours: [
-      ['Paper', '#f4efe6'],
-      ['Ink', '#19282a'],
-      ['Cursor', '#c58a70'],
-      ['Icon tile foot wash', '#dccfb9 at 45%'],
+      ['Ink on light', latticesPalette.light.ink],
+      ['Ink on dark', latticesPalette.dark.ink],
+      ['Icon tile', grid.tile],
     ],
     notes: [
-      'Generated from the approved ActionMark component with the compact square viewBox (15 35 590 590). Geometry and aspect ratio are preserved.',
+      `The A fills a square and the cursor lies on its diagonal: the tip sits on the counter's edge and the tail touches the square's right and bottom sides, so the glyph is the square. The kit crops ActionMark's construction drawing to \`${actionMarkBox.join(' ')}\`, the square plus the family margin, so the glyph spans 80% of the box, as the Lattices grid's 16 units span 20.`,
+      'Letter and cursor share the family ink; the 10-unit gap separates them.',
       'The site hero uses the precomputed SVG. The full construction drawing remains a configurable React component.',
       '`products/action/native/engine/CoreSources/ActionBrandMark.swift` ports the same geometry for the menu bar and the in-app chip.',
     ],
@@ -133,23 +125,18 @@ const products: Product[] = [
     slug: 'blink',
     name: 'Blink',
     source: 'src/components/blink/BlinkMark.tsx',
-    viewBox: [0, 0, 18, 18],
+    viewBox: [0, 0, 20, 20],
     mark: (theme) => h(BlinkMark, { theme, width: 512, height: 512 }),
-    iconMark: (box) => h(BlinkMark, { color: blinkIcon.mark, ...box }),
-    tile: blinkIcon.tile,
-    edge: 'rgba(255,255,255,.08)',
-    glyph: 0.56,
+    iconMark: (box) => h(BlinkMark, { theme: 'dark', ...box }),
     icns: ['products/blink/assets/AppIcon.icns'],
     iconSvg: 'products/blink/assets/AppIcon.svg',
     colours: [
-      ['Ink on light', blinkPalette.light],
-      ['Ink on dark', blinkPalette.dark],
-      ['Icon mark', blinkIcon.mark],
-      ['Icon tile', blinkIcon.tile],
+      ['Ink on light', latticesPalette.light.ink],
+      ['Ink on dark', latticesPalette.dark.ink],
+      ['Icon tile', grid.tile],
     ],
     notes: [
-      'A panel frame with two blocks stepping across it. The page header draws the same component in `currentColor`.',
-      'The kit follows the landing page: bottle green on parchment, near-white on black. The app icon keeps the desk’s amber on near-black.',
+      'A panel frame with two blocks stepping across it, on the Lattices grid: the frame’s outer edge sits on the 16-unit square and its stroke is the grid’s 1.2-unit gap. The page header draws the same component in `currentColor`.',
     ],
   },
   {
@@ -159,16 +146,13 @@ const products: Product[] = [
     viewBox: [0, 0, 20, 20],
     mark: (theme) => h(SpeechMark, { theme, size: 512 }),
     iconMark: (box) => h(SpeechMark, { theme: 'dark', ...box }),
-    tile: '#141416',
-    edge: 'rgba(255,255,255,.08)',
-    glyph: 0.56,
     icns: ['products/voice/assets/AppIcon.icns'],
     colours: [
       ['Ink on light', latticesPalette.light.ink],
       ['Queued bars on light', `${speechPalette.light.dim} at ${speechPalette.light.dimOpacity * 100}%`],
       ['Ink on dark', latticesPalette.dark.ink],
       ['Queued bars on dark', `${speechPalette.dark.dim} at ${speechPalette.dark.dimOpacity * 100}%`],
-      ['Icon tile', '#141416'],
+      ['Icon tile', grid.tile],
     ],
     notes: [
       'Four waveform bars on the Lattices grid, the first two lit: a readout part-way through, with the words still queued dimmed. It uses the Lattices palette and cell geometry, except that the queued bars sit at 35% on dark, against the family’s 18%, so they read on the icon’s dark tile.',
@@ -232,15 +216,15 @@ interface Composition {
   glyphScale?: number
   /** Square corners, for icons the platform masks itself. */
   square?: boolean
-  /** Draw the hairline and wash. Favicons are too small for either. */
+  /** Draw the hairline. Favicons are too small for it. */
   finish?: boolean
 }
 
 function composeIcon(product: Product, bounds: Box, { body, glyphScale = 1, square = false, finish = true }: Composition) {
   const [vx, vy, vw, vh] = product.viewBox
-  const scale = (body.width * product.glyph * glyphScale) / Math.max(bounds.width, bounds.height)
+  const scale = (body.width * grid.glyph * glyphScale) / Math.max(bounds.width, bounds.height)
   const cx = body.x + body.width / 2
-  const cy = body.y + body.height / 2 - (product.lift ?? 0) * body.height
+  const cy = body.y + body.height / 2
   const placement: Box = {
     x: round(cx - (bounds.x - vx + bounds.width / 2) * scale),
     y: round(cy - (bounds.y - vy + bounds.height / 2) * scale),
@@ -250,19 +234,11 @@ function composeIcon(product: Product, bounds: Box, { body, glyphScale = 1, squa
   const d = square
     ? `M${body.x} ${body.y}H${body.x + body.width}V${body.y + body.height}H${body.x}Z`
     : tilePath(body.x, body.y, body.width)
-  const washId = `${product.slug}-wash`
 
   return renderToStaticMarkup(
     h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: `0 0 ${grid.canvas} ${grid.canvas}`, role: 'img', 'aria-label': product.name },
-      finish && product.wash
-        ? h('defs', null,
-          h('linearGradient', { id: washId, x1: 0, y1: 0, x2: 0, y2: 1 },
-            h('stop', { offset: 0, stopColor: product.wash.color, stopOpacity: 0 }),
-            h('stop', { offset: 1, stopColor: product.wash.color, stopOpacity: product.wash.opacity })))
-        : null,
-      h('path', { d, fill: product.tile }),
-      finish && product.wash ? h('path', { d, fill: `url(#${washId})` }) : null,
-      finish ? h('path', { d, fill: 'none', stroke: product.edge, strokeWidth: 2 }) : null,
+      h('path', { d, fill: grid.tile }),
+      finish ? h('path', { d, fill: 'none', stroke: grid.edge, strokeWidth: 2 }) : null,
       product.iconMark(placement)),
   )
 }
@@ -321,7 +297,7 @@ function readme(product: Product, bounds: Box) {
     ...(iconPngs ? iconPngs.sizes.map((size) => `${iconPngs.dir}/${slug}-icon-${size}.png`) : []),
   ]
   const sizes = ladder.join(', ')
-  const glyph = Math.round(product.glyph * 100)
+  const glyph = Math.round(grid.glyph * 100)
   const lines = [
     `# ${name} logo assets`,
     '',
@@ -346,7 +322,7 @@ function readme(product: Product, bounds: Box) {
     '',
     '## App icon',
     '',
-    `An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattices product. The glyph's longer side spans ${glyph}% of the tile${product.lift ? `, lifted ${round(product.lift * 100)}% of the tile to balance its weight` : ''}. The favicon drops the margin and grows the glyph ${Math.round((faviconGlyphScale - 1) * 100)}%.`,
+    `An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattices product. The glyph's longer side spans ${glyph}% of the tile, as in every product icon. The favicon drops the margin and grows the glyph ${Math.round((faviconGlyphScale - 1) * 100)}%.`,
     '',
     `Measured glyph bounds in viewBox units: ${round(bounds.x)}, ${round(bounds.y)}, ${round(bounds.width)} × ${round(bounds.height)}.`,
     '',
@@ -379,10 +355,11 @@ function indexReadme() {
     '',
     `- An ${tile} px tile inset ${grid.inset} px in a ${grid.canvas} px canvas: Apple's macOS icon grid.`,
     `- Continuous corners: superellipse quadrants reaching ${round(grid.cornerRatio * 100)}% along each edge with exponent ${grid.exponent}, fitted to the mask macOS 26 draws around system icons.`,
-    '- A 2 px hairline on the tile edge, so a dark tile holds its shape on a dark Dock.',
-    "- The glyph centred on its measured bounds, its longer side a set share of the tile. Each kit's README gives the share.",
+    `- One tile colour, the family's light ink \`${grid.tile}\`, with the mark in its dark-background ink.`,
+    '- A 2 px hairline on the tile edge, so the tile holds its shape on a dark Dock.',
+    `- The glyph centred on its measured bounds, its longer side ${Math.round(grid.glyph * 100)}% of the tile. Every mark fills the same square of its box, the 16 units of the Lattices grid's 20, so overlaid the glyphs touch the same guides.`,
     '',
-    `Favicons drop the margin: the tile runs edge to edge and the glyph grows ${Math.round((faviconGlyphScale - 1) * 100)}%, with no hairline or wash. The touch icon is square and opaque, because iOS applies its own mask.`,
+    `Favicons drop the margin: the tile runs edge to edge and the glyph grows ${Math.round((faviconGlyphScale - 1) * 100)}%, with no hairline. The touch icon is square and opaque, because iOS applies its own mask.`,
     '',
     '## Where they are used',
     '',
@@ -429,7 +406,7 @@ for (const product of selected) {
   await writeFile(join(out, `${slug}-favicon.svg`), favicon)
 
   const touch = composeIcon(product, bounds, { body: full, glyphScale: faviconGlyphScale, square: true, finish: false })
-  await png(touch, 180, join(out, `${slug}-touch-icon.png`), product.tile)
+  await png(touch, 180, join(out, `${slug}-touch-icon.png`), grid.tile)
 
   await writeFile(join(out, 'README.md'), readme(product, bounds))
 

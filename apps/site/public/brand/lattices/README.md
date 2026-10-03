@@ -28,7 +28,7 @@ A 3 × 3 grid with the left column and bottom row lit: the L. The site header dr
 
 ## App icon
 
-An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattices product. The glyph's longer side spans 56% of the tile. The favicon drops the margin and grows the glyph 18%.
+An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattices product. The glyph's longer side spans 56% of the tile, as in every product icon. The favicon drops the margin and grows the glyph 18%.
 
 Measured glyph bounds in viewBox units: 1.992, 1.992, 16.016 × 16.016.
 

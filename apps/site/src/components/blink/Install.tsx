@@ -66,7 +66,7 @@ export function Footer() {
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[12px] font-bold text-[var(--text)]">
-              <BlinkMark className="h-4 w-4 shrink-0 text-acc" />
+              <BlinkMark className="h-4 w-4 shrink-0" />
               <span>blink</span>
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-faintx">

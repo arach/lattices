@@ -7,9 +7,11 @@
 export type BrandTheme = 'light' | 'dark'
 
 /**
- * Lattices ink for exported kits. Theme names describe the intended background,
- * so `light` is dark ink. The live site leaves `theme` unset and reads the
- * `--logo-ink` / `--logo-dim` tokens instead, which lets hover states recolour it.
+ * The family ink for exported kits. Every product mark draws in it, and every
+ * app icon sits on a tile of the light ink. Theme names describe the intended
+ * background, so `light` is dark ink. The live site leaves `theme` unset and
+ * reads the `--logo-ink` / `--logo-dim` tokens instead, which lets hover states
+ * recolour it.
  */
 export const latticesPalette = {
   light: { ink: '#101518', dim: '#101518', dimOpacity: 0.22 },
@@ -30,11 +32,8 @@ export const speechPalette = {
 export const latticesGrid = { box: 20, pad: 2, gap: 1.2, radius: 1 } as const
 
 /**
- * Blink ink for exported kits, matching the landing: bottle green on parchment
- * and near-white on black. Theme names describe the intended background. The
- * live site leaves `theme` unset and inherits `currentColor` from `text-acc`.
+ * The square the Action kit crops from ActionMark's 720 × 640 construction
+ * drawing: the A's 460-unit square plus the family margin, so the glyph spans
+ * 80% of the box, as the grid's 16 units span 20.
  */
-export const blinkPalette = { light: '#2f6447', dark: '#f4f4f5' } as const
-
-/** Blink's app icon keeps the desk's amber on near-black. */
-export const blinkIcon = { mark: '#f0b45a', tile: '#0a0a0b' } as const
+export const actionMarkBox = [12.5, 12.5, 575, 575] as const
