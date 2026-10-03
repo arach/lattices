@@ -39,6 +39,9 @@ struct OverviewView: View {
         }
         .onReceive(index.$selected) { _ in if live { DispatchQueue.main.async { applyIndex() } } }
         .onAppear { if live { _ = try? index.snapshot(); applyIndex() } }
+        .sheet(item: $model.composition) { draft in
+            OverviewComposeSheet(draft: draft, create: model.createComposition)
+        }
     }
 
     private var indexRows: [LayerIndexState.Row] { live ? index.rows : model.indexFixtureRows }
@@ -48,6 +51,10 @@ struct OverviewView: View {
     private var deskBody: some View {
         VStack(spacing: 0) {
             scopeBar
+            if let notice = model.compositionNotice {
+                Text(notice).font(.caption).foregroundColor(Palette.text)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+            }
             Divider().overlay(Palette.border)
             VStack(spacing: 0) {
                 stage
@@ -456,6 +463,21 @@ private struct OverviewCapsule: View {
         let editable = (scoped.map { [$0] } ?? []) + member.filter { $0.id != scoped?.id }
         return Menu {
             Text(member.isEmpty ? "In no layer" : "In " + member.map(\.label).joined(separator: ", "))
+            Menu("Add to") {
+                ForEach(model.layers.filter { !row.layerIds.contains($0.id) }, id: \.id) { layer in
+                    Button(layer.label) { model.addComposition([row.wid], to: layer.id) }
+                }
+            }
+            ForEach(member, id: \.id) { layer in
+                if model.canRemoveComposition(row.wid, from: layer.id) {
+                    Button("Remove from \(layer.label)") { model.removeComposition(row.wid, from: layer.id) }
+                } else {
+                    Button("Held by an app or project rule in \(layer.label)") {}.disabled(true)
+                }
+            }
+            Button("New layer with this window…") { model.compose([row.wid]) }
+            Divider()
+
             if model.editing == nil {
                 ForEach(editable, id: \.id) { layer in
                     Button("Edit \(layer.label)…") {
@@ -894,6 +916,15 @@ private struct OverviewSelectionPanel: View {
             }
             if let row {
                 focused(row)
+            }
+            if model.selection.count >= 2 {
+                Button("New layer from \(model.selection.count) windows") { model.compose() }
+                    .buttonStyle(.overview(.quiet, height: 26))
+                if let id = model.scope.layerId, let layer = model.layers.first(where: { $0.id == id }) {
+                    Button("Add \(model.selection.count) to \(layer.label)") {
+                        model.addComposition(Array(model.selection), to: id)
+                    }.buttonStyle(.overview(.quiet, height: 26))
+                }
             }
             bulkActions
             if let error = model.actionError {

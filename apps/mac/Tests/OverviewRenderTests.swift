@@ -227,6 +227,34 @@ final class OverviewRenderTests: XCTestCase {
     }
     func testWideSidebar() throws { try render("wide-sidebar", width: 1590, height: 688, sidebar: true) }
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
+
+    func testComposeSelectionFooter() throws {
+        try render("compose-multi-footer", width: 1590, height: 688, sidebar: true) { model in
+            model.select(1)
+            model.toggle(9)
+        }
+    }
+
+    func testComposeSheetPreview() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
+            throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")
+        }
+        var draft = OverviewComposition(windows: inputs().windows.filter { [UInt32(1), 9].contains($0.wid) })
+        draft.name = "Chrome + terminal"
+        let view = OverviewComposeSheet(draft: draft, create: { _ in
+            XCTFail("Render must never create a layer"); return false
+        }).environment(\.colorScheme, .dark)
+        let host = NSHostingView(rootView: view)
+        host.frame = CGRect(x: 0, y: 0, width: 628, height: 420)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("compose-new-layer-sheet.png"))
+        _ = window
+    }
     func testLaptopSidebar() throws { try render("laptop-sidebar", width: 1110, height: 648, sidebar: true) }
     func testWideFullWindow() throws { try render("wide-full", width: 1760, height: 760, sidebar: false) }
     func testWideLayerSidebar() throws {

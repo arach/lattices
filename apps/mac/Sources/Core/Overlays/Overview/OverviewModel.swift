@@ -169,6 +169,54 @@ final class OverviewModel: ObservableObject {
     /// draft open; a failed rearrange comes after the draft closed.
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
+    @Published var composition: OverviewComposition?
+    @Published var compositionNotice: String?
+    var compositionWindows: [WindowEntry] {
+        selection.sorted().compactMap { aliveWindows[$0] }
+    }
+    func compose(_ ids: [UInt32]? = nil) {
+        let windows = ids.map { $0.compactMap { aliveWindows[$0] } } ?? compositionWindows
+        guard !windows.isEmpty else { return }
+        composition = OverviewComposition(windows: windows)
+    }
+    func createComposition(_ draft: OverviewComposition) -> Bool {
+        do {
+            let manager = WorkspaceManager.shared
+            let at = try manager.createLayer(label: draft.name, windows: draft.windows, tiles: draft.tiles)
+            let layer = manager.layers[at]
+            LayerIndexState.shared.select([layer.id])
+            compositionNotice = "Created \(layer.label) with \(draft.windows.count) windows"
+            refresh()
+            return true
+        } catch { actionError = error.localizedDescription; return false }
+    }
+    func addComposition(_ ids: [UInt32], to layerId: String) {
+        do {
+            let manager = WorkspaceManager.shared
+            guard let at = manager.layerIndex(id: layerId) else { throw OverviewEditError.layerGone(layerId) }
+            let windows = ids.compactMap { aliveWindows[$0] }
+            let count = try manager.addWindows(windows, toLayer: at)
+            compositionNotice = "Added \(count) windows to \(manager.layers[at].label)"
+            LayerIndexState.shared.select([layerId])
+            refresh()
+        } catch { actionError = error.localizedDescription }
+    }
+    func canRemoveComposition(_ wid: UInt32, from id: String) -> Bool {
+        let manager = WorkspaceManager.shared
+        guard let at = manager.layerIndex(id: id) else { return false }
+        return WorkspaceManager.removing(wid, from: at, in: manager.layers,
+            live: Array(aliveWindows.values), sources: manager.membershipSources).removed
+    }
+    func removeComposition(_ wid: UInt32, from id: String) {
+        do {
+            let manager = WorkspaceManager.shared
+            guard let at = manager.layerIndex(id: id) else { throw OverviewEditError.layerGone(id) }
+            let removed = try manager.removeWindow(wid, fromLayer: at)
+            compositionNotice = removed ? "Removed window from \(manager.layers[at].label)" : "An app or project rule still holds this window"
+            refresh()
+        } catch { actionError = error.localizedDescription }
+    }
+
     @Published private(set) var actionError: String?
     /// Windows with a Space move under way.
     @Published private(set) var moving: Set<UInt32> = []
