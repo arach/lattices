@@ -103,7 +103,7 @@
 
 .site-brand:hover,
 .post-nav-brand:hover {
-  --logo-ink: var(--docs-accent);
+  --logo-ink: var(--logo-accent);
 }
 
 .site-lockup {

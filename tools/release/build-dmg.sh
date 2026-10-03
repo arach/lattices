@@ -59,10 +59,13 @@ mkdir -p "$BUNDLE/Contents/Resources"
 # Copy binary
 cp "$APP_DIR/.build/release/Lattices" "$BUNDLE/Contents/MacOS/Lattices"
 
-# Copy app icon
+# Copy app icon: the light and dark icons CFBundleIconName names, and the .icns fallback
 ICON="$ROOT/assets/AppIcon.icns"
 if [ -f "$ICON" ]; then
     cp "$ICON" "$BUNDLE/Contents/Resources/AppIcon.icns"
+fi
+if [ -f "$ROOT/assets/Assets.car" ]; then
+    cp "$ROOT/assets/Assets.car" "$BUNDLE/Contents/Resources/Assets.car"
 fi
 
 TAP_SOUND="$APP_DIR/Resources/tap.wav"

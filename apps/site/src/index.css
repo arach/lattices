@@ -21,7 +21,8 @@
   --amber: #f5a623;
   --logo-ink: #f2f2f2;
   --logo-dim: rgba(255, 255, 255, 0.18);
-  --speech-dim: rgba(255, 255, 255, 0.35);
+  /* The family accent on every mark. The site's UI keeps --green. */
+  --logo-accent: #ef6a47;
   --syntax-key: #7ec8e3;
   --syntax-kw: #c792ea;
 
@@ -62,7 +63,6 @@
   --amber: #c47b00;
   --logo-ink: #101518;
   --logo-dim: rgba(16, 21, 24, 0.22);
-  --speech-dim: rgba(16, 21, 24, 0.22);
   --syntax-key: #2f7895;
   --syntax-kw: #8e59b5;
   /* Same material logic reinterpreted: paper ground, ink type, and the slab
@@ -147,7 +147,7 @@ code {
 }
 
 .nav-brand:hover {
-  --logo-ink: var(--green);
+  --logo-ink: var(--logo-accent);
 }
 
 .nav-name {

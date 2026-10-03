@@ -86,6 +86,7 @@
     "apps/mac/Lattices.entitlements",
     "apps/mac/Resources",
     "assets/AppIcon.icns",
+    "assets/Assets.car",
     "docs"
   ],
   "devDependencies": {

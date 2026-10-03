@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import actionDownload from "../action-download.json";
 import type { MouseEvent } from "react";
 import { ActionMark } from "./ActionMark";
+import { actionMarkBox } from "../lib/marks";
 import actionHeroArt from "../../../../products/action/docs/assets/brand/landing-hero.webp";
 import actionMiraArt from "../../../../products/action/docs/assets/brand/landing-mira.webp";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
@@ -86,7 +87,7 @@ export default function ActionPage() {
               palette={{ ink: "currentColor" }}
               guides={false}
               background={false}
-              viewBox="15 35 590 590"
+              viewBox={actionMarkBox.join(" ")}
               decorative
               style={{ width: 16, height: 16 }}
             />
