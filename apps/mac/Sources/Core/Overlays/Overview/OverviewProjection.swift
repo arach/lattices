@@ -14,6 +14,8 @@ struct OverviewScope: Codable, Equatable {
     var spaceId: Int?
     /// A ⌘⌥ layer id, nil for all windows.
     var layerId: String?
+    var layerIds: [String]?
+    var scopedWindowIds: [UInt32]?
     var search: String = ""
     /// A `FilterPreset` raw value, nil for all.
     var preset: String?
@@ -493,7 +495,7 @@ extension OverviewProjection {
         let hiding = filters(hiding: entry, row: row, scope: scope, inputs: inputs)
         if hiding.contains(.search) { next.search = "" }
         if hiding.contains(.preset) { next.preset = nil }
-        if hiding.contains(.outsideLayer) { next.layerId = nil }
+        if hiding.contains(.outsideLayer) { next.layerId = nil; next.layerIds = nil; next.scopedWindowIds = nil }
         next.display = row.display
         next.spaceId = row.spaceId
         return next
@@ -746,7 +748,11 @@ private extension OverviewProjection {
             }
             if !passes { hiding.insert(.preset) }
         }
-        if scope.layerId != nil, row.role == nil { hiding.insert(.outsideLayer) }
+        if let ids = scope.scopedWindowIds {
+            if !ids.contains(entry.wid) { hiding.insert(.outsideLayer) }
+        } else if let ids = scope.layerIds, !ids.isEmpty {
+            if Set(ids).isDisjoint(with: row.layerIds) { hiding.insert(.outsideLayer) }
+        } else if scope.layerId != nil, row.role == nil { hiding.insert(.outsideLayer) }
         return hiding
     }
 

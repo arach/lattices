@@ -1,3 +1,43 @@
+# Shared layer index acceptance
+
+Native Overview now has a 212pt layer index, All windows, Unassigned and additive
+layer browsing. The web index receives the same cached Editor projection and
+ordered persisted selection. Approved Hudson f5fbca135131ababb1a0a5386b2c49247db1b336
+is installed; six asset hashes match the approval. Token mapping is documented
+in EDITOR-SLICE-1.md. Native monospace is SF Mono; web monospace is JetBrains Mono.
+
+Validation:
+- Swift tests with OVERVIEW_RENDER_DIR: **412 tests, 13 skipped, zero failures**.
+  All OverviewRenderTests ran, including four new index render states. The fixed
+  fixture footer avoids elapsed-time differences in overlay pixel comparisons.
+- Production dev build/install/relaunch passed. Release app was not launched.
+- Native All / Lattices / Lattices + fab scopes and the multi-layer footer passed.
+  Multi-selection captured using Command-down after Lattices; Command-click uses
+  the same additive selector but direct pointer-modifier automation was unavailable.
+- Native fab selection appears in Layers immediately on switching pages. Reverse
+  direction checked by selecting Talkie in the web index then opening Overview.
+- Both indexes showed All=12, Lattices=2, fab=2, Talkie=2, Unassigned=6 in this run.
+- 1110pt window keeps the index and desk visible, with kind filters in their menu.
+- Current desktop maps are empty because these windows are elsewhere/last-known.
+  The fixture render shows scoped green windows and faint outside-scope windows;
+  no real window was moved to produce a screenshot.
+- No blank or white captured states. Transient flash is not proven absent by stills.
+- Workspace SHA-256 and mtime unchanged; no layer/configuration effects executed.
+
+Evidence in EditorSlice1LiveEvidence/:
+- desk-sidenav-all.png
+- desk-sidenav-layer.png
+- desk-sidenav-multi.png
+- desk-sidenav-narrow.png
+- layers-same-selection.png
+- desk-sidenav-render-layer.png (fixture, not live desktop)
+
+Logs: /tmp/lattices-editor-slice-1/sidenav-tests.log and sidenav-install.log.
+All render outputs: /tmp/lattices-editor-slice-1/sidenav-renders/.
+Dev remains open on Layers. No push, merge or PR. Earlier Pass 2 remains cancelled.
+
+---
+
 # Native Overview desk integration
 
 Merged feat/native-overview-desk aa14e1f6 with merge commit a3539c14, no conflicts.

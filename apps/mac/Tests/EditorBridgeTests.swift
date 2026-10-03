@@ -100,6 +100,35 @@ final class EditorBridgeTests: XCTestCase {
         XCTAssertNotEqual(overview, workspace)
     }
 
+    func testSharedLayerSelectionPersistsAndDeduplicates() {
+        let suite = "LayerIndexTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let index = LayerIndexState(defaults: defaults)
+        XCTAssertEqual(index.selected, [])
+        index.choose("lattices")
+        index.choose("fab", additive: true)
+        XCTAssertEqual(index.selected, ["lattices", "fab"])
+        index.select(["fab", "fab", "lattices"])
+        XCTAssertEqual(LayerIndexState(defaults: defaults).selected, ["fab", "lattices"])
+        index.choose(nil)
+        XCTAssertEqual(index.selected, [])
+    }
+
+    func testSharedSelectionBridgeIsUIOnly() throws {
+        let bridge = EditorBridge(hostChrome: true) { throw EditorBridgeError("unavailable", "unused") }
+        bridge.selectedLayerIds = { ["fab"] }
+        let capabilities = bridge.reply(to: request("capabilities"))["payload"] as! [String: Any]
+        XCTAssertEqual(capabilities["selectedLayerIds"] as? [String], ["fab"])
+        var event: [String: Any]?
+        bridge.onEvent = { event = $0 }
+        bridge.selectLayers(["fab", "lattices"])
+        XCTAssertEqual((event?["payload"] as? [String: Any])?["value"] as? [String], ["fab", "lattices"])
+        let state = try EditorUIState(payload: ["view": "overview", "arrangement": "grid", "panels": ["preview"], "sourceOpen": false, "selectedLayerIds": ["fab"]])
+        XCTAssertEqual(state.selectedLayerIds, ["fab"])
+        XCTAssertThrowsError(try EditorUIState(payload: ["view": "overview", "arrangement": "grid", "panels": ["preview"], "sourceOpen": false, "selectedLayerIds": ["fab", "fab"]]))
+    }
+
     func testRevisionIgnoresObjectKeyOrderAndUnrelatedRootButPreservesUnknownEntryFields() throws {
         let a = try subject("{\"app\":\"Safari\",\"future\":{\"z\":2,\"a\":1}}")
         let b = try EditorSubject(data: Data("{\"other\":true,\"layers\":[{\"projects\":[{\"future\":{\"a\":1,\"z\":2},\"app\":\"Safari\"}],\"label\":\"Web\",\"id\":\"web\"}]}".utf8))

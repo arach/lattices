@@ -11,6 +11,7 @@ final class EditorBridge {
     let subscriptionId = UUID().uuidString
     var onEvent: (([String: Any]) -> Void)?
     let hostChrome: Bool
+    var selectedLayerIds: () -> [String] = { [] }
     var onUIState: ((EditorUIState) -> Void)?
     private let capture: () throws -> Snapshot
     private var subscribed = false
@@ -32,6 +33,12 @@ final class EditorBridge {
         var payload: [String: Any] = ["command": command]
         if let value { payload["value"] = value }
         onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "ui.command", payload: payload))
+    }
+
+    func selectLayers(_ ids: [String]) {
+        guard hostChrome else { return }
+        onEvent?(envelope(revision: lastRevision as Any? ?? NSNull(), kind: "ui.command",
+                          payload: ["command": "selectLayers", "value": ids]))
     }
 
     private func envelope(requestId: Any = NSNull(), revision: Any = NSNull(), kind: String,
@@ -104,7 +111,7 @@ final class EditorBridge {
                     "readOnly": true, "methods": Self.methods + (hostChrome ? ["ui.state"] : []),
                     "subject": subject, "terminal": false
                 ]
-                if hostChrome { payload["chrome"] = "host" }
+                if hostChrome { payload["chrome"] = "host"; payload["selectedLayerIds"] = selectedLayerIds() }
                 return envelope(requestId: requestId, revision: revision, kind: "capabilities.result", payload: payload)
             }
             if kind == "ui.state" {
@@ -181,6 +188,7 @@ struct EditorUIState: Equatable {
     static let views = ["overview", "workspace"]
     static let arrangements = ["single", "columns", "rows", "grid"]
     static let panelIDs = ["chat", "preview", "history", "source"]
+    let selectedLayerIds: [String]?
     let view: String
     let arrangement: String
     let panels: [String]
@@ -199,6 +207,12 @@ struct EditorUIState: Equatable {
               sourceOpen == panels.contains("source") else {
             throw EditorBridgeError("invalid_request", "Invalid Editor UI state.")
         }
+        if let raw = payload["selectedLayerIds"] {
+            guard let ids = raw as? [String], Set(ids).count == ids.count else {
+                throw EditorBridgeError("invalid_request", "Invalid layer selection.")
+            }
+            selectedLayerIds = ids
+        } else { selectedLayerIds = nil }
         self.view = view
         self.arrangement = arrangement
         self.panels = panels

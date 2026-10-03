@@ -1,10 +1,10 @@
 {
   "source": "arach/hudson:apps/lattices-editor",
-  "revision": "48b58e937b843bf8b5bb959953c486ef005a4de7",
+  "revision": "f5fbca135131ababb1a0a5386b2c49247db1b336",
   "sourceDirty": false,
   "files": {
     "editor.css": "4055bfa32f008a52c684d2c05810adf1000ce98462d594fbf04fc28fc58919b7",
-    "editor.js": "55572e7e240ed22f96b6a052f79138bd0d9ac81987da82d597de939f1ce0f00e",
+    "editor.js": "947045cce1a3fc6a35c0f1c09a19ad0ee5c940ca6a26102cc36f16a87ae063e6",
     "index.html": "6ceb52eedcfc21964230e4e1793d4e9703b7d76393b8a3808229b6c30c19c208",
     "jetbrains-mono-LICENSE.txt": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b",
     "jetbrains-mono-latin-400-normal.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb",

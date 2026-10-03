@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import SwiftUI
+import Combine
 
 /// All transport constants live here. This scheme serves bundled files only;
 /// it neither opens a port nor starts the Companion bridge.
@@ -58,7 +59,7 @@ final class EditorWebHost: NSObject, WKScriptMessageHandlerWithReply, WKNavigati
     private var timer: Timer?
     private var failed = false
 
-    init(bundleRoot: URL, bridge: EditorBridge = EditorBridge(capture: EditorBridge.liveSnapshot)) {
+    init(bundleRoot: URL, bridge: EditorBridge = EditorBridge(capture: { try LayerIndexState.shared.snapshot() })) {
         self.bridge = bridge
         let configuration = WKWebViewConfiguration()
         configuration.setURLSchemeHandler(EditorBundleHandler(root: bundleRoot), forURLScheme: EditorTransport.scheme)
@@ -141,13 +142,22 @@ final class EditorWindowController {
 final class LayersPageModel: ObservableObject {
     static let shared = LayersPageModel()
     @Published private(set) var state: EditorUIState?
-    private let bridge = EditorBridge(hostChrome: true, capture: EditorBridge.liveSnapshot)
+    private let bridge = EditorBridge(hostChrome: true, capture: { try LayerIndexState.shared.snapshot() })
+    private var selectionWatch: AnyCancellable?
     private var retainedHost: EditorWebHost?
 
     var host: EditorWebHost {
         if let retainedHost { return retainedHost }
+        bridge.selectedLayerIds = { LayerIndexState.shared.selected }
         bridge.onUIState = { [weak self] state in
-            DispatchQueue.main.async { self?.state = state }
+            DispatchQueue.main.async {
+                self?.state = state
+                if let ids = state.selectedLayerIds { LayerIndexState.shared.select(ids) }
+            }
+        }
+        selectionWatch = LayerIndexState.shared.$selected.dropFirst().sink { [weak self] ids in
+            guard let self, self.state != nil, self.state?.selectedLayerIds != ids else { return }
+            self.bridge.selectLayers(ids)
         }
         let root = Bundle.module.resourceURL!.appendingPathComponent("Editor", isDirectory: true)
         let host = EditorWebHost(bundleRoot: root, bridge: bridge)

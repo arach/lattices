@@ -273,3 +273,30 @@ Merged native desk aa14e1f6 via a3539c14, no conflicts; origin/main already incl
 Imported approved Hudson 48b58e93, six hashes verified, removed Cormorant font/license.
 Full test run: 406 tests, 30 skipped, zero failures with LATTICES_HUDSON_PATH set.
 See EDITOR-SLICE-1-LIVE.md for native desk and Layers screenshots.
+
+## Shared layer index (DeskAll / DeskLayer / DeskMulti)
+
+`LayerIndexState` owns one read-only Editor projection, cached for 500ms, plus
+ordered browsing selection in UserDefaults (`layers.sharedSelection.v1`). Both
+native counts and the web bridge read this same snapshot. No activation or
+configuration writer is used. All means no IDs; Unassigned uses the projection's
+collision-safe ID. Native scope matches the union of selected row window IDs.
+
+The wire adds capability `selectedLayerIds`, full `ui.state.selectedLayerIds`,
+and `ui.command {command:"selectLayers",value:[String]}`. Initial capabilities
+are authoritative, including an empty selection. Identical updates do not echo.
+Native and web indexes are separate renderers; they cannot share SwiftUI code.
+Matched tokens: 212pt width, #17191d surface, white .07 right line, #24282e selected
+row, #ecedef ink, #b0b3b8 muted, #92969d faint, #6c7178 empty ring, #33c773 open dot;
+36pt rows, 7pt dots, 6pt radius, 12pt horizontal padding. Native uses system UI and
+system monospaced fonts; the web uses system UI and bundled JetBrains Mono.
+
+Native arrows browse rows; Command-arrow also supports additive keyboard selection.
+Command-click toggles additive membership without invoking any layer operation.
+The filter row names the scope and can clear it. Scoped map windows use green fill
+and border; outside-scope windows retain faint titles. Multi-layer footer lists
+selected layers instead of offering a misleading single-layer edit action.
+
+Imported approved Hudson f5fbca135131ababb1a0a5386b2c49247db1b336; six copied hashes
+match the builder's report and Resources/Editor/provenance.json. Geometry additions
+and the earlier Pass 2 preview stage remain cancelled.
