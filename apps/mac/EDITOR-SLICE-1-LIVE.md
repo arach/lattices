@@ -1,3 +1,45 @@
+# Should-be live acceptance resumed — 2026-10-03
+
+The coordinator cleared the one-off stalled hidutil child (51918). The existing
+installed dev app (51891) resumed; no rebuild or relaunch was needed for this
+capture. **KeyboardRemapController was not changed in this branch.** Its
+synchronous, no-timeout main-thread hidutil call at
+`apps/mac/Sources/Core/Input/KeyboardRemapController.swift:643` remains a separate
+robustness issue. The earlier blocker record below is retained for audit and is
+now superseded for live acceptance.
+
+Opened Layers via `open -b dev.lattices.app.dev "lattices://editor"`, with Talkie
+selected, and captured all three requested states:
+
+- **Pass — shouldbe-open.png:** two Ghostty windows stack in the left 50%; Talkie
+  occupies the right 50%. All three retain the truthful “on another desktop”
+  exclusion, rather than being reported as moves. Target geometry remains visible.
+- **Pass — shouldbe-all.png:** the ruler is 30/40/30. Xcode and Devin occupy the
+  two hatched Not open middle slots. Ghostty and Talkie are explicitly labelled
+  open reservations, not Moves/Stays. The two live Ghostty windows share their
+  one configured-entry reservation as agreed.
+- **Pass — shouldbe-now.png:** same display stage, no invented live positions;
+  the footer correctly reports three windows with no live position.
+- Switching Should be / Now and Include 2 not open works without reloading the
+  page. No blank/white captured state; stills do not establish a temporal
+  flash/flicker guarantee.
+
+All screenshot paths are under
+`/Users/arach/dev/lattices-editor-host-slice-1/apps/mac/EditorSlice1LiveEvidence/`.
+Dev app is left running on **Layers → Talkie → Should be**, Include not open off.
+No workspace or configuration writes, layer activation, or window-placement
+operations were performed; release app was not launched.
+
+workspace.json remains identical: SHA-256
+`08371da3319997e03e858a71a55a736e77f421403078d8eca252082a728a3edc`,
+mtime_ns `1790863638274089681`, size 3172.
+
+No implementation changes in this capture round. Existing verified result:
+**425 Swift tests, 13 skipped, zero failures**; release build passed; all six
+installed Hudson `e388ffda` asset hashes verified.
+
+---
+
 # Should-be layout — 2026-10-03
 
 Native commit `1dd81b99`; imported bundle commit `f9553aac` on
