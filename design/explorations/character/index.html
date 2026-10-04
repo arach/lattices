@@ -1,0 +1,568 @@
+<!doctype html>
+<!--
+Direction contract: inherit the Lattices character brief and its quiet macOS world.
+Let the character artwork lead in editorial comparison rows: near-black #141416,
+raised #1a1a1a, light #f2f2f2, and #33C773 as the only accent. Use local JetBrains
+Mono for measurements. Show all seven concepts large and at 16/24/32 px on both
+surfaces, including a 24 px image in a 32 px control. This is a static exploration;
+no motion, JavaScript, app integration, or app-code changes are part of this page.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Ledge and six alternative character concepts for Lattices. A static study of careful little movers, shown at actual control sizes on dark and light surfaces.">
+  <title>Ledge & little movers — Lattices character study</title>
+  <style>
+    @font-face { font-family: "JetBrains Mono"; src: local("JetBrains Mono"), local("JetBrainsMono-Regular"); font-style: normal; font-weight: 400; font-display: swap; }
+    :root { color-scheme: dark; --app: #141416; --raised: #1a1a1a; --paper: #f2f2f2; --muted: #a5a5a8; --rule: #373739; --green: #33C773; --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    html { background: var(--app); scrollbar-color: #68686b var(--app); }
+    body { margin: 0; color: var(--paper); font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+    ::selection { background: var(--green); color: var(--app); }
+    a { color: var(--green); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible { outline: 2px solid var(--green); outline-offset: 5px; border-radius: 2px; }
+    img { display: block; object-fit: contain; flex-shrink: 0; }
+    figure { margin: 0; }
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, h3 { text-wrap: balance; }
+    .page { width: min(1200px, 100%); margin-inline: auto; padding: 32px 40px 28px; }
+    .masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 23px; border-bottom: 1px solid var(--rule); }
+    .wordmark { font-size: 23px; font-weight: 650; letter-spacing: -.035em; }
+    .masthead-copy { color: var(--muted); font-size: 12px; text-align: right; line-height: 1.5; }
+    .masthead-copy strong { display: block; color: var(--paper); font-weight: 500; }
+    .concept { display: grid; grid-template-columns: minmax(160px, 232px) minmax(0, 1fr); gap: 32px; align-items: center; padding: 30px 0; border-top: 1px solid var(--rule); }
+    .lead { border-top: 0; padding: 36px 0 30px; }
+    h1 { font-size: clamp(58px, 6vw, 80px); font-weight: 560; line-height: 1; letter-spacing: -.04em; margin-bottom: 14px; }
+    h3 { font-size: 32px; font-weight: 550; line-height: 1.15; letter-spacing: -.035em; margin-bottom: 9px; }
+    .concept-kind { display: block; color: var(--muted); font-size: 12px; }
+    .lead .concept-kind { color: var(--green); }
+    .personality { margin-top: 28px; font-size: 17px; line-height: 1.45; }
+    .detail { max-width: 24ch; margin-top: 6px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .master-link { display: inline-block; margin-top: 24px; font-size: 12px; line-height: 1.6; }
+    .surfaces { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; padding: 1px; background: var(--rule); border-radius: 12px; overflow: hidden; }
+    .surface { min-width: 0; padding: 17px 18px 15px; background: var(--app); }
+    .surface.light { background: var(--paper); color: var(--app); color-scheme: light; }
+    .surface-heading { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: 11px/1.5 var(--mono); }
+    .light .surface-heading { color: #626264; }
+    .portrait { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 152px; text-decoration: none; }
+    .lead .portrait { min-height: 190px; }
+    .light a:focus-visible { outline-color: #127a40; }
+    .large-size { margin-top: 1px; color: var(--muted); text-align: center; font: 11px/1.5 var(--mono); }
+    .light .large-size { color: #626264; }
+    .samples { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 15px; padding-top: 8px; border-top: 1px solid var(--rule); }
+    .light .samples { border-color: #cdcdce; }
+    .sample { text-align: center; min-width: 0; }
+    .sample-slot { height: 42px; display: flex; align-items: center; justify-content: center; }
+    .sample figcaption { margin-top: 4px; color: var(--muted); font: 11px/1.5 var(--mono); white-space: nowrap; }
+    .light .sample figcaption { color: #626264; }
+    .control { display: flex; justify-content: center; align-items: center; width: 32px; height: 32px; background: var(--raised); border-radius: 6px; outline: 1px solid #444447; }
+    .light .control { background: #e5e5e5; outline-color: #b5b5b7; }
+    .scale-note { display: grid; grid-template-columns: minmax(160px, 232px) minmax(0, 1fr); gap: 32px; padding: 1px 0 31px; }
+    .scale-note h2 { font-size: 13px; font-weight: 550; line-height: 1.6; }
+    .scale-note p { max-width: 72ch; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .alternatives-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; padding: 31px 0 21px; border-top: 1px solid var(--rule); }
+    .alternatives-heading h2 { font-size: 24px; font-weight: 500; letter-spacing: -.025em; }
+    .alternatives-heading p { font-size: 12px; color: var(--muted); }
+    .alternatives .concept:first-of-type { border-top: 0; padding-top: 0; }
+    footer { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; padding-top: 24px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 12px; line-height: 1.7; }
+    footer p { max-width: 44ch; }
+    footer nav { display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 20px; row-gap: 7px; max-width: 510px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .skip-link { position: absolute; left: 20px; top: -80px; padding: 10px 14px; background: var(--raised); z-index: 1; }
+    .skip-link:focus { top: 12px; }
+    @media (max-width: 940px) {
+      .page { padding-inline: 28px; }
+      .concept, .scale-note { grid-template-columns: minmax(150px, 190px) minmax(0, 1fr); gap: 24px; }
+      .surface { padding-inline: 12px; }
+      .surface-heading { font-size: 11px; gap: 8px; }
+      .sample figcaption { font-size: 11px; }
+    }
+    @media (max-width: 780px) {
+      .page { padding: 24px 22px; }
+      .concept, .scale-note { grid-template-columns: 1fr; gap: 22px; }
+      .lead { padding-top: 30px; }
+      .description { display: grid; grid-template-columns: 1fr auto; column-gap: 20px; align-items: baseline; }
+      h1, h3 { grid-column: 1; margin-bottom: 0; }
+      .concept-kind { grid-column: 2; grid-row: 1; align-self: center; text-align: right; }
+      .personality { grid-column: 1 / -1; margin-top: 14px; }
+      .detail { grid-column: 1 / -1; max-width: none; margin-top: 3px; }
+      .master-link { grid-column: 1 / -1; justify-self: start; margin-top: 12px; }
+      .surface { padding-inline: 15px; }
+      .scale-note { gap: 6px; padding-bottom: 25px; }
+      .alternatives-heading { padding-top: 26px; }
+      footer { flex-direction: column; gap: 17px; }
+      footer nav { justify-content: flex-start; }
+    }
+    @media (max-width: 560px) {
+      .page { padding-inline: 16px; }
+      .masthead { gap: 16px; }
+      .surfaces { grid-template-columns: 1fr; }
+      .surface { padding: 15px 20px; }
+      .surface-heading, .sample figcaption { font-size: 11px; }
+      .portrait { min-height: 150px; }
+      .lead .portrait { min-height: 180px; }
+      .alternatives-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the character study</a>
+  <div class="page">
+    <header class="masthead">
+      <span class="wordmark">lattices</span>
+      <p class="masthead-copy"><strong>Character study</strong>Seven small movers · Exploration</p>
+    </header>
+    <main id="main">
+      <article class="concept lead" aria-labelledby="ledge">
+        <div class="description">
+          <h1 id="ledge">Ledge.</h1>
+          <span class="concept-kind">Lead concept</span>
+          <p class="personality">A careful mover.</p>
+          <p class="detail">Picks up with intent. Puts down precisely.</p>
+          <a class="master-link" href="ledge-v1.png">Open PNG master<span class="sr-only"> for Ledge</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Ledge on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="ledge-v1.png" aria-label="Open Ledge transparent PNG master">
+              <img src="ledge-v1.png" width="160" height="160" alt="Ledge, a Lattices character concept.">
+            </a>
+            <div class="large-size">160 px</div>
+            <div class="samples" aria-label="Ledge at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="ledge-v1.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="ledge-v1.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="ledge-v1.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="ledge-v1.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Ledge on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="ledge-v1.png" aria-label="Open Ledge transparent PNG master">
+              <img src="ledge-v1.png" width="160" height="160" alt="Ledge, a Lattices character concept.">
+            </a>
+            <div class="large-size">160 px</div>
+            <div class="samples" aria-label="Ledge at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="ledge-v1.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="ledge-v1.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="ledge-v1.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="ledge-v1.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      <aside class="scale-note" aria-labelledby="scale-title">
+        <h2 id="scale-title">Small by design.</h2>
+        <p>Compare at 100% browser zoom. Labels give image dimensions in CSS pixels; the visible character is slightly smaller because the PNG includes transparent padding. The outlined control is exactly 32 × 32 px with a 24 × 24 px image and 4 px of space on each side. These are static placement studies.</p>
+      </aside>
+      <section class="alternatives" aria-labelledby="alternatives-title">
+        <div class="alternatives-heading">
+          <h2 id="alternatives-title">Other small movers.</h2>
+          <p>Six alternative silhouettes</p>
+        </div>
+      <article class="concept" aria-labelledby="shim">
+        <div class="description">
+          <h3 id="shim">Shim</h3>
+          <span class="concept-kind">Alternative</span>
+          <p class="personality">The patient wedge.</p>
+          <p class="detail">Makes the last tiny adjustment.</p>
+          <a class="master-link" href="alternatives-v1/01-shim.png">Open PNG master<span class="sr-only"> for Shim</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Shim on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="alternatives-v1/01-shim.png" aria-label="Open Shim transparent PNG master">
+              <img src="alternatives-v1/01-shim.png" width="128" height="128" alt="Shim, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Shim at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/01-shim.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/01-shim.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/01-shim.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/01-shim.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Shim on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="alternatives-v1/01-shim.png" aria-label="Open Shim transparent PNG master">
+              <img src="alternatives-v1/01-shim.png" width="128" height="128" alt="Shim, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Shim at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/01-shim.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/01-shim.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/01-shim.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/01-shim.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      <article class="concept" aria-labelledby="nook">
+        <div class="description">
+          <h3 id="nook">Nook</h3>
+          <span class="concept-kind">Alternative</span>
+          <p class="personality">A little corner cradle.</p>
+          <p class="detail">Leaves room for what you carry.</p>
+          <a class="master-link" href="alternatives-v1/02-nook.png">Open PNG master<span class="sr-only"> for Nook</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Nook on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="alternatives-v1/02-nook.png" aria-label="Open Nook transparent PNG master">
+              <img src="alternatives-v1/02-nook.png" width="128" height="128" alt="Nook, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Nook at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/02-nook.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/02-nook.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/02-nook.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/02-nook.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Nook on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="alternatives-v1/02-nook.png" aria-label="Open Nook transparent PNG master">
+              <img src="alternatives-v1/02-nook.png" width="128" height="128" alt="Nook, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Nook at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/02-nook.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/02-nook.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/02-nook.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/02-nook.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      <article class="concept" aria-labelledby="dov">
+        <div class="description">
+          <h3 id="dov">Dov</h3>
+          <span class="concept-kind">Alternative</span>
+          <p class="personality">The careful joiner.</p>
+          <p class="detail">A dovetail that brings things together.</p>
+          <a class="master-link" href="alternatives-v1/03-dov.png">Open PNG master<span class="sr-only"> for Dov</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Dov on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="alternatives-v1/03-dov.png" aria-label="Open Dov transparent PNG master">
+              <img src="alternatives-v1/03-dov.png" width="128" height="128" alt="Dov, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Dov at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/03-dov.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/03-dov.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/03-dov.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/03-dov.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Dov on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="alternatives-v1/03-dov.png" aria-label="Open Dov transparent PNG master">
+              <img src="alternatives-v1/03-dov.png" width="128" height="128" alt="Dov, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Dov at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/03-dov.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/03-dov.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/03-dov.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/03-dov.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      <article class="concept" aria-labelledby="ply">
+        <div class="description">
+          <h3 id="ply">Ply</h3>
+          <span class="concept-kind">Alternative</span>
+          <p class="personality">A steady stack.</p>
+          <p class="detail">Keeps the layers in order.</p>
+          <a class="master-link" href="alternatives-v1/04-ply.png">Open PNG master<span class="sr-only"> for Ply</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Ply on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="alternatives-v1/04-ply.png" aria-label="Open Ply transparent PNG master">
+              <img src="alternatives-v1/04-ply.png" width="128" height="128" alt="Ply, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Ply at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/04-ply.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/04-ply.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/04-ply.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/04-ply.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Ply on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="alternatives-v1/04-ply.png" aria-label="Open Ply transparent PNG master">
+              <img src="alternatives-v1/04-ply.png" width="128" height="128" alt="Ply, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Ply at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/04-ply.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/04-ply.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/04-ply.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/04-ply.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      <article class="concept" aria-labelledby="span">
+        <div class="description">
+          <h3 id="span">Span</h3>
+          <span class="concept-kind">Alternative</span>
+          <p class="personality">The small bridge.</p>
+          <p class="detail">Carries the weight evenly.</p>
+          <a class="master-link" href="alternatives-v1/05-span.png">Open PNG master<span class="sr-only"> for Span</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Span on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="alternatives-v1/05-span.png" aria-label="Open Span transparent PNG master">
+              <img src="alternatives-v1/05-span.png" width="128" height="128" alt="Span, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Span at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/05-span.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/05-span.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/05-span.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/05-span.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Span on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="alternatives-v1/05-span.png" aria-label="Open Span transparent PNG master">
+              <img src="alternatives-v1/05-span.png" width="128" height="128" alt="Span, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Span at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/05-span.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/05-span.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/05-span.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/05-span.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      <article class="concept" aria-labelledby="plinth">
+        <div class="description">
+          <h3 id="plinth">Plinth</h3>
+          <span class="concept-kind">Alternative</span>
+          <p class="personality">The patient pedestal.</p>
+          <p class="detail">Sets everything down squarely.</p>
+          <a class="master-link" href="alternatives-v1/06-plinth.png">Open PNG master<span class="sr-only"> for Plinth</span></a>
+        </div>
+        <div class="surfaces">
+          <section class="surface dark" aria-label="Plinth on app surface">
+            <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+            <a class="portrait" href="alternatives-v1/06-plinth.png" aria-label="Open Plinth transparent PNG master">
+              <img src="alternatives-v1/06-plinth.png" width="128" height="128" alt="Plinth, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Plinth at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/06-plinth.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/06-plinth.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/06-plinth.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/06-plinth.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+          <section class="surface light" aria-label="Plinth on light">
+            <div class="surface-heading"><span>Light</span><span>#f2f2f2</span></div>
+            <a class="portrait" href="alternatives-v1/06-plinth.png" aria-label="Open Plinth transparent PNG master">
+              <img src="alternatives-v1/06-plinth.png" width="128" height="128" alt="Plinth, a Lattices character concept.">
+            </a>
+            <div class="large-size">128 px</div>
+            <div class="samples" aria-label="Plinth at 16, 24 and 32 pixels, and inside a 32 pixel control">
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/06-plinth.png" width="16" height="16" alt=""></div>
+                  <figcaption>16 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/06-plinth.png" width="24" height="24" alt=""></div>
+                  <figcaption>24 px</figcaption>
+                </figure>
+                <figure class="sample">
+                  <div class="sample-slot"><img src="alternatives-v1/06-plinth.png" width="32" height="32" alt=""></div>
+                  <figcaption>32 px</figcaption>
+                </figure>
+                <figure class="sample control-sample">
+                  <div class="sample-slot"><span class="control"><img src="alternatives-v1/06-plinth.png" width="24" height="24" alt=""></span></div>
+                  <figcaption>24 in 32</figcaption>
+                </figure>
+            </div>
+          </section>
+        </div>
+      </article>
+      </section>
+    </main>
+    <footer>
+      <p>A character exploration for Lattices.<br>Generated concept artwork. Behaviour is proposed in the notes; no app integration or animation.</p>
+      <nav aria-label="Study documents">
+        <a href="README.md">Lead notes & motion proposal</a>
+        <a href="prompt.txt">Lead prompt</a>
+        <a href="alternatives-v1/README.md">Alternative notes</a>
+        <a href="alternatives-v1/prompts.json">Alternative prompts</a>
+      </nav>
+    </footer>
+  </div>
+</body>
+</html>
