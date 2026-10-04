@@ -345,7 +345,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         do {
             let result: Any
             switch method {
-            case "system.hello": result = ["protocol": "2.0", "version": "2.0.0", "app": "Blink"]
+            case "system.hello":
+                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+                result = ["protocol": "2.0", "version": version, "app": "Blink"]
             case "placements.list": result = panelManager.placementList()
             case "notes.list":
                 result = await store.all().map { ["id": $0.id, "title": $0.title, "updated": ISO8601DateFormatter().string(from: $0.updatedAt)] }
