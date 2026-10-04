@@ -153,14 +153,26 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil; down = nil; payload = nil
         }
+        static func frontmost(in view: NSView, windowPoint: CGPoint) -> NSView? {
+            guard !view.isHiddenOrHasHiddenAncestor,
+                  view.visibleRect.contains(view.convert(windowPoint, from: nil)) else { return nil }
+            for child in view.subviews.reversed() {
+                if let hit = frontmost(in: child, windowPoint: windowPoint) { return hit }
+            }
+            if view is Source || view is OverviewDragShield.Shield { return view }
+            return nil
+        }
         func observe(_ event: NSEvent) -> NSEvent? {
             guard event.window === window, let model else { return event }
             switch event.type {
             case .leftMouseDown:
                 let point = convert(event.locationInWindow, from: nil)
+                down = nil; payload = nil
+                // SwiftUI hit-tests its NSHostingView, not a background representable's
+                // parent. Resolve the frontmost visible source in AppKit paint order.
                 if visibleRect.contains(point), !isHiddenOrHasHiddenAncestor,
-                   let hit = window?.contentView?.hitTest(window!.contentView!.convert(event.locationInWindow, from: nil)),
-                   let parent = superview, hit === parent || hit.isDescendant(of: parent) {
+                   let root = window?.contentView,
+                   Self.frontmost(in: root, windowPoint: event.locationInWindow) === self {
                     down = event; payload = model.membershipDrag(wid)
                 }
             case .leftMouseUp: down = nil; payload = nil
@@ -201,4 +213,13 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
             model?.activeDrag = nil
         }
     }
+}
+
+/// A floating control surface must never arm a window tile behind it.
+struct OverviewDragShield: NSViewRepresentable {
+    final class Shield: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+    func makeNSView(context: Context) -> Shield { Shield() }
+    func updateNSView(_ view: Shield, context: Context) {}
 }

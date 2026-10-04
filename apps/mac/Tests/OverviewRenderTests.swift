@@ -281,7 +281,7 @@ final class OverviewRenderTests: XCTestCase {
             var differing = 0
             // Inside the left display map, below the floating controls and
             // above the tray. The right-hand selected window is elsewhere.
-            for y in stride(from: 165, to: Int(height - OverviewTray.height - OverviewStage.hintHeight - 12), by: 2) {
+            for y in stride(from: 165, to: Int(height - OverviewTray.height - OverviewStage.hintHeight - 92), by: 2) {
                 for x in stride(from: 240, to: min(380, Int(width * 0.38)), by: 2) {
                     if plain.colorAt(x: x, y: y) != overlay.colorAt(x: x, y: y) { differing += 1 }
                 }
@@ -342,6 +342,73 @@ final class OverviewRenderTests: XCTestCase {
     func testWideSidebar() throws { try render("wide-sidebar", width: 1590, height: 688, sidebar: true) }
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
 
+
+    func testDeskPassEvidence() throws {
+        try render("desk-toolbar-strip", width: 1590, height: 688, sidebar: false) { $0.select(2) }
+        try render("desk-pinned-display", width: 1590, height: 688, sidebar: false) { $0.pinDisplay(2); $0.select(2) }
+        try render("desk-hidden-display", width: 1590, height: 688, sidebar: false) { $0.hideDisplay(2) }
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else { throw XCTSkip("Set OVERVIEW_RENDER_DIR") }
+        let suite = "desk.snap-render." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, actions: RenderActions(), inputs: inputs())
+        let monitor = try XCTUnwrap(model.projection.desk.first { $0.display.displayId == 2 })
+        let space = try XCTUnwrap(monitor.spaces.first)
+        let size = CGSize(width: 700, height: 320)
+        let view = OverviewMap(model: model, display: monitor.display, space: space, size: size, quiet: false)
+            .modifier(OverviewScreenDrop(model: model, display: monitor.display, spaceId: space.spaceId, mapSize: size, preview: .left))
+            .padding(20).background(Palette.bg).environment(\.colorScheme, .dark)
+        let host = NSHostingView(rootView: view)
+        host.frame = CGRect(x: 0, y: 0, width: 740, height: 360)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua); window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("desk-screen-snap-hover.png"))
+        _ = window
+    }
+
+    func testDeskDragSourceHonorsFrontmostTileAndToolbarShield() {
+        let root = NSView(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+        let window = NSWindow(contentRect: root.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = root
+        let back = OverviewImmediateDragSource.Source(frame: root.bounds)
+        let front = OverviewImmediateDragSource.Source(frame: root.bounds)
+        root.addSubview(back); root.addSubview(front)
+        let point = CGPoint(x: 100, y: 100)
+        XCTAssertTrue(OverviewImmediateDragSource.Source.frontmost(in: root, windowPoint: point) === front)
+        let shield = OverviewDragShield.Shield(frame: root.bounds)
+        root.addSubview(shield)
+        XCTAssertTrue(OverviewImmediateDragSource.Source.frontmost(in: root, windowPoint: point) === shield)
+        shield.isHidden = true
+        XCTAssertTrue(OverviewImmediateDragSource.Source.frontmost(in: root, windowPoint: point) === front)
+        front.isHidden = true
+        XCTAssertTrue(OverviewImmediateDragSource.Source.frontmost(in: root, windowPoint: point) === back)
+    }
+
+    func testDeskNativeRowArmsDragWithoutLongPress() throws {
+        let suite = "desk.source." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, actions: RenderActions(), inputs: inputs())
+        let row = try XCTUnwrap(model.projection.all[1])
+        let host = NSHostingView(rootView: OverviewDeskRow(model: model, row: row, showsUnknown: false))
+        host.frame = CGRect(x: 0, y: 0, width: 500, height: 40)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        func source(_ view: NSView) -> OverviewImmediateDragSource.Source? {
+            (view as? OverviewImmediateDragSource.Source) ?? view.subviews.lazy.compactMap(source).first
+        }
+        let native = try XCTUnwrap(source(host))
+        let point = native.convert(CGPoint(x: native.bounds.midX, y: native.bounds.midY), to: nil)
+        let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: point,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        _ = native.observe(event)
+        XCTAssertEqual(native.payload?.windows, [1], "An ordinary row mouse-down must arm the native drag source")
+    }
 
     func testDragPassEvidence() throws {
         guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {

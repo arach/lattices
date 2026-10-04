@@ -259,3 +259,86 @@ The read-only audit before and after these dev launches matched:
 workspace SHA-256 `d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`,
 mtime (seconds) `1791063065`. This is this pass's baseline, not the older
 historical baselines above.
+
+## Direct screen drops, movable toolbar, and display pin/hide
+
+### Exact user paths
+
+- Drag a tile, tray row, or All windows row directly onto any ordinary desktop
+  thumbnail. The whole thumbnail accepts the selection, not just a chip in the
+  layer-scoped strip. One batch receipt reports the outcome.
+- Drag onto a large display map to move **and** place in one verified relocation.
+  The top fifth previews Full; the middle previews left/right halves; the bottom
+  previews left/middle/right thirds. The green rectangle is the same normalized
+  PlacementSpec geometry used for execution. The hover label names the desktop
+  and placement. Compact pinned-column maps are targets too.
+- A large-map drop on a last-known desktop does not require Back to live. The
+  existing runtime verifies destination membership and geometry, then the app
+  requests and verifies switching to that desktop. A switch failure explicitly
+  says that placement happened but the desktop could not be shown. Full-screen
+  Spaces, unavailable windows, hidden apps, and stale destinations report why
+  they cannot accept the operation. Thumbnail-only moves do not switch views.
+- Select a window: its action toolbar defaults to the reserved strip beneath
+  the display maps and above the tray. Drag the left grip to reposition it
+  anywhere within Overview. Double-click the grip to reset. The toolbar is
+  clamped to the visible area, horizontally scrolls when needed, and remembers
+  positions by content size, with a clamped last-position fallback on resize.
+- Click a display header's pin to give it the main area, with other displays
+  stacked in a compact column. Click again to unpin. Click the crossed-out eye
+  to hide a display; click its `Display name · hidden` chip to restore it.
+  Pinning a hidden display restores it; hiding the pinned display unpins it.
+  These choices and toolbar positions use UserDefaults only, never workspace.json.
+
+### Drag-source diagnosis and regression
+
+A hosted native row test reproduced the previous drag failure before changing
+its hit logic. The native source's parent was an AppKitPlatformViewHost, while
+SwiftUI hit-testing returned the containing NSHostingView. The old descendant
+check rejected mouse-down, leaving the payload nil. The diagnostic failure is
+in `/tmp/lattices-desk-source-trace.log`; the same test passes after the fix in
+`/tmp/lattices-desk-source-verify.log`. The source now resolves the frontmost
+visible drag source in AppKit view order, rather than requiring the hosting
+view to be a descendant of its background wrapper. Floating controls have a
+transparent drag shield so they cannot arm a tile behind them. Tests cover
+source arming, overlapping sources, shields, and hidden source rejection.
+
+No real desktop/window mutation was used for diagnosis. Full native pointer
+tracking still needs hand acceptance; these are event/hosted-view regressions,
+not evidence of a successful live drag.
+
+### Evidence
+
+Fixture screenshots (not live desktop edits):
+- `EditorSlice1LiveEvidence/desk-screen-snap-hover.png`
+- `EditorSlice1LiveEvidence/desk-toolbar-strip.png`
+- `EditorSlice1LiveEvidence/desk-pinned-display.png`
+- `EditorSlice1LiveEvidence/desk-hidden-display.png`
+
+Tests cover snap zones and canonical placement geometry, current/last-known
+screen drops through WindowRelocation environment fakes, foreign payload
+rejection, toolbar clamping, per-size keys, and pin/hide persistence in unique
+UserDefaults suites. Existing no-shift pixel tests now sample only the map
+region, excluding the newly reserved toolbar strip, and pass with selection
+and error state changes.
+
+Final verification: **480 app tests, 13 conditional skips, zero failures** with
+all Overview fixture renders enabled; **22 Swift package tests passed**;
+`bun run test` passed (47 CLI tests, one skip; 9 Bun tests); `check:types` passed.
+The design scan and `git diff --check` are clean. Logs are
+`/tmp/lattices-desk-final-tests.log`, `/tmp/lattices-desk-packages.log`,
+`/tmp/lattices-desk-bun.log`, `/tmp/lattices-desk-types.log`, and
+`/tmp/lattices-desk-dev-final.log`.
+
+Remaining hand acceptance: actual pointer drags from all three sources,
+multi-selection, hovering and dropping on ordinary and compact maps, last-known
+desktop switching/placement, toolbar grip/reset/resize, and persisted pin/hide
+choices after app restart. No live window relocation or workspace edit was
+issued during these tests.
+
+Dev build/install/restart passed with `LATTICES_HUDSON_PATH=/Users/arach/dev/hudson`
+and Xcode's Swift toolchain on PATH. Running dev bundle is
+`/Users/arach/Applications/dev/Lattices/Lattices.app`, `dev.lattices.app.dev`,
+PID 58000. The release app was not rebuilt or relaunched. The workspace file's
+SHA-256 and mtime remain the pre-launch values:
+`d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`,
+`1791063065` seconds.

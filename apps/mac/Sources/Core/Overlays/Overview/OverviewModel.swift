@@ -12,12 +12,19 @@ protocol OverviewActions {
     /// Relocates to an explicit display and Space. Slow: calls
     /// `completion` on the main queue with nil, or why it failed.
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void)
+    func moveAndPlace(wid: UInt32, pid: Int32, destination: OverviewMoveDestination, snap: OverviewSnap, completion: @escaping (String?) -> Void)
     /// Writes the layer's layout and tucked lists. Never activates it.
     /// Resolves `plan.layerId` again, so a reorder can't edit another layer.
     func saveLayer(_ plan: LayerEditPlan) throws
     /// Runs the switch of `layerId` if it is still the active layer, which
     /// moves its windows.
     func rearrange(layerId: String) throws
+}
+
+extension OverviewActions {
+    func moveAndPlace(wid: UInt32, pid: Int32, destination: OverviewMoveDestination, snap: OverviewSnap, completion: @escaping (String?) -> Void) {
+        completion("Placement is unavailable in this environment")
+    }
 }
 
 enum OverviewEditError: LocalizedError, Equatable {
@@ -105,6 +112,14 @@ struct LiveOverviewActions: OverviewActions {
     }
 
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void) {
+        relocate(wid: wid, spaceId: spaceId, displayId: displayId, snap: nil, completion: completion)
+    }
+
+    func moveAndPlace(wid: UInt32, pid: Int32, destination: OverviewMoveDestination, snap: OverviewSnap, completion: @escaping (String?) -> Void) {
+        relocate(wid: wid, spaceId: destination.spaceId, displayId: destination.displayId, snap: snap, completion: completion)
+    }
+
+    private func relocate(wid: UInt32, spaceId: Int, displayId: UInt32, snap: OverviewSnap?, completion: @escaping (String?) -> Void) {
         // Overview indices follow NSScreen order, not SkyLight API order.
         // Resolve the exact CG display identity again before dispatching.
         guard let display = WindowTiler.displaySpaces(forDisplayID: displayId, in: WindowTiler.getDisplaySpaces()),
@@ -112,13 +127,17 @@ struct LiveOverviewActions: OverviewActions {
             completion("Destination display or desktop changed; refresh and retry")
             return
         }
-        let params = JSON.object(["wid": .int(Int(wid)), "display": .int(display.displayIndex),
-                                  "spaceId": .int(spaceId)])
+        var fields: [String: JSON] = ["wid": .int(Int(wid)), "display": .int(display.displayIndex), "spaceId": .int(spaceId)]
+        if let snap { fields["placement"] = .string(snap.placement) }
+        let params = JSON.object(fields)
         DispatchQueue.global(qos: .userInitiated).async {
-            let failure: String?
+            var failure: String?
             do {
                 let receipt = try ActionRuntime.shared.executeWindowMove(params: params, source: "app.overview")
                 failure = WindowMovementService.failureMessage(for: receipt)
+                if failure == nil, snap != nil, !WindowTiler.switchToSpace(spaceId: spaceId) {
+                    failure = "Window was placed, but Desktop could not be shown. Select that Desktop in Mission Control."
+                }
             } catch { failure = error.localizedDescription }
             DispatchQueue.main.async { completion(failure) }
         }
@@ -180,6 +199,13 @@ final class OverviewModel: ObservableObject {
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
     let membershipDragSession = UUID().uuidString
+    @Published var deskPreferences = OverviewDeskPreferences()
+    func saveDeskPreferences() {
+        if let data = try? JSONEncoder().encode(deskPreferences) { defaults.set(data, forKey: OverviewDeskPreferences.key) }
+    }
+    func pinDisplay(_ id: UInt32) { deskPreferences.togglePin(id); saveDeskPreferences() }
+    func hideDisplay(_ id: UInt32) { deskPreferences.hide(id); saveDeskPreferences() }
+    func restoreDisplay(_ id: UInt32) { deskPreferences.hidden.remove(id); saveDeskPreferences() }
     @Published var activeDrag: OverviewMembershipDrag?
     @Published var composition: OverviewComposition?
     @Published var compositionNotice: String?
@@ -307,6 +333,7 @@ final class OverviewModel: ObservableObject {
         inputs: OverviewProjection.Inputs? = nil
     ) {
         self.defaults = defaults
+        self.deskPreferences = OverviewDeskPreferences.load(defaults)
         self.actions = actions
         self.scope = OverviewScope.load(from: defaults)
         self.membershipLayerId = defaults.string(forKey: Self.membershipLayerKey)
@@ -805,7 +832,7 @@ final class OverviewModel: ObservableObject {
     }
 
     /// Reserve the complete batch so another action cannot interleave its relocations.
-    func moveDragged(_ drag: OverviewMembershipDrag, to destination: OverviewMoveDestination) {
+    func moveDragged(_ drag: OverviewMembershipDrag, to destination: OverviewMoveDestination, snap: OverviewSnap? = nil) {
         guard drag.session == membershipDragSession, !drag.windows.isEmpty,
               drag.windows.count <= 512, moving.isEmpty else { return }
         let ids = Array(Set(drag.windows)).sorted()
@@ -817,21 +844,31 @@ final class OverviewModel: ObservableObject {
         func next(_ index: Int) {
             guard index < ids.count else {
                 moving.removeAll()
-                compositionNotice = "Moved \(succeeded) windows to Desktop \(destination.desktop)" +
+                compositionNotice = "Moved \(succeeded) windows to Desktop \(destination.desktop)" + (snap.map { " · " + $0.label } ?? "") +
                     (failures.isEmpty ? "" : "; " + failures.joined(separator: "; "))
                 return
             }
             let wid = ids[index]
-            guard let row = projection.all[wid], projection.moveTargets(for: wid).contains(destination) else {
-                failures.append("Window \(wid): window or destination unavailable (or already there)")
+            guard let row = projection.all[wid] else {
+                failures.append("Window \(wid) is no longer available")
                 next(index + 1); return
             }
-            actions.moveToSpace(wid: wid, pid: row.pid, spaceId: destination.spaceId,
-                                displayId: destination.displayId) { failure in
+            if let reason = OverviewProjection.moveExclusion(row) {
+                failures.append("\(row.app) · \(row.title): \(reason.label); restore the window and retry")
+                next(index + 1); return
+            }
+            guard projection.displays.contains(where: { OverviewWindowDrop.destination(on: $0, spaceId: destination.spaceId) == destination }),
+                  snap != nil || projection.moveTargets(for: wid).contains(destination) else {
+                failures.append("\(row.app) · \(row.title): destination changed or window is already there")
+                next(index + 1); return
+            }
+            let completion: (String?) -> Void = { failure in
                 if let failure { failures.append("\(row.app) · \(row.title): \(failure)") }
                 else { succeeded += 1 }
                 next(index + 1)
             }
+            if let snap { actions.moveAndPlace(wid: wid, pid: row.pid, destination: destination, snap: snap, completion: completion) }
+            else { actions.moveToSpace(wid: wid, pid: row.pid, spaceId: destination.spaceId, displayId: destination.displayId, completion: completion) }
         }
         next(0)
     }

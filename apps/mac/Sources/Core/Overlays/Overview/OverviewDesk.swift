@@ -25,7 +25,7 @@ struct OverviewCapsuleAnchorKey: PreferenceKey {
 struct OverviewStage: View {
     @ObservedObject var model: OverviewModel
 
-    static let headHeight: CGFloat = 16
+    static let headHeight: CGFloat = 26
     static let spacing: CGFloat = 8
     static let captionHeight: CGFloat = 12
     static let displayGap: CGFloat = 36
@@ -76,28 +76,55 @@ struct OverviewStage: View {
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
-                let layout = Self.layout(model.projection.desk, in: geo.size)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: Self.displayGap) {
-                        ForEach(Array(model.projection.desk.enumerated()), id: \.element.id) { index, monitor in
-                            OverviewDisplayBlock(
-                                model: model, monitor: monitor,
-                                mapSize: layout.maps[index], thumbSize: layout.thumbs[index],
-                                quiet: model.workingRows.isEmpty
-                            )
+                let visible = model.projection.desk.filter { !model.deskPreferences.hidden.contains($0.display.displayId) }
+                let pinned = visible.first { $0.display.displayId == model.deskPreferences.pinned }
+                if let pinned {
+                    let others = visible.filter { $0.id != pinned.id }
+                    let room = CGSize(width: max(260, geo.size.width - (others.isEmpty ? 0 : 224)), height: geo.size.height)
+                    let layout = Self.layout([pinned], in: room)
+                    HStack(alignment: .top, spacing: 24) {
+                        OverviewDisplayBlock(model: model, monitor: pinned, mapSize: layout.maps[0], thumbSize: layout.thumbs[0], quiet: false)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if !others.isEmpty {
+                            ScrollView(.vertical, showsIndicators: true) {
+                                VStack(spacing: 18) {
+                                    ForEach(others) { monitor in
+                                        let aspect = max(0.1, monitor.display.bounds.width / max(1, monitor.display.bounds.height))
+                                        OverviewDisplayBlock(model: model, monitor: monitor,
+                                            mapSize: CGSize(width: 196, height: min(125, 196 / aspect)),
+                                            thumbSize: CGSize(width: 44, height: 44 / aspect), quiet: true)
+                                    }
+                                }
+                            }.frame(width: 200)
                         }
                     }
-                    .frame(minWidth: geo.size.width, minHeight: geo.size.height)
-                }
-                .overlay {
-                    if model.workingRows.isEmpty, !model.projection.desk.isEmpty {
-                        OverviewEmptyScope(model: model)
+                } else {
+                    let layout = Self.layout(visible, in: geo.size)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: Self.displayGap) {
+                            ForEach(Array(visible.enumerated()), id: \.element.id) { index, monitor in
+                                OverviewDisplayBlock(model: model, monitor: monitor,
+                                    mapSize: layout.maps[index], thumbSize: layout.thumbs[index], quiet: model.workingRows.isEmpty)
+                            }
+                        }.frame(minWidth: geo.size.width, minHeight: geo.size.height)
                     }
                 }
             }
             .padding(.horizontal, 24)
             .padding(.top, 14)
             .padding(.bottom, 4)
+            if !model.deskPreferences.hidden.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(model.projection.desk.filter { model.deskPreferences.hidden.contains($0.display.displayId) }) { monitor in
+                        Button { model.restoreDisplay(monitor.display.displayId) } label: {
+                            Label(monitor.display.name + " · hidden", systemImage: "eye.slash")
+                        }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.text)
+                            .padding(7).background(Palette.surface).clipShape(RoundedRectangle(cornerRadius: 5))
+                            .help("Show " + monitor.display.name)
+                    }
+                    Spacer()
+                }.padding(.horizontal, 24).padding(.vertical, 4)
+            }
             Group {
                 if let edit = model.editing {
                     OverviewDraftBar(model: model, edit: edit)
@@ -149,7 +176,7 @@ struct OverviewDisplayBlock: View {
             if let viewed {
                 OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
                     .opacity(scopedOut ? 0.55 : 1)
-                    .modifier(OverviewWindowDropTarget(model: model, display: monitor.display, spaceId: viewed.spaceId))
+                    .modifier(OverviewScreenDrop(model: model, display: monitor.display, spaceId: viewed.spaceId, mapSize: mapSize))
             }
             desktops
         }
@@ -180,11 +207,20 @@ struct OverviewDisplayBlock: View {
                 name.lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 6)
-            Text(state)
+            if mapSize.width > 320 { Text(state)
                 .font(Typo.mono(9))
                 .foregroundColor(viewed?.isCurrent == false ? Palette.text : Palette.textDim)
                 .lineLimit(1)
-                .fixedSize()
+                .fixedSize() }
+            Button { model.pinDisplay(monitor.display.displayId) } label: {
+                Image(systemName: model.deskPreferences.pinned == monitor.display.displayId ? "pin.fill" : "pin")
+                    .frame(width: 24, height: 24)
+            }.buttonStyle(.plain).help("Pin " + monitor.display.name)
+                .accessibilityLabel("Pin " + monitor.display.name)
+            Button { model.hideDisplay(monitor.display.displayId) } label: {
+                Image(systemName: "eye.slash").frame(width: 24, height: 24)
+            }.buttonStyle(.plain).help("Hide " + monitor.display.name)
+                .accessibilityLabel("Hide " + monitor.display.name)
         }
     }
 
@@ -244,7 +280,7 @@ struct OverviewDisplayBlock: View {
         .buttonStyle(.plain)
         .help(focused ? "\(space.title) on \(monitor.display.name) · click for every Desktop" : "\(space.title) on \(monitor.display.name), \(state)")
         .accessibilityLabel("\(space.title) on \(monitor.display.name), \(state), \(count == 0 ? "nothing in scope" : "\(count) in scope")")
-        .modifier(OverviewWindowDropTarget(model: model, display: monitor.display, spaceId: space.spaceId))
+        .modifier(OverviewScreenDrop(model: model, display: monitor.display, spaceId: space.spaceId))
         .accessibilityHint(focused ? "Show every Desktop" : "Focus the list on this Desktop")
         .accessibilityAddTraits(focused ? .isSelected : [])
     }
@@ -294,8 +330,8 @@ struct OverviewMap: View {
     /// Why this Desktop's windows can't be acted on, and the way back.
     private var peekBar: some View {
         let text = space.desktop == nil
-            ? "Full screen, not showing. Nothing here can be placed."
-            : "\(space.title) — last known positions. Not live, so nothing here can be placed or arranged."
+            ? "Full-screen Space · drop on an ordinary Desktop instead."
+            : "\(space.title) · last known positions"
         return HStack(spacing: 8) {
             Image(systemName: "eye")
                 .font(.system(size: 9))
@@ -306,10 +342,6 @@ struct OverviewMap: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            Button("Back to live") { model.chooseDesktop(nil) }
-                .buttonStyle(.overview(height: 22))
-                .fixedSize()
-                .help("Every Desktop again; each map shows what its monitor is showing")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)

@@ -35,6 +35,14 @@ struct OverviewView: View {
             }
             deskBody
         }
+        .overlayPreferenceValue(OverviewToolbarAnchorKey.self) { anchor in
+            GeometryReader { geo in
+                if model.focusedWid != nil {
+                    OverviewFloatingToolbar(model: model, room: geo.size,
+                        home: anchor.map { geo[$0].origin } ?? CGPoint(x: 244, y: max(0, geo.size.height - 224)))
+                }
+            }
+        }
         .onReceive(indexTimer) { _ in
             guard live else { return }
             _ = try? index.snapshot()
@@ -58,27 +66,18 @@ struct OverviewView: View {
             Divider().overlay(Palette.border)
             VStack(spacing: 0) {
                 stage
+                VStack(spacing: 0) {
+                    Spacer(minLength: 48)
+                    HStack {
+                        Text(!model.moving.isEmpty ? "Moving windows…" : model.actionError ?? model.compositionNotice ?? "")
+                            .font(.system(size: 11)).foregroundStyle(Palette.text).lineLimit(2)
+                        Spacer()
+                    }.padding(.horizontal, 12).frame(height: 28)
+                }
+                .frame(height: 80)
+                .anchorPreference(key: OverviewToolbarAnchorKey.self, value: .bounds) { $0 }
                 Divider().overlay(Palette.border)
                 OverviewTray(model: model)
-            }
-            .overlay(alignment: .topLeading) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if model.focusedWid != nil {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            OverviewCapsule(model: model).padding(6)
-                        }
-                        .frame(height: 44)
-                    }
-                    if let notice = model.actionError ?? model.compositionNotice {
-                        Text(notice).font(.caption).foregroundColor(Palette.text)
-                            .padding(8).background(Palette.surface)
-                    }
-                    if !model.moving.isEmpty {
-                        Text("Moving window…").font(.caption).foregroundColor(Palette.text)
-                            .padding(8).background(Palette.surface)
-                    }
-                }
-                .padding(8)
             }
             // The list lies over the stage and tray, under the scope bar
             // and its toggle; opening or closing it moves nothing.
@@ -88,6 +87,7 @@ struct OverviewView: View {
                         .frame(width: 300)
                         .frame(maxHeight: .infinity)
                         .background(Palette.bg)
+                        .background(OverviewDragShield())
                         .overlay(alignment: .leading) {
                             Rectangle().fill(Palette.borderLit).frame(width: 1)
                         }
@@ -309,6 +309,59 @@ struct OverviewView: View {
 /// layer; many windows tile or distribute from the box below.
 /// The menu owner remains mounted while selection survives. Anchor preferences
 /// can disappear during projection refresh or when a list row is off canvas.
+private struct OverviewFloatingToolbar: View {
+    @ObservedObject var model: OverviewModel
+    let room: CGSize
+    let home: CGPoint
+    @State private var contentWidth: CGFloat = 740
+    @State private var dragged: CGPoint?
+    @State private var start: CGPoint?
+    private var size: CGSize { CGSize(width: min(max(0, room.width - 16), contentWidth + 36), height: 44) }
+    private var origin: CGPoint {
+        let saved = model.deskPreferences.toolbar[OverviewDeskPreferences.sizeKey(room)] ?? model.deskPreferences.lastToolbar
+        return OverviewDeskPreferences.clamp(dragged ?? saved ?? CGPoint(x: home.x + 8, y: home.y + 4), toolbar: size, room: room)
+    }
+    var body: some View {
+        HStack(spacing: 0) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 12)).foregroundStyle(Palette.textDim)
+                .frame(width: 28, height: 40).contentShape(Rectangle())
+                .help("Drag toolbar · double-click to reset")
+                .accessibilityLabel("Move toolbar; double-click to reset")
+                .onTapGesture(count: 2) {
+                    model.deskPreferences.toolbar.removeValue(forKey: OverviewDeskPreferences.sizeKey(room))
+                    model.deskPreferences.lastToolbar = nil
+                    dragged = nil; start = nil
+                    model.saveDeskPreferences()
+                }
+                .gesture(DragGesture(minimumDistance: 3)
+                    .onChanged { value in
+                        if start == nil { start = origin }
+                        if let start { dragged = CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height) }
+                    }
+                    .onEnded { _ in
+                        model.deskPreferences.toolbar[OverviewDeskPreferences.sizeKey(room)] = origin
+                        model.deskPreferences.lastToolbar = origin
+                        model.saveDeskPreferences()
+                        dragged = nil; start = nil
+                    })
+            ScrollView(.horizontal, showsIndicators: false) {
+                OverviewCapsule(model: model)
+                    .background(GeometryReader { geo in
+                        Color.clear.onAppear { contentWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, width in contentWidth = width }
+                    })
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .background(Palette.surface)
+        .background(OverviewDragShield())
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.borderLit, lineWidth: 1))
+        .offset(x: origin.x, y: origin.y)
+    }
+}
+
 private struct OverviewCapsule: View {
     @ObservedObject var model: OverviewModel
 
