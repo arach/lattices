@@ -122,7 +122,7 @@ private struct OverviewScreenDropDelegate: DropDelegate {
     }
     private func update(_ info: DropInfo) { snap = size.flatMap { OverviewSnap.at(info.location, in: $0) } }
     func performDrop(info: DropInfo) -> Bool {
-        OverviewDragProbe.log("screen-performDrop")
+        OverviewDragProbe.log("screen-performDrop display=\(display.displayId) target=\(spaceId) kind=\(size == nil ? "thumbnail" : "map") busy=\(!model.moving.isEmpty)")
         let zone = size.flatMap { OverviewSnap.at(info.location, in: $0) }
         targeted = false; snap = nil
         guard model.moving.isEmpty else { return false }

@@ -52,6 +52,7 @@ struct OverviewWindowDropTarget: ViewModifier {
                     }
                 }
                 .onDrop(of: [OverviewWindowDragPayload.type], isTargeted: $isTargeted) { providers in
+                    OverviewDragProbe.log("legacy-drop display=\(destination.displayId) target=\(destination.spaceId) providers=\(providers.count)")
                     guard providers.count == 1, let provider = providers.first,
                           model.moving.isEmpty else { return false }
                     provider.loadDataRepresentation(forTypeIdentifier: OverviewWindowDragPayload.type) { data, _ in
@@ -75,6 +76,7 @@ struct OverviewWindowDropTarget: ViewModifier {
 extension OverviewModel {
     @discardableResult
     func receiveWindowDrop(_ payloads: [OverviewWindowDragPayload], to destination: OverviewMoveDestination) -> Bool {
+        DiagnosticLog.shared.info("OverviewMove: source=legacy-drop windows=\(payloads.map(\.wid)) target=\(destination.spaceId) attempt")
         guard let wid = OverviewWindowDrop.window(from: payloads, session: membershipDragSession,
                 to: destination, projection: projection, moving: moving) else {
             rejectMove("Window or destination changed, or a move is in progress; refresh and retry")

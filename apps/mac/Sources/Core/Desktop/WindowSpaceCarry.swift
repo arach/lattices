@@ -22,6 +22,11 @@ enum WindowSpaceCarry {
         case failed(String)
     }
 
+    static func sameDisplay(from: [Int], to target: Int, desktopGroups: [[Int]]) -> Bool {
+        guard from.count == 1, let source = from.first else { return false }
+        return desktopGroups.contains { $0.contains(source) && $0.contains(target) }
+    }
+
     static func carry(wid: UInt32, pid: pid_t, to target: Int) -> Outcome {
         precondition(!Thread.isMainThread, "WindowSpaceCarry blocks; run it off the main thread")
         guard WindowRelocationGate.lock.try() else {
@@ -74,6 +79,7 @@ enum WindowSpaceCarry {
         guard openMissionControl(windowManager) else {
             return .failed("Mission Control didn't open")
         }
+        diag.info("WindowSpaceCarry: wid=\(wid) source=\(source) target=\(target) Mission Control opened")
         defer { closeMissionControl(windowManager) }
         var thumb = home
         let openedAt = Date()
@@ -201,7 +207,11 @@ enum WindowSpaceCarry {
         let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
         let config = NSWorkspace.OpenConfiguration()
         config.activates = false
-        NSWorkspace.shared.openApplication(at: url, configuration: config)
+        DispatchQueue.main.async {
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+                if let error { DiagnosticLog.shared.warn("WindowSpaceCarry: Mission Control launch failed: \(error.localizedDescription)") }
+            }
+        }
     }
 
     private static func spacesBar(_ windowManager: AXUIElement, containing point: CGPoint) -> SpacesBar? {

@@ -114,9 +114,17 @@ final class ActionRuntime {
     /// The UI, API, and placement actions share one serialized relocation.
     /// Display and absolute Space ID identify a single destination together.
     func executeWindowMove(params: JSON?, source: String = "daemon") throws -> JSON {
-        let receipt = try executeWindowRelocation(params: params, source: source)
-        history.record(receipt)
-        return receipt
+        let log = DiagnosticLog.shared
+        log.info("WindowRelocation: source=\(source) wid=\(params?["wid"]?.intValue ?? -1) target=\(params?["spaceId"]?.intValue ?? -1) method=relocation attempt")
+        do {
+            let receipt = try executeWindowRelocation(params: params, source: source)
+            history.record(receipt)
+            log.info("WindowRelocation: source=\(source) wid=\(params?["wid"]?.intValue ?? -1) target=\(params?["spaceId"]?.intValue ?? -1) outcome=\(receipt["status"]?.stringValue ?? "unknown") reason=\(WindowMovementService.failureMessage(for: receipt) ?? "verified")")
+            return receipt
+        } catch {
+            log.warn("WindowRelocation: source=\(source) wid=\(params?["wid"]?.intValue ?? -1) target=\(params?["spaceId"]?.intValue ?? -1) outcome=failed reason=\(error.localizedDescription)")
+            throw error
+        }
     }
 
     // Mission Control owns one global drag session, so concurrent requests must
@@ -309,9 +317,21 @@ final class ActionRuntime {
             moveSpace: { [self] space in
                 let from = WindowTiler.getSpacesForWindow(wid)
                 if from == [space] { return nil }
-                let result = onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
-                if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
-                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space) { return reason }
+                // The relocation gate is recursive: carry joins this transaction.
+                // Never try the silently denied CGS call for same-display desktops.
+                let sameDisplay = WindowSpaceCarry.sameDisplay(from: from, to: space,
+                    desktopGroups: WindowTiler.getDisplaySpaces().map { $0.spaces.map(\.id) })
+                if !sameDisplay {
+                    DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) source=\(from) target=\(space) method=CGS cross-display attempt")
+                    let result = onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
+                    if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
+                }
+                DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) source=\(from) target=\(space) method=WindowSpaceCarry attempt")
+                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space) {
+                    DiagnosticLog.shared.warn("WindowRelocation: wid=\(wid) target=\(space) method=WindowSpaceCarry outcome=failed reason=\(reason)")
+                    return reason
+                }
+                DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) target=\(space) method=WindowSpaceCarry outcome=moved")
                 return nil
             },
             moveFrame: { [self] frame in

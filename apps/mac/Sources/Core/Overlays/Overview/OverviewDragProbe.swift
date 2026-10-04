@@ -8,6 +8,7 @@ enum OverviewDragProbe {
     static var current = ""
     static var folder: URL?
     static func log(_ event: String) {
+        if !event.contains("screen-validate") { DiagnosticLog.shared.info("OverviewDrag: \(current) \(event)") }
         guard enabled else { return }
         events.append(current + ": " + event)
         if let folder { try? events.joined(separator: "\n").write(to: folder.appendingPathComponent("trace.log"), atomically: true, encoding: .utf8) }
@@ -40,6 +41,7 @@ final class OverviewDragFixture {
         guard path.path.hasPrefix("/private/tmp/") || path.path.hasPrefix("/tmp/") else { exit(2) }
         try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
         OverviewDragProbe.folder = path; OverviewDragProbe.enabled = true
+        if CommandLine.arguments.contains("--overview-carry-live") { OverviewCarryLiveProbe.start(); return true }
         let instance = OverviewDragFixture(); retained = instance; instance.startWindow()
         return true
     }

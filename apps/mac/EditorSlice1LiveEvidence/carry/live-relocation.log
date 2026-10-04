@@ -1,0 +1,48 @@
+13:07:01.597 › [info] OverviewDrag:  LIVE test-only wid=212290 pid=60680 source=4 next=5 initialViews=[4, 2326, 2377]
+13:07:03.249 › [info] OverviewDrag: live-out-thumbnail CGEvent wid=212290 from=(365.0, 862.0) to=(568.1, 1044.4) target=5
+13:07:03.467 › [info] OverviewDrag: live-out-thumbnail armed wid=212290 source=4
+13:07:03.617 › [info] OverviewDrag: live-out-thumbnail native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+13:07:05.376 › [info] OverviewDrag: live-out-thumbnail screen-performDrop display=2 target=5 kind=thumbnail busy=false
+13:07:05.378 › [info] OverviewDrag: live-out-thumbnail providers dev.lattices.overview-membership
+13:07:05.385 › [info] OverviewDrag: live-out-thumbnail decoded-payload windows=[212290]
+13:07:05.386 › [info] OverviewMove: source=drop windows=[212290] target=5 display=2 snap=none attempt
+13:07:05.386 › [info] OverviewMove: source=drop target=5 waiting-for-native-drag-end
+13:07:05.704 › [info] OverviewDrag: live-out-thumbnail native-end operation=16
+13:07:05.727 › [info] WindowRelocation: source=app.overview wid=212290 target=5 method=relocation attempt
+13:07:05.751 › [info] WindowRelocation: wid=212290 display=0 spaces=[4] → display=0 space=5
+13:07:05.755 › [info] WindowRelocation: wid=212290 source=[4] target=5 method=WindowSpaceCarry attempt
+13:07:05.909 › [info] WindowSpaceCarry: wid=212290 source=4 target=5 Mission Control opened
+13:07:06.440 › [info] WindowSpaceCarry: wid=212290 4 → 5 (Space 4 of 6)
+13:07:08.315 ✓ [success] WindowSpaceCarry: wid=212290 now on [5]
+13:07:08.386 › [info] WindowRelocation: wid=212290 target=5 method=WindowSpaceCarry outcome=moved
+13:07:08.583 › [info] WindowRelocation: wid=212290 move desktop [4] → 5 on display 0
+13:07:08.583 › [info] WindowRelocation: wid=212290 verified display 0, desktop 5, and frame
+13:07:08.584 › [info] WindowRelocation: source=app.overview wid=212290 target=5 outcome=ok reason=verified
+13:07:08.584 › [info] OverviewMove: source=drop target=5 moved=1 failures=[]
+13:07:09.583 › [info] OverviewDrag: live-out-thumbnail LIVE result=["spaces": [5], "phase": 0, "wid": 212290, "receipt": "Moved TextEdit to Desktop 4", "viewsUnchanged": true, "passed": true, "target": 5]
+13:07:10.717 › [info] OverviewDrag: live-back-map CGEvent wid=212290 from=(540.5, 1242.0) to=(444.2, 916.85) target=4
+13:07:10.932 › [info] OverviewDrag: live-back-map armed wid=212290 source=5
+13:07:11.078 › [info] OverviewDrag: live-back-map native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+13:07:12.813 › [info] OverviewDrag: live-back-map screen-performDrop display=2 target=4 kind=map busy=false
+13:07:12.815 › [info] OverviewDrag: live-back-map providers dev.lattices.overview-membership
+13:07:12.820 › [info] OverviewDrag: live-back-map decoded-payload windows=[212290]
+13:07:12.820 › [info] OverviewMove: source=drop windows=[212290] target=4 display=2 snap=left attempt
+13:07:12.821 › [info] OverviewMove: source=drop target=4 waiting-for-native-drag-end
+13:07:13.126 › [info] OverviewDrag: live-back-map native-end operation=16
+13:07:13.146 › [info] WindowRelocation: source=app.overview wid=212290 target=4 method=relocation attempt
+13:07:13.164 › [info] WindowRelocation: wid=212290 display=0 spaces=[5] → display=0 space=4
+13:07:13.173 › [info] WindowRelocation: wid=212290 source=[5] target=4 method=WindowSpaceCarry attempt
+13:07:13.175 › [info] switchToSpace: requesting 5 on display 0 id=13B80324-05B6-42A8-A4E5-FEE4185BBC73 from 4
+13:07:13.399 › [info] switchToSpace: real path reached target 5 on display 0
+13:07:13.772 › [info] WindowSpaceCarry: wid=212290 source=5 target=4 Mission Control opened
+13:07:14.165 › [info] WindowSpaceCarry: wid=212290 5 → 4 (Space 3 of 6)
+13:07:16.525 ⚠ [warning] WindowSpaceCarry: wid=212290 stayed on [5]
+13:07:16.636 › [info] switchToSpace: requesting 4 on display 0 id=13B80324-05B6-42A8-A4E5-FEE4185BBC73 from 5
+13:07:17.031 › [info] switchToSpace: display 0 confirmed target 4
+13:07:17.057 ⚠ [warning] WindowRelocation: wid=212290 target=4 method=WindowSpaceCarry outcome=failed reason=the drop didn't take (window still on [5])
+13:07:17.073 › [info] WindowRelocation: wid=212290 stage source desktop 5 → 4
+13:07:17.073 › [info] WindowRelocation: wid=212290 failed: Source staging failed: the drop didn't take (window still on [5])
+13:07:17.073 › [info] WindowRelocation: wid=212290 original display, desktop, and frame are unchanged
+13:07:17.074 › [info] WindowRelocation: source=app.overview wid=212290 target=4 outcome=failed reason=Source staging failed: the drop didn't take (window still on [5]) The original display, desktop, and frame are unchanged.
+13:07:17.074 › [info] OverviewMove: source=drop target=4 moved=0 failures=["TextEdit · lattices-carry-test-1791133613.txt: Source staging failed: the drop didn\'t take (window still on [5]) The original display, desktop, and frame are unchanged."]
+13:07:18.067 › [info] OverviewDrag: live-back-map LIVE result=["passed": false, "receipt": "Moved 0 windows to Desktop 3 · left half; TextEdit · lattices-carry-test-1791133613.txt: Source staging failed: the drop didn\'t take (window still on [5]) The original display, desktop, and frame are unchanged.", "viewsUnchanged": true, "phase": 1, "target": 4, "wid": 212290, "spaces": [5]]

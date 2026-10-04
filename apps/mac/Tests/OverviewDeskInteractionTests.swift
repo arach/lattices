@@ -66,7 +66,7 @@ final class OverviewDeskInteractionTests: XCTestCase {
             XCTAssertTrue(actions.results.last?.verified == true)
             XCTAssertEqual(actions.results.last?.after.spaceIds, [space])
             XCTAssertEqual(actions.results.last?.after.frame, CGRect(x: 0, y: 0, width: 500, height: 800))
-            XCTAssertEqual(model.compositionNotice, "Moved 1 windows to Desktop \(space) · left half")
+            XCTAssertEqual(model.compositionNotice, "Moved Fixture to Desktop \(space)")
         }
         XCTAssertNil(OverviewWindowDrop.destination(on: display, spaceId: 999))
         model.moveDragged(.init(session: "foreign", windows: [4], sourceLayer: nil, move: false),

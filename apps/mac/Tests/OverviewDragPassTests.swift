@@ -22,6 +22,7 @@ final class OverviewDragPassTests: XCTestCase {
         XCTAssertEqual(actions.calls, [1])
         XCTAssertEqual(model.moving, [1, 2])
         XCTAssertNil(model.compositionNotice)
+        XCTAssertEqual(model.moveProgress, "Moving to Desktop 2…")
         model.moveDragged(drag, to: destination) // Cannot interleave another batch.
         XCTAssertEqual(actions.calls, [1])
         actions.finish?(nil)
@@ -29,8 +30,70 @@ final class OverviewDragPassTests: XCTestCase {
         XCTAssertNil(model.compositionNotice)
         actions.finish?("verification timed out")
         XCTAssertTrue(model.moving.isEmpty)
+        XCTAssertNil(model.moveProgress)
         XCTAssertEqual(model.compositionNotice, "Moved 1 windows to Desktop 2; Ghostty · Fixture 2: verification timed out")
         XCTAssertEqual(actions.saves, 0)
+    }
+
+    func testSameDisplayUsesCarryOnlyForOneOrdinarySourceDesktop() {
+        let groups = [[1, 2, 3], [4, 5]]
+        XCTAssertTrue(WindowSpaceCarry.sameDisplay(from: [1], to: 2, desktopGroups: groups))
+        XCTAssertTrue(WindowSpaceCarry.sameDisplay(from: [3], to: 1, desktopGroups: groups))
+        XCTAssertFalse(WindowSpaceCarry.sameDisplay(from: [1], to: 4, desktopGroups: groups))
+        XCTAssertFalse(WindowSpaceCarry.sameDisplay(from: [], to: 2, desktopGroups: groups))
+        XCTAssertFalse(WindowSpaceCarry.sameDisplay(from: [1, 2], to: 3, desktopGroups: groups))
+        XCTAssertFalse(WindowSpaceCarry.sameDisplay(from: [1], to: 99, desktopGroups: groups))
+    }
+
+    func testPhysicalDropWaitsUntilNativeDragEndsBeforeOpeningMissionControl() throws {
+        let suite = "drag.native-end." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let actions = DragPassActions()
+        let model = OverviewModel(defaults: defaults, actions: actions,
+            inputs: .init(windows: [window(1)], displays: [display], main: display.bounds))
+        let drag = OverviewMembershipDrag(session: model.membershipDragSession, windows: [1], sourceLayer: nil, move: false)
+        model.activeDrag = drag
+        model.moveDragged(drag, to: try XCTUnwrap(OverviewWindowDrop.destination(on: display, spaceId: 2)))
+        XCTAssertTrue(actions.calls.isEmpty)
+        XCTAssertEqual(model.moveProgress, "Moving to Desktop 2…")
+        model.finishNativeDrag()
+        XCTAssertTrue(actions.calls.isEmpty, "Wait until AppKit's ended callback returns")
+        let finished = expectation(description: "move starts after native drag")
+        DispatchQueue.main.async {
+            XCTAssertEqual(actions.calls, [1])
+            actions.finish?(nil)
+            XCTAssertEqual(model.compositionNotice, "Moved Ghostty to Desktop 2")
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 2)
+    }
+
+    func testMenuAndSingleDropReportProgressAndAppResultWithoutChangingViewedDesktop() throws {
+        let suite = "drag.single." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let actions = DragPassActions()
+        let model = OverviewModel(defaults: defaults, actions: actions,
+            inputs: .init(windows: [window(1)], displays: [display], main: display.bounds))
+        let destination = try XCTUnwrap(OverviewWindowDrop.destination(on: display, spaceId: 2))
+        XCTAssertTrue(model.move(1, to: destination))
+        XCTAssertEqual(model.moveProgress, "Moving to Desktop 2…")
+        actions.finish?(nil)
+        XCTAssertNil(model.moveProgress)
+        XCTAssertEqual(model.compositionNotice, "Moved Ghostty to Desktop 2")
+        let viewed = model.scope.spaceId
+        model.moveDragged(.init(session: model.membershipDragSession, windows: [1], sourceLayer: nil, move: false), to: destination)
+        XCTAssertEqual(model.moveProgress, "Moving to Desktop 2…")
+        actions.finish?(nil)
+        XCTAssertEqual(model.compositionNotice, "Moved Ghostty to Desktop 2")
+        XCTAssertEqual(model.scope.spaceId, viewed)
+        XCTAssertEqual(model.projection.displays.first?.currentSpaceId, 1)
+        XCTAssertTrue(model.move(1, to: destination))
+        actions.finish?("Mission Control didn't open")
+        XCTAssertTrue(model.actionError?.contains("Mission Control didn't open") == true)
+        XCTAssertNil(model.moveProgress)
+        XCTAssertNil(model.compositionNotice)
     }
 
     func testBatchRunsVerifiedRelocationWithEnvironmentFakes() throws {

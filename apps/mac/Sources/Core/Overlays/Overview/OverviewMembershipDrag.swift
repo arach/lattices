@@ -28,8 +28,8 @@ struct OverviewMembershipDrag: Codable, Equatable {
         guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type) }) else { return false }
         provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
             guard let data, data.count < 65536, let payload = try? JSONDecoder().decode(Self.self, from: data),
-                  !payload.windows.isEmpty, payload.windows.count <= 512 else { return }
-            DispatchQueue.main.async { OverviewDragProbe.log("decoded-payload"); perform(payload) }
+                  !payload.windows.isEmpty, payload.windows.count <= 512 else { DiagnosticLog.shared.warn("OverviewDrag: payload rejected or unavailable"); return }
+            DispatchQueue.main.async { OverviewDragProbe.log("decoded-payload windows=\(payload.windows)"); perform(payload) }
         }
         return true
     }
@@ -182,6 +182,7 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
                    let root = window?.contentView,
                    Self.frontmost(in: root, windowPoint: event.locationInWindow) === self {
                     down = event; payload = model.membershipDrag(wid)
+                    OverviewDragProbe.log("armed wid=\(wid) source=\(model.projection.all[wid]?.spaceId ?? -1)")
                 }
             case .leftMouseUp: down = nil; payload = nil
             case .leftMouseDragged:
@@ -221,7 +222,7 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
         }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
             OverviewDragProbe.log("native-end operation=\(operation.rawValue)")
-            model?.activeDrag = nil
+            model?.finishNativeDrag()
         }
     }
 }

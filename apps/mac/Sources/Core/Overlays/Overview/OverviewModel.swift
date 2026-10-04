@@ -135,9 +135,7 @@ struct LiveOverviewActions: OverviewActions {
             do {
                 let receipt = try ActionRuntime.shared.executeWindowMove(params: params, source: "app.overview")
                 failure = WindowMovementService.failureMessage(for: receipt)
-                if failure == nil, snap != nil, !WindowTiler.switchToSpace(spaceId: spaceId) {
-                    failure = "Window was placed, but Desktop could not be shown. Select that Desktop in Mission Control."
-                }
+
             } catch { failure = error.localizedDescription }
             DispatchQueue.main.async { completion(failure) }
         }
@@ -207,6 +205,16 @@ final class OverviewModel: ObservableObject {
     func hideDisplay(_ id: UInt32) { deskPreferences.hide(id); saveDeskPreferences() }
     func restoreDisplay(_ id: UInt32) { deskPreferences.hidden.remove(id); saveDeskPreferences() }
     @Published var activeDrag: OverviewMembershipDrag?
+    private var pendingDropMove: (() -> Void)?
+
+    /// Mission Control cannot open while AppKit is still finishing our drag.
+    /// The native source calls this after the drag session relinquishes input.
+    func finishNativeDrag() {
+        activeDrag = nil
+        let pending = pendingDropMove
+        pendingDropMove = nil
+        if let pending { DispatchQueue.main.async(execute: pending) }
+    }
     @Published var composition: OverviewComposition?
     @Published var compositionNotice: String?
     var compositionWindows: [WindowEntry] {
@@ -824,9 +832,15 @@ final class OverviewModel: ObservableObject {
         let spaceId = destination.spaceId
         actionError = nil
         moving.insert(wid)
+        moveProgress = "Moving to Desktop \(destination.desktop)…"
+        compositionNotice = nil
+        DiagnosticLog.shared.info("OverviewMove: source=menu wid=\(wid) from=\(row.spaceId ?? -1) target=\(spaceId) attempt")
         actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId, displayId: destination.displayId) { [weak self] failure in
             guard let self else { return }
             self.moving.remove(wid)
+            self.moveProgress = nil
+            self.compositionNotice = failure == nil ? "Moved \(row.app) to Desktop \(destination.desktop)" : nil
+            DiagnosticLog.shared.info("OverviewMove: source=menu wid=\(wid) target=\(spaceId) outcome=\(failure ?? "moved")")
             // The desktop watch picks up where it landed.
             if let failure { self.actionError = "Couldn't move \(row.app): \(failure)" }
         }
@@ -834,18 +848,37 @@ final class OverviewModel: ObservableObject {
     }
 
     /// Reserve the complete batch so another action cannot interleave its relocations.
+    @Published private(set) var moveProgress: String?
+
     func moveDragged(_ drag: OverviewMembershipDrag, to destination: OverviewMoveDestination, snap: OverviewSnap? = nil) {
+        DiagnosticLog.shared.info("OverviewMove: source=drop windows=\(drag.windows) target=\(destination.spaceId) display=\(destination.displayId) snap=\(snap?.placement ?? "none") attempt")
         guard drag.session == membershipDragSession, !drag.windows.isEmpty,
-              drag.windows.count <= 512, moving.isEmpty else { return }
+              drag.windows.count <= 512, moving.isEmpty else {
+            rejectMove("Drag expired or another move is in progress; start a new drag")
+            DiagnosticLog.shared.warn("OverviewMove: source=drop target=\(destination.spaceId) outcome=rejected session-or-busy")
+            return
+        }
         let ids = Array(Set(drag.windows)).sorted()
         moving = Set(ids)
         actionError = nil
         compositionNotice = nil
+        moveProgress = "Moving to Desktop \(destination.desktop)…"
         var succeeded = 0
         var failures: [String] = []
         func next(_ index: Int) {
             guard index < ids.count else {
                 moving.removeAll()
+                moveProgress = nil
+                actionError = nil
+                DiagnosticLog.shared.info("OverviewMove: source=drop target=\(destination.spaceId) moved=\(succeeded) failures=\(failures)")
+                if ids.count == 1, succeeded == 1, let app = projection.all[ids[0]]?.app {
+                    compositionNotice = "Moved \(app) to Desktop \(destination.desktop)"
+                    return
+                }
+                if ids.count == 1, let failure = failures.first {
+                    compositionNotice = "Couldn't move to Desktop \(destination.desktop): " + failure
+                    return
+                }
                 compositionNotice = "Moved \(succeeded) windows to Desktop \(destination.desktop)" + (snap.map { " · " + $0.label } ?? "") +
                     (failures.isEmpty ? "" : "; " + failures.joined(separator: "; "))
                 return
@@ -872,7 +905,10 @@ final class OverviewModel: ObservableObject {
             if let snap { actions.moveAndPlace(wid: wid, pid: row.pid, destination: destination, snap: snap, completion: completion) }
             else { actions.moveToSpace(wid: wid, pid: row.pid, spaceId: destination.spaceId, displayId: destination.displayId, completion: completion) }
         }
-        next(0)
+        if activeDrag != nil {
+            DiagnosticLog.shared.info("OverviewMove: source=drop target=\(destination.spaceId) waiting-for-native-drag-end")
+            pendingDropMove = { next(0) }
+        } else { next(0) }
     }
 
     func focus(_ wid: UInt32) {

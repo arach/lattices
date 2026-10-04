@@ -1,0 +1,53 @@
+Fixture evidence: /private/tmp/lattices-overview-input.Jg8bBG
+: postAccess=true
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: CGEvent from=(600.5, 1172.0) to=(439.7, 835.3)
+screen: armed wid=900001 source=2
+screen: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+screen: screen-validate
+screen: screen-validate
+screen: screen-performDrop display=900 target=1 kind=map busy=false
+screen: providers dev.lattices.overview-membership
+screen: decoded-payload windows=[900001]
+screen: native-end operation=16
+screen: verified-fake-relocation
+thumb: CGEvent from=(600.5, 1172.0) to=(381.2, 966.6)
+thumb: armed wid=900001 source=2
+thumb: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+thumb: screen-validate
+thumb: screen-performDrop display=900 target=1 kind=thumbnail busy=false
+thumb: providers dev.lattices.overview-membership
+thumb: decoded-payload windows=[900001]
+thumb: native-end operation=16
+thumb: verified-fake-relocation
+layer: CGEvent from=(600.5, 1172.0) to=(188.4, 765.2)
+layer: armed wid=900001 source=2
+layer: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+layer: screen-validate
+layer: layer-onDrop fixture-layer
+layer: providers dev.lattices.overview-membership
+layer: decoded-payload windows=[900001]
+layer: membership-saved
+layer: native-end operation=1
+new: CGEvent from=(600.5, 1172.0) to=(188.4, 1190.6)
+new: armed wid=900001 source=2
+new: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+new: layer-onDrop __new_layer__
+new: providers dev.lattices.overview-membership
+new: decoded-payload windows=[900001]
+new: native-end operation=1{
+  "error": "",
+  "passed": true,
+  "results": {
+    "layer": true,
+    "new": true,
+    "screen": true,
+    "thumb": true
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "error" : "Live drop did not verify; no automatic retry",
+  "passed" : false,
+  "results" : [
+    {
+      "passed" : true,
+      "phase" : 0,
+      "receipt" : "Moved TextEdit to Desktop 4",
+      "spaces" : [
+        5
+      ],
+      "target" : 5,
+      "viewsUnchanged" : true,
+      "wid" : 212290
+    },
+    {
+      "passed" : false,
+      "phase" : 1,
+      "receipt" : "Moved 0 windows to Desktop 3 · left half; TextEdit · lattices-carry-test-1791133613.txt: Source staging failed: the drop didn't take (window still on [5]) The original display, desktop, and frame are unchanged.",
+      "spaces" : [
+        5
+      ],
+      "target" : 4,
+      "viewsUnchanged" : true,
+      "wid" : 212290
+    }
+  ],
+  "spacesAtEnd" : [
+    5
+  ],
+  "wid" : 212290
+}

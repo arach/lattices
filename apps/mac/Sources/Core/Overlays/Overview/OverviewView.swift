@@ -70,7 +70,7 @@ struct OverviewView: View {
                 VStack(spacing: 0) {
                     Spacer(minLength: 48)
                     HStack {
-                        Text(!model.moving.isEmpty ? "Moving windows…" : model.actionError ?? model.compositionNotice ?? "")
+                        Text(model.moveProgress ?? model.actionError ?? model.compositionNotice ?? "")
                             .font(.system(size: 11)).foregroundStyle(Palette.text).lineLimit(2)
                         Spacer()
                     }.padding(.horizontal, 12).frame(height: 28)

@@ -1,0 +1,23 @@
+/Users/arach/Applications/dev/Lattices/Lattices.app: replacing existing signature
+{
+  "error" : "Live drop did not verify; no automatic retry",
+  "passed" : false,
+  "results" : [
+    {
+      "passed" : false,
+      "phase" : 0,
+      "receipt" : "Moved 0 windows to Desktop 4; TextEdit · lattices-carry-test-1791133511.txt: Destination desktop move failed: Mission Control didn't open The original display, desktop, and frame are unchanged.",
+      "spaces" : [
+        4
+      ],
+      "target" : 5,
+      "viewsUnchanged" : true,
+      "wid" : 212281
+    }
+  ],
+  "spacesAtEnd" : [
+    4
+  ],
+  "wid" : 212281
+}
+Evidence: /private/tmp/lattices-carry-live.5mRDvL

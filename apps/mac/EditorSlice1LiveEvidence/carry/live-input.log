@@ -1,0 +1,21 @@
+: LIVE test-only wid=212290 pid=60680 source=4 next=5 initialViews=[4, 2326, 2377]
+live-out-thumbnail: CGEvent wid=212290 from=(365.0, 862.0) to=(568.1, 1044.4) target=5
+live-out-thumbnail: armed wid=212290 source=4
+live-out-thumbnail: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+live-out-thumbnail: screen-validate
+live-out-thumbnail: screen-validate
+live-out-thumbnail: screen-performDrop display=2 target=5 kind=thumbnail busy=false
+live-out-thumbnail: providers dev.lattices.overview-membership
+live-out-thumbnail: decoded-payload windows=[212290]
+live-out-thumbnail: native-end operation=16
+live-out-thumbnail: LIVE result=["spaces": [5], "phase": 0, "wid": 212290, "receipt": "Moved TextEdit to Desktop 4", "viewsUnchanged": true, "passed": true, "target": 5]
+live-back-map: CGEvent wid=212290 from=(540.5, 1242.0) to=(444.2, 916.85) target=4
+live-back-map: armed wid=212290 source=5
+live-back-map: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+live-back-map: screen-validate
+live-back-map: screen-validate
+live-back-map: screen-performDrop display=2 target=4 kind=map busy=false
+live-back-map: providers dev.lattices.overview-membership
+live-back-map: decoded-payload windows=[212290]
+live-back-map: native-end operation=16
+live-back-map: LIVE result=["passed": false, "receipt": "Moved 0 windows to Desktop 3 · left half; TextEdit · lattices-carry-test-1791133613.txt: Source staging failed: the drop didn\'t take (window still on [5]) The original display, desktop, and frame are unchanged.", "viewsUnchanged": true, "phase": 1, "target": 4, "wid": 212290, "spaces": [5]]

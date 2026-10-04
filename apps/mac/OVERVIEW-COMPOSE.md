@@ -431,3 +431,95 @@ root. Bundle: `/Users/arach/Applications/dev/Lattices/Lattices.app`, identifier
 Workspace SHA-256 and mtime stayed unchanged across the input runs and launches:
 `d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`,
 `1791063065` seconds.
+
+## Same-display Space carry pass (October 4, 2026)
+
+### Changes and diagnosed behavior
+
+Same-display ordinary-desktop relocation now calls `WindowSpaceCarry` directly,
+not CGS followed by carry. This is shared by Overview drops, Move menus, and
+context menus through `ActionRuntime.executeWindowMove`. Cross-display staging
+retains its existing relocation/rollback contract. The gate was already
+recursive; no lock bug was found or changed.
+
+Production logging now records native drag arming/end, provider delivery,
+destination and payload, rejected drops, relocation source/target/method, and
+verified outcome or failure in `~/.lattices/lattices.log`. Previously the drop
+logs existed only inside the isolated fixture, so their absence from the live
+log did not prove no drop handler ran.
+
+A bounded live input run reproduced `Mission Control didn't open`: the move
+started inside SwiftUI's drop callback, before AppKit ended the originating
+native drag. Relocation now reserves its selection and shows progress
+immediately, but waits for `draggingSession(...endedAt:)` and the next main-loop
+turn before starting Mission Control. Its launch is also dispatched on main.
+A regression test asserts the action cannot start inside the drop or native
+end callback. The subsequent live attempt opened Mission Control and moved
+outbound successfully. These two scheduling changes were validated together;
+no claim is made that either was independently sufficient.
+
+Progress says `Moving to Desktop N…`. A single success names the app; a failure
+shows the actual reason. Menus use the same progress/result state. Batch moves
+still serialize. A screen-map placement no longer switches to the destination
+Desktop afterward: carry restores the viewed Desktop, and the model preserves
+its browsing scope.
+
+### Bounded live acceptance: PARTIAL, not complete
+
+Only newly created, uniquely named TextEdit test documents were eligible for
+live actions. The dev-only `--overview-carry-live <temporary-document-path>`
+probe hosts the real Overview drag source and destinations, posts real CGEvent
+input, uses production LiveOverviewActions, and guards every action by the
+exact test window ID, PID, main display and the two allowed Spaces. It starts
+before normal app services and never enables layer persistence. A single
+read-only DesktopModel sweep supplies runtime target resolution.
+
+There were three input runs: an inventory-preflight failure before any carry;
+a carry attempt that failed to open Mission Control; and the final outbound /
+return run. An earlier setup launch rejected `/tmp` path canonicalization
+before posting any input. No further input or carry retries were made.
+
+Final input run, window **212290**, main display **2**:
+
+- Thumbnail drop: Space **4 → 5** (Desktop **3 → 4**) **verified success**.
+  Mission Control opened; window membership was `[5]`; all three display views
+  matched their starting Spaces `[4, 2326, 2377]` afterward.
+- Big-map drop back: Space **5 → 4**, with left-half placement, **failed**.
+  Mission Control opened, but the carry did not take. Membership remained `[5]`;
+  the relocation reported source-staging failure and unchanged original frame
+  and desktop. The viewed Spaces were restored. No success was fabricated.
+- The exact test document was closed. A later post-cleanup readback found main
+  view 3 rather than 4; it was explicitly restored to 4, without moving a
+  window. Final readback confirmed all original views `[4, 2326, 2377]` and no
+  remaining test windows. The other two displays required no restoration.
+
+**Remaining blocker:** carry from an inactive source Desktop was not reliable
+in the return test. It needs another explicitly authorized live diagnostic
+pass; this change must not be described as a fully working round trip. The
+original user's exact failed attempt also cannot be reconstructed from the
+old, uninstrumented drop log.
+
+Durable evidence: `EditorSlice1LiveEvidence/carry/` contains input and relocation
+traces, JSON results (intentionally `passed: false`), setup/failure evidence,
+cleanup readback, view restoration, and the exact one-off command used.
+`live-run-command.sh` is evidence, **not** part of the test suite or permission
+to rerun live movement. Do not run it without fresh authorization.
+
+Validation: **487 app tests, 13 skipped, zero failures**, including fixture
+renders; **22 Swift package tests passed**; `bun run test` passed (47 CLI tests,
+one skip; 9 Bun tests), and `bun run check:types` passed. App test log:
+`/tmp/lattices-carry-tests-final.log`; other logs:
+`/tmp/lattices-carry-packages.log`, `/tmp/lattices-carry-bun.log`, and
+`/tmp/lattices-carry-types.log`. The isolated fake-window CGEvent test also
+passed all four targets before the carry changes; final-build check follows.
+
+Workspace SHA-256 remains
+`d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`.
+
+Final dev build/install/restart passed (`/tmp/lattices-carry-dev-build.log`).
+The installed optimized dev app passed all four fake-window CGEvent drop
+assertions again (`carry/shipped-fixture-input.log`). This does **not** supersede
+the partial live result above. The ordinary dev app was reopened with this
+checkout's explicit CLI root; no release app was rebuilt or launched. Final
+view readback is `carry/final-view-readback.log`; no test TextEdit documents
+remain. Workspace mtime remains `1791063065` and the hash above is unchanged.
