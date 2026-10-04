@@ -29,7 +29,7 @@ final class OverviewDragFixture {
     var model: OverviewModel!
     var root: NSView!
     var results: [String: Bool] = [:]
-    let names = ["screen", "thumb", "layer", "new", "cancel", "outside"]
+    let names = ["screen", "thumb", "layer", "new", "cancel", "outside", "tray", "tray-back"]
     let suite = "overview.input-fixture." + UUID().uuidString
     static func start() -> Bool {
         guard requested else { return false }
@@ -53,7 +53,9 @@ final class OverviewDragFixture {
             frame: .init(x: 0, y: 0, w: 500, h: 400), spaceIds: [2], isOnScreen: false, latticesSession: nil, zIndex: 0)]
         let layer = LayerOverview(index: 0, id: "fixture-layer", label: "Fixture layer", layout: "auto", isActive: false, entries: [])
         let defaults = UserDefaults(suiteName: suite)!
-        model = OverviewModel(defaults: defaults, actions: FixtureActions(), inputs: .init(windows: windows, layers: [layer], displays: [
+        model = OverviewModel(defaults: defaults, actions: FixtureActions(didMove: { [weak self] space in
+            if OverviewDragProbe.current.hasPrefix("tray") { self?.model.update(Self.trayInputs(space: space)) }
+        }), inputs: .init(windows: windows, layers: [layer], displays: [
             .init(index: 0, name: "Fixture display", bounds: bounds, desktops: [1, 2], currentSpaceId: 1, displayId: 900)], main: bounds))
         model.restoreDisplay(900)
         model.compositionAdder = { windows, _ in
@@ -63,7 +65,13 @@ final class OverviewDragFixture {
         }
         model.compositionCreator = { _ in OverviewDragProbe.log("create-blocked"); return false }
         ScreenMapWindowController.shared.probeOverview = model
-        ScreenMapWindowController.shared.showScreenMapOverview()
+        if CommandLine.arguments.contains("--overview-app-window-fixture") {
+            ScreenMapWindowController.shared.showPage(.overview)
+            OverviewDragProbe.log("surface=app-window-overview")
+        } else {
+            ScreenMapWindowController.shared.showScreenMapOverview()
+            OverviewDragProbe.log("surface=gesture-entry-point")
+        }
         window = ScreenMapWindowController.shared.nsWindow
         root = window.contentView
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.run(0) }
@@ -78,6 +86,7 @@ final class OverviewDragFixture {
     func run(_ index: Int) {
         guard index < names.count else { finish(error: nil); return }
         let name = names[index]; OverviewDragProbe.current = name
+        if name == "tray" { model.update(Self.trayInputs(space: 2)) }
         model.composition = nil; model.clearSelection(); root.layoutSubtreeIfNeeded()
         let views = descendants(root)
         if index == 0 {
@@ -86,12 +95,13 @@ final class OverviewDragFixture {
             }
         }
         guard let source = views.compactMap({ $0 as? OverviewImmediateDragSource.Source }).first(where: { $0.wid == 900001 && !$0.visibleRect.isEmpty }),
-              let target = views.compactMap({ $0 as? OverviewProbeMark.Mark }).first(where: { $0.id == ["screen": "screen:900:1", "thumb": "thumb:900:1", "layer": "layer:fixture-layer", "new": "layer:__new_layer__", "cancel": "screen:900:1", "outside": "screen:900:1"][name] }) else {
+              let target = views.compactMap({ $0 as? OverviewProbeMark.Mark }).first(where: { $0.id == ["screen": "screen:900:1", "thumb": "thumb:900:1", "layer": "layer:fixture-layer", "new": "layer:__new_layer__", "cancel": "screen:900:1", "outside": "screen:900:1", "tray": "tray:900:1", "tray-back": "tray:900:2"][name] }) else {
             finish(error: "Fixture target missing: " + name); return
         }
         let from = point(source)
         let to = name == "outside" ? point(root, fraction: .init(x: 0.01, y: 0.05)) : point(target, fraction: .init(x: 0.3, y: 0.45))
         OverviewDragProbe.log("CGEvent from=\(from) to=\(to)")
+        let captureWindow = window.windowNumber
         DispatchQueue.global(qos: .userInitiated).async {
             func post(_ type: CGEventType, _ p: CGPoint) {
                 let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left)!
@@ -107,6 +117,7 @@ final class OverviewDragFixture {
                 Thread.sleep(forTimeInterval: 0.035)
             }
             Thread.sleep(forTimeInterval: 0.4)
+            if name.hasPrefix("tray") { Self.capture(window: captureWindow, name: name + "-hover") }
             if name == "cancel" {
                 CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: true)?.post(tap: .cghidEventTap)
                 Thread.sleep(forTimeInterval: 0.1)
@@ -120,11 +131,20 @@ final class OverviewDragFixture {
                     self.results[name] = decoded == 0 && lines.contains { $0.contains("pointer-reject") }
                 } else {
                     let receipts = lines.filter { $0.contains(name == "layer" ? "membership-saved" : "verified-fake-relocation") }.count
-                    self.results[name] = decoded == 1 && (name == "new" ? self.model.composition != nil : receipts == 1)
+                    let movedColumn = !name.hasPrefix("tray") || OverviewTray(model: self.model).groups.first(where: { $0.spaceId == (name == "tray" ? 1 : 2) })?.rows.contains(where: { $0.wid == 900001 }) == true
+                    self.results[name] = decoded == 1 && movedColumn && (name == "new" ? self.model.composition != nil : receipts == 1)
                 }
+                if name.hasPrefix("tray") { Self.capture(window: captureWindow, name: name + "-after") }
                 self.run(index + 1)
             }
         }
+    }
+    private static func capture(window: Int, name: String) {
+        guard let folder = OverviewDragProbe.folder else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-l", String(window), folder.appendingPathComponent(name + ".png").path]
+        do { try process.run(); process.waitUntilExit() } catch { OverviewDragProbe.log("capture failed: \(error.localizedDescription)") }
     }
     func finish(error: String?) {
         let value: [String: Any] = ["passed": error == nil && results.count == names.count && results.values.allSatisfy { $0 }, "results": results, "error": error ?? ""]
@@ -132,14 +152,28 @@ final class OverviewDragFixture {
         UserDefaults.standard.removePersistentDomain(forName: suite)
         exit((value["passed"] as? Bool) == true ? 0 : 1)
     }
+    static func trayInputs(space: Int) -> OverviewProjection.Inputs {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let windows = [
+            WindowEntry(wid: 900001, app: "TextEdit", pid: 999999, title: "Fixture draggable window",
+                frame: .init(x: 0, y: 0, w: 500, h: 400), spaceIds: [space], isOnScreen: false, latticesSession: nil, zIndex: 0),
+            WindowEntry(wid: 900002, app: "Fixture", pid: 999998, title: "Destination resident",
+                frame: .init(x: 600, y: 0, w: 500, h: 400), spaceIds: [1], isOnScreen: false, latticesSession: nil, zIndex: 1),
+            WindowEntry(wid: 900003, app: "Fixture", pid: 999997, title: "Source resident",
+                frame: .init(x: 600, y: 0, w: 500, h: 400), spaceIds: [2], isOnScreen: false, latticesSession: nil, zIndex: 2)
+        ]
+        return .init(windows: windows, displays: [.init(index: 0, name: "Fixture display", bounds: bounds,
+            desktops: [1, 2, 3], currentSpaceId: 3, displayId: 900)], main: bounds)
+    }
     private struct FixtureActions: OverviewActions {
+        var didMove: ((Int) -> Void)? = nil
         func fake(_ space: Int, snap: OverviewSnap?, completion: (String?) -> Void) {
-            var state = WindowRelocation.Snapshot(frame: CGRect(x: 0, y: 0, width: 500, height: 400), displayId: "fixture", spaceIds: [2])
+            var state = WindowRelocation.Snapshot(frame: CGRect(x: 0, y: 0, width: 500, height: 400), displayId: "fixture", spaceIds: [OverviewDragProbe.current == "tray-back" ? 1 : 2])
             let f = snap?.fractions ?? CGRect(x: 0, y: 0, width: 500.0 / 1200, height: 0.5)
             let target = CGRect(x: f.minX * 1200, y: f.minY * 800, width: f.width * 1200, height: f.height * 800)
             let environment = WindowRelocation.Environment(displays: { [.init(id: "fixture", index: 0, currentSpaceId: 1, spaceIds: [1, 2])] }, snapshot: { state }, moveSpace: { state = .init(frame: state.frame, displayId: "fixture", spaceIds: [$0]); return nil }, moveFrame: { state = .init(frame: $0, displayId: "fixture", spaceIds: [1]) }, wait: { _ in state })
             let result = WindowRelocation.execute(from: state, to: .init(displayId: "fixture", spaceId: space, frame: target), tolerance: 6, environment: environment)
-            if result.verified { OverviewDragProbe.log("verified-fake-relocation") }
+            if result.verified { OverviewDragProbe.log("verified-fake-relocation"); didMove?(space) }
             completion(result.failure)
         }
         func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void) { fake(spaceId, snap: nil, completion: completion) }

@@ -549,6 +549,18 @@ struct OverviewDraftBar: View {
 
 /// Below the maps: every listed window the maps don't show, grouped by
 /// where it is, and the box that arranges the selection.
+private struct OverviewTrayColumnDrop: ViewModifier {
+    @ObservedObject var model: OverviewModel
+    let group: OverviewTray.Group
+    @ViewBuilder func body(content: Content) -> some View {
+        if group.destination != nil, let display = group.display, let spaceId = group.spaceId {
+            content.modifier(OverviewScreenDrop(model: model, display: display, spaceId: spaceId, targetKind: "tray"))
+        } else {
+            content
+        }
+    }
+}
+
 struct OverviewTray: View {
     @ObservedObject var model: OverviewModel
 
@@ -559,6 +571,13 @@ struct OverviewTray: View {
         let title: String
         let detail: String
         let rows: [OverviewRow]
+        let display: OverviewDisplay?
+        let spaceId: Int?
+
+        var destination: OverviewMoveDestination? {
+            guard let display, let spaceId else { return nil }
+            return OverviewWindowDrop.destination(on: display, spaceId: spaceId)
+        }
     }
 
     /// Desktops the maps aren't showing, monitor by monitor, then the
@@ -572,12 +591,13 @@ struct OverviewTray: View {
                 let state = space.isCurrent ? "live" : (space.mapNote ?? "not showing")
                 out.append(Group(
                     id: "\(space.spaceId)", title: space.title,
-                    detail: "\(monitor.display.name) · \(state)", rows: space.rows
+                    detail: "\(monitor.display.name) · \(state)", rows: space.rows,
+                    display: monitor.display, spaceId: space.spaceId
                 ))
             }
         }
         if !model.projection.unplaced.isEmpty {
-            out.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced))
+            out.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced, display: nil, spaceId: nil))
         }
         return out
     }
@@ -601,6 +621,7 @@ struct OverviewTray: View {
                                     .overlay(alignment: .trailing) {
                                         Rectangle().fill(Palette.border).frame(width: 1)
                                     }
+                                    .modifier(OverviewTrayColumnDrop(model: model, group: group))
                             }
                         }
                     }

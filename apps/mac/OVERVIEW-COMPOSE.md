@@ -727,3 +727,63 @@ The dev app was reopened normally with this checkout's explicit CLI root.
 `gesture-carry/final-readback.log` confirms views `[3,2326,2377]`, zero test
 windows, unchanged workspace hash/mtime, and the running dev process. No
 release app build, workspace write, push, merge, or PR was performed.
+
+## Tray-column addendum: the missing destination
+
+The 14:10 clip identifies the input failure: the user drops a tray row onto
+another tray column. Those columns had no drop handler. Earlier probes targeted
+the maps and thumbnails, so they did not exercise that interaction. A window
+level or gesture-panel explanation is not needed for the clipped failure.
+
+Each existing ordinary-Desktop tray column now accepts a window drop over its
+whole area, including its header, rows, and empty space. Its destination carries
+the CG display ID and absolute Space ID; the code does not parse the heading.
+The hovered column gets a green tint, border, and “Move to Desktop N” label.
+The existing grouping and column order are unchanged. The “Not on a Space”
+group and unsupported/full-screen destinations are not desktop drop targets.
+
+Column drops use the same bounded pointer router and serialized carry operation
+as the thumbnails, without a placement/snap request. After a live action
+finishes, the app refreshes its window inventory before reporting completion.
+The tray then reflects observed membership. It does not put a failed move into
+the requested column optimistically.
+
+Both launch routes share AppShellView and the same window factory:
+`showPage(.overview)` for the app-window page and
+`showScreenMapOverview()` for the gesture action. The input probe can select the
+former with `scripts/test-overview-drag.sh --app-window`; its default uses the
+gesture entry point.
+
+The fake-window CGEvent suite now includes eight cases: map, thumbnail, layer,
+new layer, Escape, no target, tray Desktop 2 → 1, and tray Desktop 1 → 2. Each
+positive drag must dispatch once. Tray cases also assert that verified fake
+membership moves the row into the destination column. Resident fixture rows
+keep both columns visible during the round trip. Unit tests additionally check
+absolute destination identity, unsupported/unplaced rejection, and column
+membership after readback without changing the viewed Desktop.
+
+The app-window route passed all eight cases. Two visual inspection batches
+confirmed whole-column highlighting, the Desktop-number label, and the row in
+its destination after completion. Evidence is in
+`EditorSlice1LiveEvidence/tray-drop/`. These screenshots and input runs use
+fake windows/actions; they are not live Space-carry proof.
+
+No additional physical window moves were made for this addendum: the parent
+request's three-run limit was already exhausted. The separate live carry-backend
+failure documented above remains unresolved. This change fixes the missing
+tray destination, not that backend failure.
+
+Final validation: **500 app tests, 13 skipped, zero failures**, including render
+fixtures; 22 Swift package tests; TypeScript checks; 47 CLI passes/one skip and
+9 Bun passes. The optimized dev build/install/restart passed. The installed
+build passed all eight gesture-entry input cases; app-window entry passed all
+eight on the debug build. An initial optimized attempt received extra pointer
+events during the final tray drag and failed that case; the preserved trace is
+`tray-drop/gesture-input-interrupted.log`. The repeat passed all eight.
+
+The app was reopened normally from this checkout. Final readback records the
+running dev process, zero test documents, unchanged workspace hash/mtime, and
+views `[3,2326,2377]`. No new live carry, workspace write, release-app change,
+push, merge, or PR occurred. Logs: `/tmp/lattices-tray-render-tests.log`,
+`/tmp/lattices-tray-packages.log`, `/tmp/lattices-tray-types.log`,
+`/tmp/lattices-tray-bun.log`, `/tmp/lattices-tray-dev-build.log`.

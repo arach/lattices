@@ -29,7 +29,11 @@ PYCODE
   [[ -n "$IDENTITY" ]]
   codesign --force --options runtime --sign "$IDENTITY" --identifier dev.lattices.app.dev "$APP"
 fi
-open -n "$APP" --args --overview-drag-fixture "$OUT"
+if [[ " $* " == *" --app-window "* ]]; then
+  open -n "$APP" --args --overview-drag-fixture "$OUT" --overview-app-window-fixture
+else
+  open -n "$APP" --args --overview-drag-fixture "$OUT"
+fi
 for ((i=0; i<120; i++)); do
   [[ -f "$OUT/result.json" ]] && break
   sleep 1

@@ -82,11 +82,21 @@ struct OverviewScreenDrop: ViewModifier {
     let spaceId: Int
     var mapSize: CGSize? = nil
     var preview: OverviewSnap? = nil
+    var targetKind: String? = nil
+    private var kind: String { targetKind ?? (mapSize == nil ? "thumb" : "screen") }
     @State private var targeted = false
     @State private var snap: OverviewSnap?
 
     func body(content: Content) -> some View {
         content
+            .background {
+                if targeted && kind == "tray" { Palette.running.opacity(0.12).allowsHitTesting(false) }
+            }
+            .overlay {
+                if targeted && kind == "tray" {
+                    Rectangle().strokeBorder(Palette.running, lineWidth: 2).allowsHitTesting(false)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if targeted || preview != nil {
                     if let size = mapSize, let zone = snap ?? preview {
@@ -107,8 +117,8 @@ struct OverviewScreenDrop: ViewModifier {
                         .allowsHitTesting(false)
                 }
             }
-            .background { if OverviewDragProbe.enabled { OverviewProbeMark(id: "\(mapSize == nil ? "thumb" : "screen"):\(display.displayId):\(spaceId)") } }
-            .background(OverviewPointerDrop(id: "\(mapSize == nil ? "thumb" : "screen"):\(display.displayId):\(spaceId)", hover: { point in
+            .background { if OverviewDragProbe.enabled { OverviewProbeMark(id: "\(kind):\(display.displayId):\(spaceId)") } }
+            .background(OverviewPointerDrop(id: "\(kind):\(display.displayId):\(spaceId)", hover: { point in
                 if point != nil && !targeted {
                     let reason = !model.moving.isEmpty ? "move-in-progress" : display.desktopNumber(of: spaceId) == nil ? "not-ordinary-desktop" : "accept"
                     OverviewDragProbe.log("pointer-validate display=\(display.displayId) target=\(spaceId) result=\(reason)")

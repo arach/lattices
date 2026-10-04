@@ -137,7 +137,12 @@ struct LiveOverviewActions: OverviewActions {
                 failure = WindowMovementService.failureMessage(for: receipt)
 
             } catch { failure = error.localizedDescription }
-            DispatchQueue.main.async { completion(failure) }
+            DispatchQueue.main.async {
+                // Read verified membership before the tray redraws; never
+                // optimistically put a failed carry in its requested column.
+                DesktopModel.shared.refreshNow()
+                completion(failure)
+            }
         }
     }
 
