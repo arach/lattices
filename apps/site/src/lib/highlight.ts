@@ -10,7 +10,7 @@ import swift from 'shiki/langs/swift.mjs'
 import typescript from 'shiki/langs/ts.mjs'
 import type { ThemeRegistrationRaw } from 'shiki/core'
 
-const themeName = 'lattices-green'
+const themeName = 'lattices-ink'
 const languages = ['bash', 'json', 'javascript', 'typescript', 'swift', 'markdown', 'mermaid', 'text'] as const
 const shikiLanguages = [
   ...bash,
