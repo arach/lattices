@@ -125,14 +125,14 @@ struct BlinkConfig: Codable, Equatable {
     struct Reader: Codable, Equatable {
         var width: Double = 760  // column width in points, capped to the screen
         var fontSize: Double = 17
-        var dim: Double = 0.35  // 0–1 tint over the blurred backdrop
+        var dim: Double = 0.5  // 0–1 veil over the screen behind the sheet
 
         init() {}
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             width = try c.decodeIfPresent(Double.self, forKey: .width) ?? 760
             fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? 17
-            dim = try c.decodeIfPresent(Double.self, forKey: .dim) ?? 0.35
+            dim = try c.decodeIfPresent(Double.self, forKey: .dim) ?? 0.5
         }
     }
 

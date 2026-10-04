@@ -105,4 +105,14 @@ struct TerminalTextTests {
         let raw = "\u{1B}[1;32mok\u{1B}[0m done   \r\n\u{1B}]0;title\u{07}next"
         #expect(TerminalText.clean(raw) == "ok done\nnext")
     }
+
+    @Test("Trailing Nerd Font prompt dropped, stray glyphs stripped")
+    func nerdFontPrompt() {
+        let raw = "Sync races when two peers write the same note.\n\nThe fix \u{E0A0} serialises writes.\n\n\u{F07C} ~/dev/tideline \u{E0A0} main \u{276F}\n░▒▓ \u{F179} \u{E0B1} ~ \u{E0B0}      ░▒▓ ✔ \u{E0B3} at 13:43:30 ▓▒░\n\n\n"
+        #expect(TerminalText.clean(raw) == """
+        Sync races when two peers write the same note.
+
+        The fix serialises writes.
+        """)
+    }
 }
