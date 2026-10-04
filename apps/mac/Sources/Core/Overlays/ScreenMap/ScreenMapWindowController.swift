@@ -8,6 +8,8 @@ final class ScreenMapWindowController: ObservableObject {
 
     private var window: NSWindow?
     private var controller: ScreenMapController?
+    // Dev input probes inject restricted data/actions, never a different host.
+    var probeOverview: OverviewModel?
     @Published var activePage: AppPage = .home
 
     var isVisible: Bool { window?.isVisible ?? false }
@@ -71,7 +73,7 @@ final class ScreenMapWindowController: ObservableObject {
             ctrl.enter()
         }
 
-        let view = AppShellView(controller: ctrl)
+        let view = AppShellView(controller: ctrl, overview: probeOverview)
         let initialSize = preferredWindowSize(for: activePage)
 
         let w = AppWindowShell.makeWindow(

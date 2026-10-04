@@ -45,7 +45,7 @@ final class OverviewDragPassTests: XCTestCase {
         XCTAssertFalse(WindowSpaceCarry.sameDisplay(from: [1], to: 99, desktopGroups: groups))
     }
 
-    func testPhysicalDropWaitsUntilNativeDragEndsBeforeOpeningMissionControl() throws {
+    func testPhysicalDropWaitsUntilPointerReleaseBeforeOpeningMissionControl() throws {
         let suite = "drag.native-end." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -57,9 +57,9 @@ final class OverviewDragPassTests: XCTestCase {
         model.moveDragged(drag, to: try XCTUnwrap(OverviewWindowDrop.destination(on: display, spaceId: 2)))
         XCTAssertTrue(actions.calls.isEmpty)
         XCTAssertEqual(model.moveProgress, "Moving to Desktop 2…")
-        model.finishNativeDrag()
-        XCTAssertTrue(actions.calls.isEmpty, "Wait until AppKit's ended callback returns")
-        let finished = expectation(description: "move starts after native drag")
+        model.finishDrag()
+        XCTAssertTrue(actions.calls.isEmpty, "Wait until the pointer release callback returns")
+        let finished = expectation(description: "move starts after pointer release")
         DispatchQueue.main.async {
             XCTAssertEqual(actions.calls, [1])
             actions.finish?(nil)

@@ -1,0 +1,88 @@
+Fixture evidence: /private/tmp/lattices-overview-input.bmUQFc
+: postAccess=true
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: CGEvent from=(1756.5, 834.0) to=(1859.5, 477.79999999999995)
+screen: mouseDown wid=900001 eventWindow=214929 sourceWindow=214929 point=(916.5, 151.0)
+screen: armed wid=900001 source=2
+screen: pointer-begin windows=[900001] host=NoFocusRingWindow level=0
+screen: pointer-enter target=thumb:900:1 bounds=(0.0, 0.0, 84.0, 72.0) windowRect=(949.0, 357.0, 84.0, 72.0) pointer=(978.300048828125, 364.719970703125)
+screen: pointer-validate display=900 target=1 result=accept
+screen: pointer-exit target=thumb:900:1
+screen: pointer-enter target=screen:900:1 bounds=(0.0, 0.0, 235.0, 156.0) windowRect=(949.0, 437.0, 235.0, 156.0) pointer=(1001.8428955078125, 446.13714599609375)
+screen: pointer-validate display=900 target=1 result=accept
+screen: pointer-sample type=2 event=(1019.5, 507.20001220703125) screen=(1859.5, 962.2000122070312) window=214929
+screen: pointer-perform target=screen:900:1
+screen: decoded-payload windows=[900001] transport=in-process
+screen: pointer-validate display=900 target=1 result=accept
+screen: pointer-end committed=true
+screen: verified-fake-relocation
+thumb: CGEvent from=(1756.5, 834.0) to=(1814.2, 595.6)
+thumb: mouseDown wid=900001 eventWindow=214929 sourceWindow=214929 point=(916.5, 151.0)
+thumb: armed wid=900001 source=2
+thumb: pointer-begin windows=[900001] host=NoFocusRingWindow level=0
+thumb: pointer-enter target=thumb:900:1 bounds=(0.0, 0.0, 84.0, 72.0) windowRect=(949.0, 357.0, 84.0, 72.0) pointer=(967.605712890625, 362.154296875)
+thumb: pointer-validate display=900 target=1 result=accept
+thumb: pointer-sample type=2 event=(974.199951171875, 389.4000244140625) screen=(1814.199951171875, 844.4000244140625) window=214929
+thumb: pointer-perform target=thumb:900:1
+thumb: decoded-payload windows=[900001] transport=in-process
+thumb: pointer-validate display=900 target=1 result=accept
+thumb: pointer-end committed=true
+thumb: verified-fake-relocation
+layer: CGEvent from=(1756.5, 834.0) to=(1076.4, 428.20000000000005)
+layer: mouseDown wid=900001 eventWindow=214929 sourceWindow=214929 point=(916.5, 151.0)
+layer: armed wid=900001 source=2
+layer: pointer-begin windows=[900001] host=NoFocusRingWindow level=0
+layer: pointer-enter target=layer:__unassigned__ bounds=(0.0, 0.0, 188.0, 44.0) windowRect=(180.0, 468.0, 188.0, 44.0) pointer=(352.988525390625, 487.2342834472656)
+layer: pointer-exit target=layer:__unassigned__
+layer: pointer-enter target=layer:fixture-layer bounds=(0.0, 0.0, 188.0, 44.0) windowRect=(180.0, 537.0, 188.0, 44.0) pointer=(255.8314208984375, 545.2057189941406)
+layer: pointer-sample type=2 event=(236.4000244140625, 556.7999877929688) screen=(1076.4000244140625, 1011.7999877929688) window=214929
+layer: pointer-perform target=layer:fixture-layer
+layer: decoded-payload windows=[900001] transport=in-process
+layer: layer-onDrop fixture-layer
+layer: membership-saved
+layer: pointer-end committed=true
+new: CGEvent from=(1756.5, 834.0) to=(1076.4, 852.6)
+new: mouseDown wid=900001 eventWindow=214929 sourceWindow=214929 point=(916.5, 151.0)
+new: armed wid=900001 source=2
+new: pointer-begin windows=[900001] host=NoFocusRingWindow level=0
+new: pointer-enter target=layer:__new_layer__ bounds=(0.0, 0.0, 188.0, 52.0) windowRect=(180.0, 109.0, 188.0, 52.0) pointer=(352.988525390625, 135.58856201171875)
+new: pointer-sample type=2 event=(236.4000244140625, 132.4000244140625) screen=(1076.4000244140625, 587.4000244140625) window=214929
+new: pointer-perform target=layer:__new_layer__
+new: decoded-payload windows=[900001] transport=in-process
+new: layer-onDrop __new_layer__
+new: pointer-end committed=true
+cancel: CGEvent from=(1756.5, 834.0) to=(1859.5, 477.79999999999995)
+cancel: mouseDown wid=900001 eventWindow=214929 sourceWindow=214929 point=(916.5, 151.0)
+cancel: armed wid=900001 source=2
+cancel: pointer-begin windows=[900001] host=NoFocusRingWindow level=0
+cancel: pointer-enter target=thumb:900:1 bounds=(0.0, 0.0, 84.0, 72.0) windowRect=(949.0, 357.0, 84.0, 72.0) pointer=(978.300048828125, 364.719970703125)
+cancel: pointer-validate display=900 target=1 result=accept
+cancel: pointer-exit target=thumb:900:1
+cancel: pointer-enter target=screen:900:1 bounds=(0.0, 0.0, 235.0, 156.0) windowRect=(949.0, 437.0, 235.0, 156.0) pointer=(1001.8428955078125, 446.13714599609375)
+cancel: pointer-validate display=900 target=1 result=accept
+cancel: pointer-reject reason=cancelled
+cancel: pointer-end committed=false
+outside: CGEvent from=(1756.5, 834.0) to=(857.6, 947.0)
+outside: mouseDown wid=900001 eventWindow=214929 sourceWindow=214929 point=(916.5, 151.0)
+outside: armed wid=900001 source=2
+outside: pointer-begin windows=[900001] host=NoFocusRingWindow level=0
+outside: pointer-sample type=2 event=(17.5999755859375, 38.0) screen=(857.5999755859375, 493.0) window=214929
+outside: pointer-reject reason=no-visible-target
+outside: pointer-end committed=false{
+  "error": "",
+  "passed": true,
+  "results": {
+    "cancel": true,
+    "layer": true,
+    "new": true,
+    "outside": true,
+    "screen": true,
+    "thumb": true
+  }
+}

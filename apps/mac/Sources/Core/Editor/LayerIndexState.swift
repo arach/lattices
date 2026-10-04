@@ -137,6 +137,14 @@ struct OverviewLayerIndex: View {
             .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityAddTraits(active ? .isSelected : [])
         .background { if OverviewDragProbe.enabled { OverviewProbeMark(id: "layer:" + (id ?? "all")) } }
+        .background {
+            if let id, let membershipDrop {
+                OverviewPointerDrop(id: "layer:" + id, hover: { point in dropTarget = point == nil ? nil : id }) { payload, _ in
+                    OverviewDragProbe.log("layer-onDrop " + id)
+                    membershipDrop(payload, id)
+                }
+            }
+        }
         .onDrop(of: [OverviewMembershipDrag.type], isTargeted: Binding(
             get: { id != nil && dropTarget == id },
             set: { dropTarget = $0 ? id : nil }

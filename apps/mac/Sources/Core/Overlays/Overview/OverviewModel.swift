@@ -207,9 +207,9 @@ final class OverviewModel: ObservableObject {
     @Published var activeDrag: OverviewMembershipDrag?
     private var pendingDropMove: (() -> Void)?
 
-    /// Mission Control cannot open while AppKit is still finishing our drag.
-    /// The native source calls this after the drag session relinquishes input.
-    func finishNativeDrag() {
+    /// Start Mission Control only after the pointer router has removed its
+    /// preview and released input. Clear the pending move before scheduling it.
+    func finishDrag() {
         activeDrag = nil
         let pending = pendingDropMove
         pendingDropMove = nil
@@ -920,7 +920,7 @@ final class OverviewModel: ObservableObject {
             else { actions.moveToSpace(wid: wid, pid: row.pid, spaceId: destination.spaceId, displayId: destination.displayId, completion: completion) }
         }
         if activeDrag != nil {
-            DiagnosticLog.shared.info("OverviewMove: source=drop target=\(destination.spaceId) waiting-for-native-drag-end")
+            DiagnosticLog.shared.info("OverviewMove: source=drop target=\(destination.spaceId) waiting-for-pointer-release")
             pendingDropMove = { next(0) }
         } else { next(0) }
     }

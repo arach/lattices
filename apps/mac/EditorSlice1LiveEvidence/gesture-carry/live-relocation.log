@@ -1,0 +1,87 @@
+14:16:04.230 › [info] OverviewDrag:  LIVE test-only wid=213733 pid=60680 source=3 next=4 initialViews=[3, 2326, 2377]
+14:16:05.942 › [info] OverviewDrag: live-out-thumbnail CGEvent wid=213733 from=(1748.5, 444.5) to=(1855.4, 608.2) target=4
+14:16:06.971 › [info] OverviewDrag: live-out-thumbnail mouseDown wid=213733 eventWindow=213741 sourceWindow=213741 point=(908.5, 540.5)
+14:16:06.972 › [info] OverviewDrag: live-out-thumbnail armed wid=213733 source=3
+14:16:09.192 › [info] WindowRelocation: source=app.overview wid=213733 target=4 method=relocation attempt
+14:16:09.204 › [info] WindowRelocation: wid=213733 display=0 spaces=[3] → display=0 space=4
+14:16:09.208 › [info] WindowRelocation: wid=213733 source=[3] target=4 method=WindowSpaceCarry attempt
+14:16:09.374 › [info] WindowSpaceCarry: wid=213733 source=3 target=4 Mission Control opened
+14:16:09.854 › [info] WindowSpaceCarry: wid=213733 3 → 4 (Space 3 of 6)
+14:16:12.132 ✓ [success] WindowSpaceCarry: wid=213733 now on [4]
+14:16:12.234 › [info] WindowRelocation: wid=213733 target=4 method=WindowSpaceCarry outcome=moved
+14:16:12.390 › [info] WindowRelocation: wid=213733 move desktop [3] → 4 on display 0
+14:16:12.390 › [info] WindowRelocation: wid=213733 verified display 0, desktop 4, and frame
+14:16:12.404 › [info] WindowRelocation: source=app.overview wid=213733 target=4 outcome=ok reason=verified
+14:16:14.290 › [info] OverviewDrag: live-back-map CGEvent wid=213733 from=(1756.5, 834.0) to=(1819.0, 493.20000000000005) target=3
+14:16:15.315 › [info] OverviewDrag: live-back-map mouseDown wid=213733 eventWindow=213741 sourceWindow=213741 point=(916.5, 151.0)
+14:16:15.317 › [info] OverviewDrag: live-back-map armed wid=213733 source=4
+14:16:17.568 › [info] WindowRelocation: source=app.overview wid=213733 target=3 method=relocation attempt
+14:16:17.576 › [info] WindowRelocation: wid=213733 display=0 spaces=[4] → display=0 space=3
+14:16:17.583 › [info] WindowRelocation: wid=213733 source=[4] target=3 method=WindowSpaceCarry attempt
+14:16:18.182 › [info] WindowSpaceCarry: wid=213733 source=4 target=3 Mission Control opened
+14:16:18.694 › [info] WindowSpaceCarry: wid=213733 4 → 3 (Space 2 of 6)
+14:16:20.975 ⚠ [warning] WindowSpaceCarry: wid=213733 stayed on [2736]
+14:16:21.346 ⚠ [warning] WindowRelocation: wid=213733 target=3 method=WindowSpaceCarry outcome=failed reason=the drop didn't take (window still on [2736])
+14:16:21.394 › [info] WindowRelocation: wid=213733 stage source desktop 4 → 3
+14:16:21.394 › [info] WindowRelocation: wid=213733 failed: Source staging failed: the drop didn't take (window still on [2736])
+14:16:21.394 › [info] WindowRelocation: wid=213733 rollback: restoring original display, desktop, and frame
+14:16:21.394 › [info] WindowRelocation: wid=213733 rollback failed: Source window must belong to one ordinary desktop on its observed display
+14:16:21.416 › [info] WindowRelocation: source=app.overview wid=213733 target=3 outcome=failed reason=Source staging failed: the drop didn't take (window still on [2736]) The original position could not be restored. Locate the window in Overview and retry with an available display and desktop.
+14:24:16.861 › [info] OverviewDrag:  LIVE test-only wid=214115 pid=60680 source=3 next=4 initialViews=[3, 2326, 2377]
+14:24:18.566 › [info] OverviewDrag: live-out-thumbnail CGEvent wid=214115 from=(1748.5, 444.5) to=(1855.4, 608.2) target=4
+14:24:19.596 › [info] OverviewDrag: live-out-thumbnail mouseDown wid=214115 eventWindow=214123 sourceWindow=214123 point=(908.5, 540.5)
+14:24:19.598 › [info] OverviewDrag: live-out-thumbnail armed wid=214115 source=3
+14:24:21.516 › [info] WindowRelocation: source=app.overview wid=214115 target=4 method=relocation attempt
+14:24:21.541 › [info] WindowRelocation: wid=214115 display=0 spaces=[3] → display=0 space=4
+14:24:21.551 › [info] WindowRelocation: wid=214115 source=[3] target=4 method=WindowSpaceCarry attempt
+14:24:21.732 › [info] WindowSpaceCarry: wid=214115 source=3 target=4 Mission Control opened
+14:24:22.209 › [info] WindowSpaceCarry: wid=214115 3 → 4 (Space 3 of 6)
+14:24:24.982 ✓ [success] WindowSpaceCarry: wid=214115 now on [4]
+14:24:25.081 › [info] WindowRelocation: wid=214115 target=4 method=WindowSpaceCarry outcome=moved
+14:24:25.285 › [info] WindowRelocation: wid=214115 move desktop [3] → 4 on display 0
+14:24:25.285 › [info] WindowRelocation: wid=214115 verified display 0, desktop 4, and frame
+14:24:25.294 › [info] WindowRelocation: source=app.overview wid=214115 target=4 outcome=ok reason=verified
+14:24:26.805 › [info] OverviewDrag: live-back-map CGEvent wid=214115 from=(1756.5, 834.0) to=(1819.0, 493.20000000000005) target=3
+14:24:27.820 › [info] OverviewDrag: live-back-map mouseDown wid=214115 eventWindow=214123 sourceWindow=214123 point=(916.5, 151.0)
+14:24:27.821 › [info] OverviewDrag: live-back-map armed wid=214115 source=4
+14:24:29.762 › [info] WindowRelocation: source=app.overview wid=214115 target=3 method=relocation attempt
+14:24:29.784 › [info] WindowRelocation: wid=214115 display=0 spaces=[4] → display=0 space=3
+14:24:29.793 › [info] WindowRelocation: wid=214115 source=[4] target=3 method=WindowSpaceCarry attempt
+14:24:30.246 › [info] WindowSpaceCarry: wid=214115 source=4 target=3 Mission Control opened
+14:24:30.746 › [info] WindowSpaceCarry: wid=214115 4 → 3 (Space 2 of 6)
+14:24:33.516 ⚠ [warning] WindowSpaceCarry: wid=214115 stayed on [2749]
+14:24:34.051 ⚠ [warning] WindowRelocation: wid=214115 target=3 method=WindowSpaceCarry outcome=failed reason=the drop didn't take (window still on [2749])
+14:24:34.238 › [info] WindowRelocation: wid=214115 stage source desktop 4 → 3
+14:24:34.238 › [info] WindowRelocation: wid=214115 failed: Source staging failed: the drop didn't take (window still on [2749])
+14:24:34.238 › [info] WindowRelocation: wid=214115 rollback: restoring original display, desktop, and frame
+14:24:34.238 › [info] WindowRelocation: wid=214115 rollback failed: Source window must belong to one ordinary desktop on its observed display
+14:24:34.247 › [info] WindowRelocation: source=app.overview wid=214115 target=3 outcome=failed reason=Source staging failed: the drop didn't take (window still on [2749]) The original position could not be restored. Locate the window in Overview and retry with an available display and desktop.
+14:25:48.358 › [info] OverviewDrag:  LIVE test-only wid=214315 pid=60680 source=3 next=4 initialViews=[3, 2326, 2377]
+14:25:50.113 › [info] OverviewDrag: live-out-thumbnail CGEvent wid=214315 from=(1748.5, 444.5) to=(1855.4, 608.2) target=4
+14:25:51.144 › [info] OverviewDrag: live-out-thumbnail mouseDown wid=214315 eventWindow=214323 sourceWindow=214323 point=(908.5, 540.5)
+14:25:51.146 › [info] OverviewDrag: live-out-thumbnail armed wid=214315 source=3
+14:25:53.046 › [info] WindowRelocation: source=app.overview wid=214315 target=4 method=relocation attempt
+14:25:53.071 › [info] WindowRelocation: wid=214315 display=0 spaces=[3] → display=0 space=4
+14:25:53.077 › [info] WindowRelocation: wid=214315 source=[3] target=4 method=WindowSpaceCarry attempt
+14:25:53.237 › [info] WindowSpaceCarry: wid=214315 source=3 target=4 Mission Control opened
+14:25:53.740 › [info] WindowSpaceCarry: wid=214315 3 → 4 (Space 3 of 6)
+14:25:56.274 ✓ [success] WindowSpaceCarry: wid=214315 now on [4]
+14:25:56.297 › [info] WindowRelocation: wid=214315 target=4 method=WindowSpaceCarry outcome=moved
+14:25:56.460 › [info] WindowRelocation: wid=214315 move desktop [3] → 4 on display 0
+14:25:56.460 › [info] WindowRelocation: wid=214315 verified display 0, desktop 4, and frame
+14:25:56.481 › [info] WindowRelocation: source=app.overview wid=214315 target=4 outcome=ok reason=verified
+14:25:58.315 › [info] OverviewDrag: live-back-map CGEvent wid=214315 from=(1756.5, 834.0) to=(1819.0, 493.20000000000005) target=3
+14:25:59.345 › [info] OverviewDrag: live-back-map mouseDown wid=214315 eventWindow=214323 sourceWindow=214323 point=(916.5, 151.0)
+14:25:59.348 › [info] OverviewDrag: live-back-map armed wid=214315 source=4
+14:26:01.262 › [info] WindowRelocation: source=app.overview wid=214315 target=3 method=relocation attempt
+14:26:01.285 › [info] WindowRelocation: wid=214315 display=0 spaces=[4] → display=0 space=3
+14:26:01.298 › [info] WindowRelocation: wid=214315 source=[4] target=3 method=WindowSpaceCarry attempt
+14:26:01.665 › [info] WindowSpaceCarry: wid=214315 source=4 target=3 Mission Control opened
+14:26:02.172 › [info] WindowSpaceCarry: wid=214315 4 → 3 (Space 2 of 6)
+14:26:08.247 ⚠ [warning] WindowSpaceCarry: wid=214315 stayed on [2754]
+14:26:08.415 ⚠ [warning] WindowRelocation: wid=214315 target=3 method=WindowSpaceCarry outcome=failed reason=the drop didn't take (window still on [2754])
+14:26:08.439 › [info] WindowRelocation: wid=214315 stage source desktop 4 → 3
+14:26:08.439 › [info] WindowRelocation: wid=214315 failed: Source staging failed: the drop didn't take (window still on [2754])
+14:26:08.439 › [info] WindowRelocation: wid=214315 rollback: restoring original display, desktop, and frame
+14:26:08.439 › [info] WindowRelocation: wid=214315 rollback failed: Source window must belong to one ordinary desktop on its observed display
+14:26:08.456 › [info] WindowRelocation: source=app.overview wid=214315 target=3 outcome=failed reason=Source staging failed: the drop didn't take (window still on [2754]) The original position could not be restored. Locate the window in Overview and retry with an available display and desktop.

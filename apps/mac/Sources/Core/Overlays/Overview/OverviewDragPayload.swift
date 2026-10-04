@@ -108,6 +108,12 @@ struct OverviewDesktopStrip: View {
                                 .background(hovered ? Palette.borderLit : Palette.surface)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                                 .contentShape(Rectangle())
+                                .background(OverviewPointerDrop(id: "desktop-strip:\(display.displayId):\(space)", hover: { point in
+                                    targeted = point == nil ? nil : space
+                                }) { payload, _ in
+                                    guard model.moving.isEmpty else { OverviewDragProbe.log("pointer-reject reason=move-in-progress"); return }
+                                    model.moveDragged(payload, to: destination)
+                                })
                                 .onDrop(of: [OverviewMembershipDrag.type], isTargeted: Binding(
                                     get: { targeted == space }, set: { targeted = $0 ? space : nil }
                                 )) { providers in

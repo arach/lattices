@@ -1,0 +1,32 @@
+: surface=showScreenMapOverview window=NoFocusRingWindow level=0
+: LIVE test-only wid=214315 pid=60680 source=3 next=4 initialViews=[3, 2326, 2377]
+live-out-thumbnail: frontmost-is-source=true postAccess=true
+live-out-thumbnail: input-window=214323 key=true appActive=true source=(0.0, 0.0, 73.0, 55.0)
+live-out-thumbnail: CGEvent wid=214315 from=(1748.5, 444.5) to=(1855.4, 608.2) target=4
+live-out-thumbnail: mouseDown wid=214315 eventWindow=214323 sourceWindow=214323 point=(908.5, 540.5)
+live-out-thumbnail: armed wid=214315 source=3
+live-out-thumbnail: pointer-begin windows=[214315] host=NoFocusRingWindow level=0
+live-out-thumbnail: pointer-enter target=screen:2:3 bounds=(0.0, 0.0, 440.0, 184.0) windowRect=(847.0, 409.0, 440.0, 184.0) pointer=(911.5543212890625, 535.8228454589844)
+live-out-thumbnail: pointer-exit target=screen:2:3
+live-out-thumbnail: pointer-enter target=thumb:2:4 bounds=(0.0, 0.0, 68.0, 44.0) windowRect=(995.0, 357.0, 68.0, 44.0) pointer=(1000.1285400390625, 400.18572998046875)
+live-out-thumbnail: pointer-sample type=2 event=(1015.4000244140625, 376.79998779296875) screen=(1855.4000244140625, 831.7999877929688) window=214323
+live-out-thumbnail: pointer-perform target=thumb:2:4
+live-out-thumbnail: decoded-payload windows=[214315] transport=in-process
+live-out-thumbnail: pointer-validate display=2 target=4 result=accept
+live-out-thumbnail: pointer-end committed=true
+live-out-thumbnail: LIVE result=["phase": 0, "target": 4, "viewsUnchanged": true, "wid": 214315, "spaces": [4], "passed": true, "receipt": "Moved TextEdit to Desktop 3"]
+live-back-map: frontmost-is-source=true postAccess=true
+live-back-map: input-window=214323 key=true appActive=true source=(0.0, 0.0, 1049.0, 32.0)
+live-back-map: CGEvent wid=214315 from=(1756.5, 834.0) to=(1819.0, 493.20000000000005) target=3
+live-back-map: mouseDown wid=214315 eventWindow=214323 sourceWindow=214323 point=(916.5, 151.0)
+live-back-map: armed wid=214315 source=4
+live-back-map: pointer-begin windows=[214315] host=NoFocusRingWindow level=0
+live-back-map: pointer-enter target=thumb:2:3 bounds=(0.0, 0.0, 68.0, 44.0) windowRect=(921.0, 357.0, 68.0, 44.0) pointer=(955.7857666015625, 365.2171630859375)
+live-back-map: pointer-exit target=thumb:2:3
+live-back-map: pointer-enter target=screen:2:3 bounds=(0.0, 0.0, 440.0, 184.0) windowRect=(847.0, 409.0, 440.0, 184.0) pointer=(964.7142333984375, 413.90283203125)
+live-back-map: pointer-sample type=2 event=(979.0, 491.79998779296875) screen=(1819.0, 946.7999877929688) window=214323
+live-back-map: pointer-perform target=screen:2:3
+live-back-map: decoded-payload windows=[214315] transport=in-process
+live-back-map: pointer-validate display=2 target=3 result=accept
+live-back-map: pointer-end committed=true
+live-back-map: LIVE result=["target": 3, "spaces": [2754], "phase": 1, "wid": 214315, "viewsUnchanged": true, "receipt": "Couldn\'t move to Desktop 2: TextEdit · lattices-carry-test: Source staging failed: the drop didn\'t take (window still on [2754]) The original position could not be restored. Locate the window in Overview and retry with an available display and desktop.", "passed": false]

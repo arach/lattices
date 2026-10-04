@@ -1,0 +1,34 @@
+: surface=showScreenMapOverview window=NoFocusRingWindow level=0
+: LIVE test-only wid=213733 pid=60680 source=3 next=4 initialViews=[3, 2326, 2377]
+live-out-thumbnail: frontmost-is-source=true postAccess=true
+live-out-thumbnail: input-window=213741 key=true appActive=true source=(0.0, 0.0, 73.0, 55.0)
+live-out-thumbnail: CGEvent wid=213733 from=(1748.5, 444.5) to=(1855.4, 608.2) target=4
+live-out-thumbnail: mouseDown wid=213733 eventWindow=213741 sourceWindow=213741 point=(908.5, 540.5)
+live-out-thumbnail: armed wid=213733 source=3
+live-out-thumbnail: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+live-out-thumbnail: screen-validate display=2 target=3 kind=map result=accept
+live-out-thumbnail: screen-enter display=2 target=3 kind=map
+live-out-thumbnail: screen-exit display=2 target=3 kind=map
+live-out-thumbnail: screen-validate display=2 target=4 kind=thumbnail result=accept
+live-out-thumbnail: screen-enter display=2 target=4 kind=thumbnail
+live-out-thumbnail: screen-performDrop display=2 target=4 kind=thumbnail busy=false
+live-out-thumbnail: providers dev.lattices.overview-membership
+live-out-thumbnail: decoded-payload windows=[213733]
+live-out-thumbnail: native-end operation=16
+live-out-thumbnail: LIVE result=["wid": 213733, "viewsUnchanged": true, "phase": 0, "spaces": [4], "passed": true, "target": 4, "receipt": "Moved TextEdit to Desktop 3"]
+live-back-map: frontmost-is-source=true postAccess=true
+live-back-map: input-window=213741 key=true appActive=true source=(0.0, 0.0, 1049.0, 32.0)
+live-back-map: CGEvent wid=213733 from=(1756.5, 834.0) to=(1819.0, 493.20000000000005) target=3
+live-back-map: mouseDown wid=213733 eventWindow=213741 sourceWindow=213741 point=(916.5, 151.0)
+live-back-map: armed wid=213733 source=4
+live-back-map: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+live-back-map: screen-validate display=2 target=3 kind=thumbnail result=accept
+live-back-map: screen-enter display=2 target=3 kind=thumbnail
+live-back-map: screen-exit display=2 target=3 kind=thumbnail
+live-back-map: screen-validate display=2 target=3 kind=map result=accept
+live-back-map: screen-enter display=2 target=3 kind=map
+live-back-map: screen-performDrop display=2 target=3 kind=map busy=false
+live-back-map: providers dev.lattices.overview-membership
+live-back-map: decoded-payload windows=[213733]
+live-back-map: native-end operation=16
+live-back-map: LIVE result=["wid": 213733, "spaces": [2736], "passed": false, "receipt": "Couldn\'t move to Desktop 2: TextEdit · lattices-carry-test: Source staging failed: the drop didn\'t take (window still on [2736]) The original position could not be restored. Locate the window in Overview and retry with an available display and desktop.", "viewsUnchanged": true, "phase": 1, "target": 3]

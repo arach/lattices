@@ -77,7 +77,13 @@ struct AppShellView: View {
     @ObservedObject var windowController = ScreenMapWindowController.shared
     @ObservedObject private var scanner = ProjectScanner.shared
     @ObservedObject private var ocr = ScreenText.shared
-    @StateObject private var overview = OverviewModel()
+    @StateObject private var overview: OverviewModel
+    private let isolatedOverview: Bool
+    init(controller: ScreenMapController, overview: OverviewModel? = nil) {
+        self.controller = controller
+        self.isolatedOverview = overview != nil
+        _overview = StateObject(wrappedValue: overview ?? OverviewModel())
+    }
 
     /// Labels are on by default. Collapsing to the icon rail stays available
     /// through the brand mark, but as a preference the user sets and keeps —
@@ -439,7 +445,7 @@ struct AppShellView: View {
                 windowController.showPage(page)
             })
         case .overview:
-            OverviewView(model: overview, controller: controller)
+            OverviewView(model: overview, controller: controller, live: !isolatedOverview, fixtureInteractions: isolatedOverview)
         case .layers:
             LayersPage()
         case .activity:

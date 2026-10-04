@@ -59,13 +59,11 @@ final class OverviewCarryLiveProbe {
         fixture.model.restoreDisplay(display.displayId)
         fixture.model.compositionAdder = { _, _ in throw NSError(domain: "LiveProbe", code: 1) }
         fixture.model.compositionCreator = { _ in false }
-        fixture.root = NSHostingView(rootView: OverviewView(model: fixture.model, controller: ScreenMapController(), live: false, fixtureInteractions: true).environment(\.colorScheme, .dark))
-        fixture.window = NSWindow(contentRect: CGRect(x: screen.frame.minX + 60, y: screen.frame.minY + 80, width: min(1050, screen.frame.width - 120), height: min(650, screen.frame.height - 160)), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        fixture.window.title = "Lattices — bounded live carry test"
-        fixture.window.contentView = fixture.root
-        fixture.window.collectionBehavior = [.canJoinAllSpaces, .transient]
-        NSApp.setActivationPolicy(.regular)
-        fixture.window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        ScreenMapWindowController.shared.probeOverview = fixture.model
+        ScreenMapWindowController.shared.showScreenMapOverview()
+        fixture.window = ScreenMapWindowController.shared.nsWindow
+        fixture.root = fixture.window.contentView
+        OverviewDragProbe.log("surface=showScreenMapOverview window=\(type(of: fixture.window!)) level=\(fixture.window.level.rawValue)")
         OverviewDragProbe.log("LIVE test-only wid=\(wid) pid=\(pid) source=\(original) next=\(next) initialViews=\(initial.map { $0.currentSpaceId })")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.run() }
     }

@@ -627,3 +627,103 @@ views `[4, 2326, 2377]` and zero remaining test windows
 (`return-carry/final-view-readback.log`). Workspace hash and mtime remain
 `d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f` and
 `1791063065` respectively. No workspace.json write, push, merge or PR.
+
+## Gesture entry-point follow-up: drop delivery fixed, return carry still fails
+
+**Partial completion. Do not report desktop dragging as fully fixed.** The
+three-run live limit is exhausted. The earlier isolated-window round trip
+does not establish reliable return carry on the user's surface.
+
+### Surface and diagnosis
+
+The middle-button action calls
+`ScreenMapWindowController.shared.showScreenMapOverview()`. This opens
+`AppShellView` in a `NoFocusRingWindow` at level 0, not a high-level overlay
+panel. Both input probes now call that exact entry point and use its shell,
+window factory, layout, and chrome. They inject restricted model data/actions;
+they do not start normal inventory timers, the daemon, or workspace persistence.
+The live probe still restricts actions to its own TextEdit window.
+
+The baseline native-drag run on this host accepted both destinations. Thus the
+reported native `operation=0` failure was not reproduced with restricted data.
+It remains incorrect to attribute that failure to a nonactivating panel.
+
+A separate hit-testing error was reproduced. `NSView.visibleRect` can extend
+outside a SwiftUI representable's bounds. A target whose window rectangle was
+`(1039,357,84,72)` was treated as hit at `(919,161)`. The existing source picker
+used the same visibleRect-only test, so it could arm a window outside its tile.
+Source and destination hit tests now intersect visibleRect with bounds.
+
+### Implemented input changes
+
+Overview's own pointer drags no longer depend on native drop registration.
+A router owns the down/drag/up sequence and resolves explicit target views in
+paint order. It carries the frozen payload, shows a nonactivating preview,
+updates highlights, and dispatches one release. Escape, app deactivation, and
+release without a visible target cancel it. A terminal release guard prevents
+a second dispatch. Floating controls shield targets behind them.
+
+Main maps, Desktop thumbnails, layer rows, the layer Desktop strip, and
+composition slots use this route. Existing item-provider drop handlers remain
+for their callers. Mission Control starts asynchronously after the pointer
+router removes its preview and releases input.
+
+Production logs include source/window identity, target enter/exit, validation,
+perform, and rejection reasons. Native validation is no longer suppressed.
+The fake-window CGEvent probe uses the same gesture entry point and checks six
+cases: map, thumbnail, layer, new layer, Escape, and no target. Positive cases
+must decode once and produce one receipt; cancellation must produce none.
+
+### Live results and remaining failure
+
+Exactly three live runs moved only newly created `lattices-carry-test`
+documents on the main display. Initial views were `[3,2326,2377]`.
+
+| Run | Transport | Thumbnail 3 → 4 | Main map 4 → 3 |
+| --- | --- | --- | --- |
+| 1 | Native baseline, real shell | Verified | Drop accepted; carry reported Space 2736 instead of 3 |
+| 2 | Pointer router | Verified | Dispatched once; carry reported Space 2749 instead of 3 |
+| 3 | Pointer router | Verified | Dispatched once; carry reported Space 2754 instead of 3 |
+
+The return destination was Desktop 2, Space ID 3. The failure is now downstream
+of input delivery: `WindowSpaceCarry` / source staging, not a missing target.
+Re-resolving the Mission Control button after hover and waiting longer for the
+requested Space did not fix it. Those experimental backend changes were
+reverted; this commit does not claim a carry-backend fix.
+
+Each test document was closed. Final cleanup readback showed no test windows
+and the original views. Raw traces and failed JSON results are preserved in
+`EditorSlice1LiveEvidence/gesture-carry/`. Unredacted Mission Control screenshots
+remain only in `/private/tmp/lattices-carry-live.0MqHNh/`; they are not committed.
+Further live investigation requires another explicitly authorized run budget.
+
+Validation: 498 app tests, 13 skipped, zero failures with render fixtures;
+22 Swift package tests passed; 47 CLI tests passed with one skip; 9 Bun tests
+passed; TypeScript checks passed. The render runner first failed because its
+output directory did not exist; creating that directory resolved the harness
+failure without a code change. The six-case debug input probe passed on the
+real shell. Tests cover bounded source/target hit regions, hidden targets,
+terminal release/cancellation, and deferred relocation after pointer release.
+Logs: `/tmp/lattices-pointer-render-tests-final.log`,
+`/tmp/lattices-pointer-packages.log`, `/tmp/lattices-pointer-bun.log`,
+`/tmp/lattices-pointer-types.log`, `/tmp/lattices-pointer-six-input.log`.
+
+The optimized dev app was rebuilt and installed successfully
+(`/tmp/lattices-pointer-dev-build.log`). Its six-case input probe passed
+(`gesture-carry/shipped-fixture-input.log`). The first optimized probe received
+extra pointer events, including a release before its planned endpoint and extra
+mouse-downs; it failed new-layer and Escape checks. That trace is retained as
+`shipped-fixture-interrupted.log`. The repeat passed all six cases. This does
+not establish that input interference caused the separate live carry failures.
+
+A final read-only Space catalog places IDs 2736, 2749, and 2754 on the Action
+virtual display, not the main display. Cleanup did not issue virtual-display Space-management
+commands. Further investigation should record actual pointer
+positions and input-event provenance around Mission Control release, in
+addition to intended coordinates. Do not infer a fix from the intended drop
+point alone.
+
+The dev app was reopened normally with this checkout's explicit CLI root.
+`gesture-carry/final-readback.log` confirms views `[3,2326,2377]`, zero test
+windows, unchanged workspace hash/mtime, and the running dev process. No
+release app build, workspace write, push, merge, or PR was performed.

@@ -8,7 +8,7 @@ enum OverviewDragProbe {
     static var current = ""
     static var folder: URL?
     static func log(_ event: String) {
-        if !event.contains("screen-validate") { DiagnosticLog.shared.info("OverviewDrag: \(current) \(event)") }
+        DiagnosticLog.shared.info("OverviewDrag: \(current) \(event)")
         guard enabled else { return }
         events.append(current + ": " + event)
         if let folder { try? events.joined(separator: "\n").write(to: folder.appendingPathComponent("trace.log"), atomically: true, encoding: .utf8) }
@@ -29,7 +29,7 @@ final class OverviewDragFixture {
     var model: OverviewModel!
     var root: NSView!
     var results: [String: Bool] = [:]
-    let names = ["screen", "thumb", "layer", "new"]
+    let names = ["screen", "thumb", "layer", "new", "cancel", "outside"]
     let suite = "overview.input-fixture." + UUID().uuidString
     static func start() -> Bool {
         guard requested else { return false }
@@ -62,16 +62,13 @@ final class OverviewDragFixture {
             OverviewDragProbe.log("membership-saved"); return (windows.count, "Fixture layer")
         }
         model.compositionCreator = { _ in OverviewDragProbe.log("create-blocked"); return false }
-        let view = OverviewView(model: model, controller: ScreenMapController(), live: false, fixtureInteractions: true)
-            .environment(\.colorScheme, .dark)
-        root = NSHostingView(rootView: view)
-        window = NSWindow(contentRect: CGRect(x: 120, y: 150, width: 1050, height: 650), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Lattices — isolated drag input fixture"
-        window.appearance = NSAppearance(named: .darkAqua); window.contentView = root
-        NSApp.setActivationPolicy(.regular)
-        window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        ScreenMapWindowController.shared.probeOverview = model
+        ScreenMapWindowController.shared.showScreenMapOverview()
+        window = ScreenMapWindowController.shared.nsWindow
+        root = window.contentView
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.run(0) }
     }
+
     func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
     func point(_ view: NSView, fraction: CGPoint = .init(x: 0.5, y: 0.5)) -> CGPoint {
         let local = CGPoint(x: view.bounds.width * fraction.x, y: view.bounds.height * fraction.y)
@@ -89,10 +86,11 @@ final class OverviewDragFixture {
             }
         }
         guard let source = views.compactMap({ $0 as? OverviewImmediateDragSource.Source }).first(where: { $0.wid == 900001 && !$0.visibleRect.isEmpty }),
-              let target = views.compactMap({ $0 as? OverviewProbeMark.Mark }).first(where: { $0.id == ["screen": "screen:900:1", "thumb": "thumb:900:1", "layer": "layer:fixture-layer", "new": "layer:__new_layer__"][name] }) else {
+              let target = views.compactMap({ $0 as? OverviewProbeMark.Mark }).first(where: { $0.id == ["screen": "screen:900:1", "thumb": "thumb:900:1", "layer": "layer:fixture-layer", "new": "layer:__new_layer__", "cancel": "screen:900:1", "outside": "screen:900:1"][name] }) else {
             finish(error: "Fixture target missing: " + name); return
         }
-        let from = point(source), to = point(target, fraction: .init(x: 0.3, y: 0.45))
+        let from = point(source)
+        let to = name == "outside" ? point(root, fraction: .init(x: 0.01, y: 0.05)) : point(target, fraction: .init(x: 0.3, y: 0.45))
         OverviewDragProbe.log("CGEvent from=\(from) to=\(to)")
         DispatchQueue.global(qos: .userInitiated).async {
             func post(_ type: CGEventType, _ p: CGPoint) {
@@ -108,17 +106,28 @@ final class OverviewDragFixture {
                 post(.leftMouseDragged, .init(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t))
                 Thread.sleep(forTimeInterval: 0.035)
             }
-            Thread.sleep(forTimeInterval: 0.4); post(.leftMouseUp, to)
+            Thread.sleep(forTimeInterval: 0.4)
+            if name == "cancel" {
+                CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: true)?.post(tap: .cghidEventTap)
+                Thread.sleep(forTimeInterval: 0.1)
+                CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: false)?.post(tap: .cghidEventTap)
+            }
+            post(.leftMouseUp, to)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 let lines = OverviewDragProbe.events.filter { $0.hasPrefix(name + ":") }
-                self.results[name] = lines.contains { $0.contains("decoded-payload") } &&
-                    (name == "new" ? self.model.composition != nil : lines.contains { $0.contains(name == "layer" ? "membership-saved" : "verified-fake-relocation") })
+                let decoded = lines.filter { $0.contains("decoded-payload") }.count
+                if name == "cancel" || name == "outside" {
+                    self.results[name] = decoded == 0 && lines.contains { $0.contains("pointer-reject") }
+                } else {
+                    let receipts = lines.filter { $0.contains(name == "layer" ? "membership-saved" : "verified-fake-relocation") }.count
+                    self.results[name] = decoded == 1 && (name == "new" ? self.model.composition != nil : receipts == 1)
+                }
                 self.run(index + 1)
             }
         }
     }
     func finish(error: String?) {
-        let value: [String: Any] = ["passed": error == nil && results.count == 4 && results.values.allSatisfy { $0 }, "results": results, "error": error ?? ""]
+        let value: [String: Any] = ["passed": error == nil && results.count == names.count && results.values.allSatisfy { $0 }, "results": results, "error": error ?? ""]
         if let folder = OverviewDragProbe.folder, let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]) { try? data.write(to: folder.appendingPathComponent("result.json")) }
         UserDefaults.standard.removePersistentDomain(forName: suite)
         exit((value["passed"] as? Bool) == true ? 0 : 1)

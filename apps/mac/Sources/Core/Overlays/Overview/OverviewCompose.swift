@@ -96,6 +96,9 @@ struct OverviewComposeSheet: View {
                     Text("Drop: " + slot.rawValue).font(.caption)
                         .frame(maxWidth: .infinity).padding(10)
                         .background(Palette.surface)
+                        .background(OverviewPointerDrop(id: "slot:" + slot.rawValue) { payload, _ in
+                            for wid in payload.windows where draft.windows.contains(where: { $0.wid == wid }) { draft.slots[wid] = slot }
+                        })
                         .onDrop(of: [OverviewMembershipDrag.type], isTargeted: nil) { providers in
                             OverviewMembershipDrag.receive(providers) { payload in
                                 for wid in payload.windows where draft.windows.contains(where: { $0.wid == wid }) {

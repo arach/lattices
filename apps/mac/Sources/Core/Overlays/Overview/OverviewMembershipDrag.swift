@@ -127,7 +127,7 @@ enum OverviewDragLabel {
 }
 
 /// Observe the existing hit surface without replacing its click/context-menu handlers.
-/// Native dragging begins after 4 points, with no long-press recognizer.
+/// In-process pointer dragging begins after 4 points, with no long press.
 struct OverviewImmediateDragSource: NSViewRepresentable {
     let model: OverviewModel
     let wid: UInt32
@@ -135,7 +135,7 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
     func updateNSView(_ view: Source, context: Context) { view.model = model; view.wid = wid }
     static func dismantleNSView(_ view: Source, coordinator: ()) { view.uninstall() }
 
-    final class Source: NSView, NSDraggingSource {
+    final class Source: NSView {
         weak var model: OverviewModel?
         var wid: UInt32 = 0
         var monitor: Any?
@@ -157,7 +157,7 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
         }
         static func frontmost(in view: NSView, windowPoint: CGPoint) -> NSView? {
             guard !view.isHiddenOrHasHiddenAncestor,
-                  view.visibleRect.contains(view.convert(windowPoint, from: nil)) else { return nil }
+                  view.bounds.intersection(view.visibleRect).contains(view.convert(windowPoint, from: nil)) else { return nil }
             for child in view.subviews.reversed() {
                 if let hit = frontmost(in: child, windowPoint: windowPoint) { return hit }
             }
@@ -181,7 +181,7 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
                 down = nil; payload = nil
                 // SwiftUI hit-tests its NSHostingView, not a background representable's
                 // parent. Resolve the frontmost visible source in AppKit paint order.
-                if visibleRect.contains(point), !isHiddenOrHasHiddenAncestor,
+                if bounds.intersection(visibleRect).contains(point), !isHiddenOrHasHiddenAncestor,
                    let root = window?.contentView,
                    Self.frontmost(in: root, windowPoint: event.locationInWindow) === self {
                     down = event; payload = model.membershipDrag(wid)
@@ -193,13 +193,6 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
                       hypot(event.locationInWindow.x - down.locationInWindow.x,
                             event.locationInWindow.y - down.locationInWindow.y) >= 4 else { return event }
                 self.down = nil; self.payload = nil
-                let item = NSPasteboardItem()
-                guard let data = try? JSONEncoder().encode(payload) else { return event }
-                item.setData(data, forType: .init(OverviewMembershipDrag.type))
-                if payload.windows.count == 1,
-                   let relocation = try? JSONEncoder().encode(OverviewWindowDragPayload(session: payload.session, wid: wid)) {
-                    item.setData(relocation, forType: .init(OverviewWindowDragPayload.type))
-                }
                 let title = model.projection.all[wid]?.title ?? "Window"
                 let text = payload.windows.count > 1 ? "\(payload.windows.count) windows · \(title)" : title
                 let image = NSImage(size: NSSize(width: 300, height: 38))
@@ -209,24 +202,17 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
                 (text as NSString).draw(in: NSRect(x: 10, y: 9, width: 280, height: 22), withAttributes: [
                     .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor])
                 image.unlockFocus()
-                let dragging = NSDraggingItem(pasteboardWriter: item)
-                dragging.setDraggingFrame(Self.previewFrame(cursor: convert(event.locationInWindow, from: nil),
-                    grab: convert(down.locationInWindow, from: nil), source: bounds.size, preview: image.size), contents: image)
-                OverviewDragProbe.log("native-begin types=" + item.types.map(\.rawValue).joined(separator: ","))
-                model.activeDrag = payload
-                beginDraggingSession(with: [dragging], event: event, source: self)
+                guard let window else { return event }
+                let frame = Self.previewFrame(cursor: .zero,
+                    grab: convert(down.locationInWindow, from: nil), source: bounds.size, preview: image.size)
+                OverviewPointerDrag(model: model, payload: payload, window: window,
+                    image: image, offset: frame.origin).start(event: event)
                 return nil
             default: break
             }
             return event
         }
-        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-            context == .withinApplication ? [.copy, .move] : []
-        }
-        func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-            OverviewDragProbe.log("native-end operation=\(operation.rawValue)")
-            model?.finishNativeDrag()
-        }
+
     }
 }
 

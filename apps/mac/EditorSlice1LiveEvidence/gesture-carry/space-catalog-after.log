@@ -1,0 +1,113 @@
+13B80324-05B6-42A8-A4E5-FEE4185BBC73 (
+        {
+        ManagedSpaceID = 1;
+        id64 = 1;
+        type = 0;
+        uuid = "";
+        wsid = 1;
+    },
+        {
+        ManagedSpaceID = 3;
+        WindowManagerInfo =         {
+            windowSets =             {
+                "9A8242A6-E213-E9F3-D229-B25D5D0CE9DE" =                 (
+                    "com.googlecode.iterm2-FA3329E9-1359-4F2D-A030-922634589C1A",
+                    "com.googlecode.iterm2-7398D690-A5C0-4740-B25C-FB5406C69718"
+                );
+            };
+        };
+        id64 = 3;
+        type = 0;
+        uuid = "AAA17437-4BCB-4C6A-8913-8899C6FF143C";
+    },
+        {
+        ManagedSpaceID = 4;
+        WindowManagerInfo =         {
+            windowSets =             {
+                "56559BB8-999D-80D6-C781-165D22277143" =                 (
+                    "com.apple.finder-2E2034ED-FEE4-4E00-BF8F-79F5AFCAA624"
+                );
+            };
+        };
+        id64 = 4;
+        type = 0;
+        uuid = "EDAF663A-F1FE-4CC5-AD2C-B8AD7C1B16DC";
+    },
+        {
+        ManagedSpaceID = 5;
+        id64 = 5;
+        type = 0;
+        uuid = "8F126F33-94C1-4648-8608-F8AA15D3995C";
+    },
+        {
+        ManagedSpaceID = 7;
+        id64 = 7;
+        type = 0;
+        uuid = "4BECE045-4DFD-4865-A37D-17CBBBB5B6C3";
+    },
+        {
+        ManagedSpaceID = 8;
+        id64 = 8;
+        type = 0;
+        uuid = "DF87E122-DDDD-4CE0-82FB-6ADD9D5EF582";
+    }
+)
+E5FCD217-B4D2-4FA0-91BD-4DED1F8CE426 (
+        {
+        ManagedSpaceID = 2326;
+        id64 = 2326;
+        type = 0;
+        uuid = "9E4DF94D-79E3-454E-81B9-4A171920283D";
+    }
+)
+F5C693EB-2513-4128-80AA-AA713519D7B8 (
+        {
+        AutoCreated = 1;
+        ManagedSpaceID = 1778;
+        id64 = 1778;
+        type = 0;
+        uuid = "FF62CFA0-741D-40D2-81D4-B550B044FF14";
+    },
+        {
+        "Display Identifier" = "F5C693EB-2513-4128-80AA-AA713519D7B8";
+        ManagedSpaceID = 1956;
+        id64 = 1956;
+        type = 0;
+        uuid = "A915BB2D-B38A-02E6-0452-1BCAE0A47DDC";
+    },
+        {
+        "Display Identifier" = "F5C693EB-2513-4128-80AA-AA713519D7B8";
+        ManagedSpaceID = 2037;
+        id64 = 2037;
+        type = 0;
+        uuid = "306499A0-F47A-29A0-6693-E66AACFBB175";
+    },
+        {
+        "Display Identifier" = "F5C693EB-2513-4128-80AA-AA713519D7B8";
+        ManagedSpaceID = 2377;
+        id64 = 2377;
+        type = 0;
+        uuid = "D18AA7EC-DF65-89DE-61D3-EDCCA85C988E";
+    },
+        {
+        "Display Identifier" = "F5C693EB-2513-4128-80AA-AA713519D7B8";
+        ManagedSpaceID = 2736;
+        id64 = 2736;
+        type = 0;
+        uuid = "27816663-DF32-E21E-3A82-5FA156EB9060";
+    },
+        {
+        "Display Identifier" = "F5C693EB-2513-4128-80AA-AA713519D7B8";
+        ManagedSpaceID = 2749;
+        id64 = 2749;
+        type = 0;
+        uuid = "9B155737-57AC-95CA-D518-E784C67E84EE";
+    },
+        {
+        "Display Identifier" = "F5C693EB-2513-4128-80AA-AA713519D7B8";
+        ManagedSpaceID = 2754;
+        id64 = 2754;
+        type = 0;
+        uuid = "5EA8EEE1-37BD-A51D-E40D-CD1300BF85BC";
+    }
+)

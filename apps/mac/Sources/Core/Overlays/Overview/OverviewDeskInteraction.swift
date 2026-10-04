@@ -108,6 +108,22 @@ struct OverviewScreenDrop: ViewModifier {
                 }
             }
             .background { if OverviewDragProbe.enabled { OverviewProbeMark(id: "\(mapSize == nil ? "thumb" : "screen"):\(display.displayId):\(spaceId)") } }
+            .background(OverviewPointerDrop(id: "\(mapSize == nil ? "thumb" : "screen"):\(display.displayId):\(spaceId)", hover: { point in
+                if point != nil && !targeted {
+                    let reason = !model.moving.isEmpty ? "move-in-progress" : display.desktopNumber(of: spaceId) == nil ? "not-ordinary-desktop" : "accept"
+                    OverviewDragProbe.log("pointer-validate display=\(display.displayId) target=\(spaceId) result=\(reason)")
+                }
+                targeted = point != nil
+                snap = point.flatMap { point in mapSize.flatMap { OverviewSnap.at(point, in: $0) } }
+            }, perform: { payload, point in
+                let zone = mapSize.flatMap { OverviewSnap.at(point, in: $0) }
+                let reason: String? = !model.moving.isEmpty ? "move-in-progress" :
+                    OverviewWindowDrop.destination(on: display, spaceId: spaceId) == nil ? "not-ordinary-desktop" :
+                    mapSize != nil && zone == nil ? "outside-map" : nil
+                OverviewDragProbe.log("pointer-validate display=\(display.displayId) target=\(spaceId) result=\(reason ?? "accept")")
+                guard reason == nil, let destination = OverviewWindowDrop.destination(on: display, spaceId: spaceId) else { return }
+                model.moveDragged(payload, to: destination, snap: zone)
+            }))
             .onDrop(of: [OverviewMembershipDrag.type], delegate: OverviewScreenDropDelegate(
                 model: model, display: display, spaceId: spaceId, size: mapSize,
                 targeted: $targeted, snap: $snap))
@@ -125,19 +141,34 @@ private struct OverviewScreenDropDelegate: DropDelegate {
     let size: CGSize?
     @Binding var targeted: Bool
     @Binding var snap: OverviewSnap?
-    func validateDrop(info: DropInfo) -> Bool { OverviewDragProbe.log("screen-validate"); return info.hasItemsConforming(to: [OverviewMembershipDrag.type]) }
-    func dropEntered(info: DropInfo) { targeted = true; update(info) }
-    func dropExited(info: DropInfo) { targeted = false; snap = nil }
+    private var identity: String { "display=\(display.displayId) target=\(spaceId) kind=\(size == nil ? "thumbnail" : "map")" }
+    private func rejection(_ info: DropInfo) -> String? {
+        if !info.hasItemsConforming(to: [OverviewMembershipDrag.type]) { return "missing-membership-type" }
+        if !model.moving.isEmpty { return "move-in-progress" }
+        if OverviewWindowDrop.destination(on: display, spaceId: spaceId) == nil { return "not-ordinary-desktop" }
+        if let size, OverviewSnap.at(info.location, in: size) == nil { return "outside-map" }
+        return nil
+    }
+    func validateDrop(info: DropInfo) -> Bool {
+        let reason = rejection(info)
+        OverviewDragProbe.log("screen-validate \(identity) result=\(reason ?? "accept")")
+        return reason == nil
+    }
+    func dropEntered(info: DropInfo) { OverviewDragProbe.log("screen-enter \(identity)"); targeted = true; update(info) }
+    func dropExited(info: DropInfo) { OverviewDragProbe.log("screen-exit \(identity)"); targeted = false; snap = nil }
     func dropUpdated(info: DropInfo) -> DropProposal? {
         update(info)
-        return DropProposal(operation: model.moving.isEmpty ? .move : .forbidden)
+        return DropProposal(operation: rejection(info) == nil ? .move : .forbidden)
     }
     private func update(_ info: DropInfo) { snap = size.flatMap { OverviewSnap.at(info.location, in: $0) } }
     func performDrop(info: DropInfo) -> Bool {
         OverviewDragProbe.log("screen-performDrop display=\(display.displayId) target=\(spaceId) kind=\(size == nil ? "thumbnail" : "map") busy=\(!model.moving.isEmpty)")
         let zone = size.flatMap { OverviewSnap.at(info.location, in: $0) }
         targeted = false; snap = nil
-        guard model.moving.isEmpty else { return false }
+        if let reason = rejection(info) {
+            OverviewDragProbe.log("screen-reject \(identity) reason=\(reason)")
+            return false
+        }
         guard let destination = OverviewWindowDrop.destination(on: display, spaceId: spaceId) else {
             model.rejectMove("Full-screen Spaces cannot accept windows. Drop on an ordinary Desktop.")
             return false
