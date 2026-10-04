@@ -181,3 +181,46 @@ struct BrandSection<Content: View>: View {
         }
     }
 }
+
+/// Segments in a ruled well; the chosen one is an ink pill, like the switch's
+/// track, so selection never borrows the system blue.
+struct BrandSegmented<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(label: String, value: Value)]
+
+    @Environment(\.hudTheme) private var theme
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options.indices, id: \.self) { i in
+                let option = options[i]
+                let chosen = option.value == selection
+                Button { selection = option.value } label: {
+                    Text(option.label)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(chosen ? theme.palette.bg : theme.palette.muted)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 22)
+                        .background {
+                            RoundedRectangle(cornerRadius: theme.radius.tight - 2, style: .continuous)
+                                .fill(chosen ? theme.palette.ink : .clear)
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background {
+            RoundedRectangle(cornerRadius: theme.radius.tight, style: .continuous)
+                .fill(theme.palette.chrome)
+            RoundedRectangle(cornerRadius: theme.radius.tight, style: .continuous)
+                .strokeBorder(theme.hairline.standard, lineWidth: 1)
+        }
+        .opacity(isEnabled ? 1 : 0.4)
+        .animation(Woven.reduceMotion ? nil : .timingCurve(0.32, 0.72, 0, 1, duration: 0.18), value: selection)
+        .accessibilityElement(children: .contain)
+    }
+}
