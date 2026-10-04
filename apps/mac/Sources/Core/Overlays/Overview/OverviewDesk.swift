@@ -668,6 +668,7 @@ struct OverviewTray: View {
     /// doesn't already say. Outside the Desktop focus, faint.
     private func chip(_ row: OverviewRow, unplaced: Bool) -> some View {
         let selected = model.selection.contains(row.wid)
+        let moving = model.moving.contains(row.wid)
         let why: String? = {
             if unplaced { return row.state.label.lowercased() }
             switch row.state {
@@ -690,7 +691,11 @@ struct OverviewTray: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)
-            if let why {
+            if moving {
+                ProgressView()
+                    .controlSize(.mini)
+                    .help("Moving…")
+            } else if let why {
                 Text(why)
                     .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
@@ -699,6 +704,7 @@ struct OverviewTray: View {
             }
         }
         .frame(height: 32)
+        .opacity(moving ? 0.55 : 1)
         .background(RoundedRectangle(cornerRadius: 5).fill(selected ? Palette.surfaceHov : Color.clear))
         .overlay(
             RoundedRectangle(cornerRadius: 5)

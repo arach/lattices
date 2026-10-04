@@ -317,6 +317,21 @@ final class OverviewModel: ObservableObject {
     @Published private(set) var actionError: String?
     /// Windows with a Space move under way.
     @Published private(set) var moving: Set<UInt32> = []
+    /// Where a moving window is headed. The rows show it there at once, dimmed;
+    /// readback confirms it, and a failed carry puts it back.
+    private var pendingSpace: [UInt32: Int] = [:]
+
+    private func beginPending(_ wid: UInt32, spaceId: Int) {
+        pendingSpace[wid] = spaceId
+        recompute()
+    }
+
+    private func endPending(_ wid: UInt32) {
+        guard pendingSpace.removeValue(forKey: wid) != nil else { return }
+        // Live, the carry has just polled the desktop: read it now so a
+        // confirmed row doesn't blink back to its old column.
+        if watches.isEmpty { recompute() } else { refresh() }
+    }
     /// The last row the user picked, for the inspector.
     @Published private(set) var focusedWid: UInt32?
 
@@ -433,6 +448,15 @@ final class OverviewModel: ObservableObject {
     }
 
     private func recompute() {
+        var inputs = inputs
+        if !pendingSpace.isEmpty {
+            inputs.windows = inputs.windows.map { entry in
+                guard let target = pendingSpace[entry.wid] else { return entry }
+                var moved = entry
+                moved.spaceIds = [target]
+                return moved
+            }
+        }
         let next = OverviewProjection.make(inputs, scope: scope, selection: selection)
         if next != projection { projection = next }
         let members = membershipLayer.flatMap { OverviewMembership.make(layerId: $0, inputs: inputs, projection: next) }
@@ -854,9 +878,13 @@ final class OverviewModel: ObservableObject {
         moveProgress = "Moving to Desktop \(destination.desktop)…"
         compositionNotice = nil
         DiagnosticLog.shared.info("OverviewMove: source=menu wid=\(wid) from=\(row.spaceId ?? -1) target=\(spaceId) attempt")
+        let started = Date()
+        beginPending(wid, spaceId: spaceId)
         actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId, displayId: destination.displayId) { [weak self] failure in
             guard let self else { return }
+            DiagnosticLog.shared.info("OverviewMove: wid=\(wid) total=\(Int(Date().timeIntervalSince(started) * 1000))ms")
             self.moving.remove(wid)
+            self.endPending(wid)
             self.moveProgress = nil
             self.compositionNotice = failure == nil ? "Moved \(row.app) to Desktop \(destination.desktop)" : nil
             DiagnosticLog.shared.info("OverviewMove: source=menu wid=\(wid) target=\(spaceId) outcome=\(failure ?? "moved")")
@@ -916,7 +944,11 @@ final class OverviewModel: ObservableObject {
                 failures.append("\(row.app) · \(row.title): destination changed or window is already there")
                 next(index + 1); return
             }
+            let started = Date()
+            beginPending(wid, spaceId: destination.spaceId)
             let completion: (String?) -> Void = { failure in
+                DiagnosticLog.shared.info("OverviewMove: wid=\(wid) total=\(Int(Date().timeIntervalSince(started) * 1000))ms")
+                self.endPending(wid)
                 if let failure { failures.append("\(row.app) · \(row.title): \(failure)") }
                 else { succeeded += 1 }
                 next(index + 1)

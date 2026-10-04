@@ -96,6 +96,22 @@ final class OverviewDragPassTests: XCTestCase {
         XCTAssertNil(model.compositionNotice)
     }
 
+    func testDroppedRowShowsOnTargetAtOnceAndReturnsOnFailure() throws {
+        let suite = "drag.pending." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let actions = DragPassActions()
+        let model = OverviewModel(defaults: defaults, actions: actions,
+            inputs: .init(windows: [window(1)], displays: [display], main: display.bounds))
+        let destination = try XCTUnwrap(OverviewWindowDrop.destination(on: display, spaceId: 2))
+        model.moveDragged(.init(session: model.membershipDragSession, windows: [1], sourceLayer: nil, move: false), to: destination)
+        XCTAssertEqual(model.projection.all[1]?.spaceId, 2, "The row moves before the carry finishes")
+        XCTAssertEqual(model.moving, [1])
+        actions.finish?("the drop didn't take")
+        XCTAssertEqual(model.projection.all[1]?.spaceId, 1, "A failed carry puts the row back")
+        XCTAssertTrue(model.moving.isEmpty)
+    }
+
     func testBatchRunsVerifiedRelocationWithEnvironmentFakes() throws {
         let suite = "drag.verified." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

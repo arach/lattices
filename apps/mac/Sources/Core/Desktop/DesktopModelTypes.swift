@@ -6,7 +6,7 @@ struct WindowEntry: Codable, Identifiable, Equatable {
     let pid: Int32
     let title: String
     var frame: WindowFrame
-    let spaceIds: [Int]
+    var spaceIds: [Int]
     let isOnScreen: Bool
     let latticesSession: String?
     var axVerified: Bool = true

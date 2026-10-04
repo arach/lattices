@@ -34,6 +34,11 @@ enum WindowSpaceCarry {
         }
         defer { WindowRelocationGate.lock.unlock() }
         let diag = DiagnosticLog.shared
+        // Step timings for the log, so slow moves can be broken down.
+        let clock = Date()
+        var marks: [String] = []
+        func mark(_ step: String) { marks.append("\(step)=\(Int(Date().timeIntervalSince(clock) * 1000))") }
+        defer { diag.info("WindowSpaceCarry: wid=\(wid) timing ms " + marks.joined(separator: " ")) }
 
         let from = WindowTiler.getSpacesForWindow(wid)
         if from.contains(target) { return .moved }
@@ -70,17 +75,20 @@ enum WindowSpaceCarry {
                     diag.warn("WindowSpaceCarry: could not restore display \(display.displayIndex) view to Space \(startSpace)")
                 }
             }
+            mark("viewRestored")
         }
         guard waitUntil(timeout: 1.0, { isOnScreen(wid) }), let home = bounds(wid) else {
             return .failed("window \(wid) didn't come on screen on Space \(source)")
         }
+        mark("onSource")
 
         // 2. Open Mission Control and wait for the thumbnail to settle.
         guard openMissionControl(windowManager) else {
             return .failed("Mission Control didn't open")
         }
+        mark("mcOpen")
         diag.info("WindowSpaceCarry: wid=\(wid) source=\(source) target=\(target) Mission Control opened")
-        defer { closeMissionControl(windowManager) }
+        defer { closeMissionControl(windowManager); mark("mcClosed") }
         // WindowManager retains buttons for other Spaces too. Resolve the
         // source Space's actual AX thumbnail, not a cached CG window frame.
         guard let title = windowTitle(wid),
@@ -100,9 +108,10 @@ enum WindowSpaceCarry {
             let frames = candidates.compactMap(frame)
             guard let now = thumbnailFrame(candidates: frames, observed: bounds(wid)) else { return false }
             if !WindowRelocation.framesClose(now, thumb, tolerance: 1) { thumb = now; stableSince = Date() }
-            return Date().timeIntervalSince(openedAt) >= 0.45 && Date().timeIntervalSince(stableSince) >= 0.2
+            return Date().timeIntervalSince(openedAt) >= 0.3 && Date().timeIntervalSince(stableSince) >= 0.15
         }
         guard settled else { return .failed("source window's Mission Control thumbnail was missing or ambiguous") }
+        mark("thumbSettled")
         guard let bar = spacesBar(windowManager, containing: CGPoint(x: home.midX, y: home.midY)) else {
             return .failed("no Spaces bar on the window's display")
         }
@@ -127,17 +136,18 @@ enum WindowSpaceCarry {
                 let t = CGFloat(step) / CGFloat(steps)
                 mouse(.leftMouseDragged, CGPoint(x: origin.x + (point.x - origin.x) * t,
                                                  y: origin.y + (point.y - origin.y) * t))
-                usleep(20_000)
+                usleep(12_000)
             }
             cursor = point
         }
         let pickup = cursor
         diag.info("WindowSpaceCarry: wid=\(wid) \(source) → \(target) (Space \(targetIndex + 1) of \(display.orderedSpaceIds.count))")
         mouse(.mouseMoved, pickup)
-        usleep(80_000)
+        usleep(40_000)
         mouse(.leftMouseDown, pickup)
-        usleep(120_000)
-        drag(to: CGPoint(x: bar.frame.midX, y: bar.frame.minY + 30), steps: 20)
+        usleep(80_000)
+        drag(to: CGPoint(x: bar.frame.midX, y: bar.frame.minY + 30), steps: 14)
+        mark("atBar")
 
         // Collapsed, the buttons sit above the display's top edge.
         var drop = CGPoint.zero
@@ -151,7 +161,7 @@ enum WindowSpaceCarry {
                 return false
             }
             guard let settled = targetStability.observe(current, at: Date().timeIntervalSince1970),
-                  Date().timeIntervalSince(hoverStart) >= 0.35 else { return false }
+                  Date().timeIntervalSince(hoverStart) >= 0.25 else { return false }
             // AXPosition is the thumbnail centre; AXSize remains the label's.
             // Both X and Y animate during expansion. First nonnegative Y is
             // NOT ready: a leftward target can still sit over the source Space.
@@ -165,13 +175,18 @@ enum WindowSpaceCarry {
         }
         diag.info("WindowSpaceCarry: pickup=\(pickup) target=\(target) drop=\(drop) button=\(frame(button).map(String.init(describing:)) ?? "nil")")
         dumpTree(windowManager, stage: "expanded-\(source)-\(target)")
-        drag(to: drop, steps: 12)
-        usleep(400_000)
+        mark("barExpanded")
+        drag(to: drop, steps: 10)
+        // Mission Control accepts the drop only after the thumbnail has
+        // hovered the target for a moment.
+        usleep(250_000)
         mouse(.leftMouseUp, drop)
+        mark("dropped")
 
         // 4. Check where it landed.
         _ = waitUntil(timeout: 1.0) { WindowTiler.getSpacesForWindow(wid) != [source] }
         let after = WindowTiler.getSpacesForWindow(wid)
+        mark("landed")
         if after.contains(target) {
             diag.success("WindowSpaceCarry: wid=\(wid) now on \(after)")
             return .moved
@@ -364,7 +379,7 @@ enum WindowSpaceCarry {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if condition() { return true }
-            usleep(30_000)
+            usleep(15_000)
         } while Date() < deadline
         return condition()
     }
