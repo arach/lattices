@@ -26,7 +26,7 @@ struct OverviewView: View {
             OverviewLayerIndex(rows: indexRows, selected: selectedLayers, readAt: index.readAt, live: live,
                                membershipDrop: live ? model.receiveMembership : nil,
                                addSelected: live ? { model.addComposition(Array(model.selection), to: $0) } : nil,
-                               selectionCount: model.selection.count) { id, additive in
+                               selectionCount: model.selection.count, activeDrag: model.activeDrag, newLayer: { model.compose() }) { id, additive in
                 if live { index.choose(id, additive: additive); applyIndex() }
                 else {
                     let ids = id.map { additive ? (selectedLayers.contains($0) ? selectedLayers.filter { $0 != id } : selectedLayers + [$0]) : [$0] } ?? []
@@ -54,6 +54,7 @@ struct OverviewView: View {
     private var deskBody: some View {
         VStack(spacing: 0) {
             scopeBar
+            if model.scope.layerId != nil { OverviewDesktopStrip(model: model) }
             Divider().overlay(Palette.border)
             VStack(spacing: 0) {
                 stage

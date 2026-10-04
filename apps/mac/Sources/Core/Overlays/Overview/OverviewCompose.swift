@@ -17,6 +17,7 @@ struct OverviewComposition: Identifiable {
     let id = UUID()
     let windows: [WindowEntry]
     var name = ""
+    var moveSources: [String] = []
     var slots: [UInt32: Slot]
     init(windows: [WindowEntry]) {
         var seen = Set<UInt32>()
@@ -62,12 +63,13 @@ struct OverviewComposition: Identifiable {
 struct OverviewComposeSheet: View {
     @State var draft: OverviewComposition
     let create: (OverviewComposition) -> Bool
+    @FocusState private var nameFocused: Bool
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("New layer from \(draft.windows.count) windows").font(.headline)
             TextField("Layer name", text: $draft.name)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.roundedBorder).focused($nameFocused)
             ForEach(draft.windows, id: \.wid) { window in
                 HStack {
                     Text(window.app + " · " + window.title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
@@ -114,6 +116,7 @@ struct OverviewComposeSheet: View {
                     .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(24).frame(width: 580).background(Palette.bg)
+        .onAppear { nameFocused = true }
     }
     private func previewWindow(_ app: String, rect: CGRect, size: CGSize) -> some View {
         let width: CGFloat = max(1, rect.width * size.width - 4)

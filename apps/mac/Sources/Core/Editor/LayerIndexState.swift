@@ -57,6 +57,8 @@ struct OverviewLayerIndex: View {
     var membershipDrop: ((OverviewMembershipDrag, String) -> Void)? = nil
     var addSelected: ((String) -> Void)? = nil
     var selectionCount = 0
+    var activeDrag: OverviewMembershipDrag? = nil
+    var newLayer: (() -> Void)? = nil
     var previewDropTarget: String? = nil
     let choose: (String?, Bool) -> Void
     @State private var dropTarget: String?
@@ -80,6 +82,8 @@ struct OverviewLayerIndex: View {
                     if let last = rows.last { row(last.id, "Unassigned", last.count) }
                 }
             }
+            // Outside the scroller: reachable even with many layers.
+            row("__new_layer__", "+ New layer", 0)
             Spacer(minLength: 8)
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 VStack(alignment: .leading, spacing: 6) {
@@ -110,7 +114,8 @@ struct OverviewLayerIndex: View {
         let active = id.map(selected.contains) ?? selected.isEmpty
         return Button {
             focused = true
-            choose(id, NSEvent.modifierFlags.contains(.command))
+            if id == "__new_layer__" { newLayer?() }
+            else { choose(id, NSEvent.modifierFlags.contains(.command)) }
         } label: {
             HStack(spacing: 10) {
                 if id == nil {
@@ -122,12 +127,12 @@ struct OverviewLayerIndex: View {
                         .overlay(Circle().strokeBorder(count > 0 ? .clear : Color(red: 108 / 255, green: 113 / 255, blue: 120 / 255), lineWidth: 1))
                         .frame(width: 7, height: 7)
                 }
-                Text((dropTarget ?? previewDropTarget) == id && id != nil ? (id == "__unassigned__" ? "Remove from layers" : "Add to " + label) : label).font(.system(size: 13)).lineLimit(1)
+                Text((dropTarget ?? previewDropTarget) == id && id != nil ? OverviewDragLabel.layer(label, id: id!, drag: activeDrag) : label).font(.system(size: 13)).lineLimit(2)
                 Spacer(minLength: 4)
-                Text(count > 0 || id == nil ? "\(count)" : "—").font(.system(size: 11, design: .monospaced)).foregroundColor(faint)
+                Text(id == "__new_layer__" ? "" : count > 0 || id == nil ? "\(count)" : "—").font(.system(size: 11, design: .monospaced)).foregroundColor(faint)
             }
             .foregroundColor(active ? Color(red: 236 / 255, green: 237 / 255, blue: 239 / 255) : ink)
-            .padding(.horizontal, 12).frame(height: 36)
+            .padding(.horizontal, 12).frame(height: id == "__new_layer__" ? 52 : 44)
             .background(RoundedRectangle(cornerRadius: 6).fill((dropTarget ?? previewDropTarget) == id && id != nil ? Color.green.opacity(0.2) : active ? Color(red: 36 / 255, green: 40 / 255, blue: 46 / 255) : .clear))
             .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityAddTraits(active ? .isSelected : [])
@@ -139,7 +144,7 @@ struct OverviewLayerIndex: View {
             return OverviewMembershipDrag.receive(providers) { membershipDrop($0, id) }
         }
         .contextMenu {
-            if let id, id != "__unassigned__", let addSelected {
+            if let id, id != "__unassigned__", id != "__new_layer__", let addSelected {
                 Button("Add selected windows here") { addSelected(id) }.disabled(selectionCount == 0)
             }
         }

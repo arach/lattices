@@ -82,3 +82,39 @@ extension OverviewModel {
         return move(wid, to: destination)
     }
 }
+
+/// Desktop numbering is per display; keep the display name alongside every group.
+struct OverviewDesktopStrip: View {
+    @ObservedObject var model: OverviewModel
+    var previewSpace: Int? = nil
+    @State private var targeted: Int?
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(model.projection.displays, id: \.displayId) { display in
+                    Text(display.name).font(.caption).foregroundStyle(Palette.textMuted)
+                    ForEach(display.desktops, id: \.self) { space in
+                        if let destination = OverviewWindowDrop.destination(on: display, spaceId: space) {
+                            let hovered = (targeted ?? previewSpace) == space
+                            let count = model.projection.all.values.filter {
+                                $0.spaceId == space && $0.layerIds.contains(model.scope.layerId ?? "")
+                            }.count
+                            Text(hovered ? OverviewDragLabel.desktop(destination.desktop) : "Desktop \(destination.desktop) · \(count)")
+                                .font(.system(size: 12)).foregroundStyle(Palette.text)
+                                .frame(minWidth: 140, minHeight: 44)
+                                .background(hovered ? Palette.borderLit : Palette.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .contentShape(Rectangle())
+                                .onDrop(of: [OverviewMembershipDrag.type], isTargeted: Binding(
+                                    get: { targeted == space }, set: { targeted = $0 ? space : nil }
+                                )) { providers in
+                                    guard model.moving.isEmpty else { return false }
+                                    return OverviewMembershipDrag.receive(providers) { model.moveDragged($0, to: destination) }
+                                }
+                        }
+                    }
+                }
+            }.padding(8)
+        }.background(Palette.bg)
+    }
+}

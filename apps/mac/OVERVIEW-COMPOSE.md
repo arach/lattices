@@ -193,3 +193,69 @@ is unchanged. The only test persistence above is a unique temporary file.
 Logs: `/tmp/lattices-editor-slice-1/compose-picker-action-tests.log`,
 `compose-picker-full-tests.log`, `compose-picker-release.log`, and
 `compose-picker-install.log`.
+
+## Desktop and new-layer drag pass
+
+This supersedes the earlier statement that a drag never relocates a window:
+**desktop chips move windows; layer rows edit membership only.**
+
+### Exact user paths
+
+- Select one layer in Overview's left index. The strip below the scope bar
+  lists every display and its desktops, with this layer's window count on each.
+  Drag a window tile or list row onto a desktop chip. Command-select several
+  first to move the selection. Relocations run serially through the existing
+  verified relocation action. One final receipt reports the successful count
+  and identifies unavailable windows or failures. Membership is unchanged.
+- Drag a tile or selection onto **+ New layer**, pinned below the scrolling
+  layer list. The existing sheet opens with those windows and the name field
+  focused. Name it, set slots if desired, then Create. Creation and source
+  membership removal save as one configuration transaction, using the existing
+  removal/ownership rules. A rule-retained source is reported. Cancel saves
+  nothing. This does not Gather, activate a layer, or physically move windows.
+- From a scoped layer, the new layer takes membership from that source. From
+  All windows it takes the dragged windows from their recorded memberships.
+- Existing layer rows still add by default; hold Option before mouse-down to
+  move from the scoped source. Hover text reflects the captured operation.
+- Native AppKit drag sessions start after four points of pointer movement,
+  without SwiftUI's drag recognizer. The preview includes the grabbed title and
+  multi-selection count. Rows and chips use their entire bounds as targets;
+  two-line hover labels do not change row heights or move neighboring targets.
+
+### Verification and acceptance
+
+`drag-desktop-hover.png`, `drag-new-layer-hover.png`, and
+`drag-prefilled-sheet.png` in `EditorSlice1LiveEvidence/` are **fixture renders**,
+not live interaction evidence. The sheet is staged by the production drop
+handler; render callbacks fail if Create is invoked. Persistence tests write
+only a unique temporary fixture file. Batch tests cover serialization, the
+single receipt, partial failure and overlap rejection; a separate batch test
+runs the actual WindowRelocation engine with fake environment callbacks.
+
+Hand acceptance remains: actual mouse-down/drag latency on canvas and list,
+Command-selection preservation, Option hover and dropping, name-field focus,
+sheet Cancel, and physical relocation across displays/desktops. No real window
+was moved and no live layer edit was issued by this verification.
+
+Final checks: app suite **473 tests, 39 conditional skips, zero failures**;
+Swift packages **22 tests, zero failures**; CLI **47 passed, one skipped**;
+Bun **9 passed**; `bun run check:types` passed. Six new drag behavior tests
+passed, and the final three-evidence render test passed separately with
+`OVERVIEW_RENDER_DIR` enabled. The earlier full render-enabled suite passed
+471 tests with 13 skips before the last two behavior tests were added.
+`git diff --check` and the design detector passed.
+
+Logs: `/tmp/lattices-drag-final-tests.log`, `/tmp/lattices-drag-packages.log`,
+`/tmp/lattices-drag-bun.log`, `/tmp/lattices-drag-types.log`,
+`/tmp/lattices-drag-evidence.log`, and `/tmp/lattices-drag-dev-final.log`.
+The system's `swiftly` 6.2.3 pin is missing; verification used Xcode's installed
+Swift 6.3.3 via `xcrun`, and dev restart prepended that toolchain to PATH.
+
+Final dev rebuild/install/restart passed using `bin/lattices-build dev:restart`
+with `LATTICES_HUDSON_PATH=/Users/arach/dev/hudson`. Running bundle:
+`/Users/arach/Applications/dev/Lattices/Lattices.app`, identifier
+`dev.lattices.app.dev`, PID 5106. The release app was not rebuilt or relaunched.
+The read-only audit before and after these dev launches matched:
+workspace SHA-256 `d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`,
+mtime (seconds) `1791063065`. This is this pass's baseline, not the older
+historical baselines above.

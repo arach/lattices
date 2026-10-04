@@ -343,6 +343,38 @@ final class OverviewRenderTests: XCTestCase {
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
 
 
+    func testDragPassEvidence() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
+            throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")
+        }
+        let suite = "drag.render." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, actions: RenderActions(), inputs: inputs())
+        model.receiveMembership(.init(session: model.membershipDragSession, windows: [1, 9], sourceLayer: "lattices", move: true), into: "__new_layer__")
+        let draft = try XCTUnwrap(model.composition)
+        let drag = OverviewMembershipDrag(session: model.membershipDragSession, windows: [1, 9], sourceLayer: "lattices", move: true)
+        func capture<V: View>(_ name: String, _ view: V, _ size: CGSize) throws {
+            let host = NSHostingView(rootView: view.environment(\.colorScheme, .dark))
+            host.frame = CGRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
+            _ = window
+        }
+        try capture("drag-new-layer-hover", OverviewLayerIndex(rows: model.indexFixtureRows, selected: [],
+            readAt: Date(), live: false, activeDrag: drag, previewDropTarget: "__new_layer__", choose: { _, _ in }), CGSize(width: 236, height: 500))
+        try capture("drag-prefilled-sheet", OverviewComposeSheet(draft: draft, create: { _ in
+            XCTFail("No live create in render"); return false
+        }), CGSize(width: 628, height: 460))
+        model.chooseIndex(["lattices"], rows: model.indexFixtureRows)
+        try capture("drag-desktop-hover", OverviewDesktopStrip(model: model, previewSpace: model.projection.displays.first(where: { $0.desktops.count > 1 })?.desktops[1]), CGSize(width: 1200, height: 90))
+    }
+
     func testComposeDragHover() throws {
         guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
             throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")

@@ -72,6 +72,37 @@ extension WorkspaceManager {
         return all.count - 1
     }
 
+    /// Create + move is one configuration transaction: Cancel never reaches this boundary.
+    func createLayerMoving(label: String, windows: [WindowEntry], tiles: [UInt32: String],
+                           sourceLayers: [String]) throws -> (index: Int, retained: Bool) {
+        let label = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { throw LayerEditError.emptyName }
+        let result = Self.creatingMoving(label: label, windows: windows, tiles: tiles,
+            sourceLayers: sourceLayers, in: layers, live: DesktopModel.shared.allWindows(), sources: membershipSources)
+        try saveLayers(result.layers)
+        return (result.layers.count - 1, result.retained)
+    }
+
+    static func creatingMoving(label: String, windows: [WindowEntry], tiles: [UInt32: String],
+                               sourceLayers: [String], in layers: [Layer], live: [WindowEntry],
+                               sources: LayerMembership.Sources) -> (layers: [Layer], retained: Bool) {
+        // Remove before creating releases pins; otherwise pin-only source entries can survive.
+        var all = layers
+        for id in sourceLayers {
+            guard let index = all.firstIndex(where: { $0.id == id }) else { continue }
+            for window in windows {
+                all = removing(window.wid, from: index, in: all, live: live, sources: sources).layers
+            }
+        }
+        all = creating(label: label, windows: windows, tiles: tiles, in: all)
+        let ownership = LayerMembership.resolve(all, windows: live, sources: sources)
+        let destination = all.last!.id
+        let retained = !sourceLayers.isEmpty && windows.contains { window in
+            ownership.owners[window.wid].map { $0.layerId != destination && sourceLayers.contains($0.layerId) } ?? false
+        }
+        return (all, retained)
+    }
+
     /// Adds each window the layer doesn't already hold, and returns how many
     /// it took. One it holds already is pinned to the entry that holds it,
     /// so it stays when its title moves on.

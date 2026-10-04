@@ -180,6 +180,7 @@ final class OverviewModel: ObservableObject {
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
     let membershipDragSession = UUID().uuidString
+    @Published var activeDrag: OverviewMembershipDrag?
     @Published var composition: OverviewComposition?
     @Published var compositionNotice: String?
     var compositionWindows: [WindowEntry] {
@@ -196,10 +197,15 @@ final class OverviewModel: ObservableObject {
         compositionNotice = nil
         do {
             let manager = WorkspaceManager.shared
-            let at = try manager.createLayer(label: draft.name, windows: draft.windows, tiles: draft.tiles)
+            guard draft.windows.allSatisfy({ aliveWindows[$0.wid]?.pid == $0.pid }) else {
+                throw NSError(domain: "Overview", code: 1, userInfo: [NSLocalizedDescriptionKey: "A staged window is no longer available. Cancel and select it again."])
+            }
+            let result = try manager.createLayerMoving(label: draft.name, windows: draft.windows,
+                tiles: draft.tiles, sourceLayers: draft.moveSources)
+            let at = result.index
             let layer = manager.layers[at]
             LayerIndexState.shared.select([layer.id])
-            compositionNotice = "Created \(layer.label) with \(draft.windows.count) windows"
+            compositionNotice = "Created \(layer.label) with \(draft.windows.count) windows" + (result.retained ? "; some source rules still hold these windows" : "")
             refresh()
             return true
         } catch { actionError = error.localizedDescription; return false }
@@ -796,6 +802,38 @@ final class OverviewModel: ObservableObject {
             if let failure { self.actionError = "Couldn't move \(row.app): \(failure)" }
         }
         return true
+    }
+
+    /// Reserve the complete batch so another action cannot interleave its relocations.
+    func moveDragged(_ drag: OverviewMembershipDrag, to destination: OverviewMoveDestination) {
+        guard drag.session == membershipDragSession, !drag.windows.isEmpty,
+              drag.windows.count <= 512, moving.isEmpty else { return }
+        let ids = Array(Set(drag.windows)).sorted()
+        moving = Set(ids)
+        actionError = nil
+        compositionNotice = nil
+        var succeeded = 0
+        var failures: [String] = []
+        func next(_ index: Int) {
+            guard index < ids.count else {
+                moving.removeAll()
+                compositionNotice = "Moved \(succeeded) windows to Desktop \(destination.desktop)" +
+                    (failures.isEmpty ? "" : "; " + failures.joined(separator: "; "))
+                return
+            }
+            let wid = ids[index]
+            guard let row = projection.all[wid], projection.moveTargets(for: wid).contains(destination) else {
+                failures.append("Window \(wid): window or destination unavailable (or already there)")
+                next(index + 1); return
+            }
+            actions.moveToSpace(wid: wid, pid: row.pid, spaceId: destination.spaceId,
+                                displayId: destination.displayId) { failure in
+                if let failure { failures.append("\(row.app) · \(row.title): \(failure)") }
+                else { succeeded += 1 }
+                next(index + 1)
+            }
+        }
+        next(0)
     }
 
     func focus(_ wid: UInt32) {
