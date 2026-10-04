@@ -17,8 +17,8 @@ struct OverviewCapsuleAnchorKey: PreferenceKey {
     }
 }
 
-/// The desk drawn to scale: every monitor side by side, as large as the
-/// room allows, each with its Desktops beneath its map. A monitor's map
+/// Active displays fit the room; inactive ones wait in restorable chips.
+/// The lead map keeps its Desktops; secondary maps stay compact. A map
 /// shows its focused Desktop, or the one it's showing. Tapping a Desktop
 /// focuses the list on it; tapping it again gives the whole list back.
 /// Clicking a window selects it; nothing here moves one.
@@ -28,103 +28,56 @@ struct OverviewStage: View {
     static let headHeight: CGFloat = 26
     static let spacing: CGFloat = 8
     static let captionHeight: CGFloat = 12
-    static let displayGap: CGFloat = 36
     static let thumbGap: CGFloat = 6
-    static let thumbWidth: CGFloat = 84
-    static let minThumbWidth: CGFloat = 44
     static let hintHeight: CGFloat = 34
-    /// The widest monitor's map never gets narrower; past it the row scrolls.
-    static let minMapWidth: CGFloat = 260
 
-    struct Layout: Equatable {
-        var maps: [CGSize]
-        var thumbs: [CGSize]
-    }
-
-    /// One scale for every monitor so they compare, a smaller one drawn a
-    /// little larger to stay readable, fitted to `room` below each map's
-    /// head and Desktops.
-    static func layout(_ desk: [OverviewDeskMonitor], in room: CGSize) -> Layout {
-        guard !desk.isEmpty else { return Layout(maps: [], thumbs: []) }
-        let sizes: [CGSize] = desk.map { monitor in
-            let b = monitor.display.bounds
-            return b.width > 0 && b.height > 0 ? b.size : CGSize(width: 1600, height: 1000)
-        }
-        let widest = sizes.map(\.width).max() ?? 1
-        let drawn: [CGSize] = sizes.map { size in
-            let boost: CGFloat = size.width < widest * 0.7 ? 1.12 : 1
-            return CGSize(width: size.width * boost, height: size.height * boost)
-        }
-        let thumbRow: CGFloat = sizes.map { thumbWidth / ($0.width / $0.height) }.max() ?? 50
-        let chrome = headHeight + spacing * 2 + thumbRow + 4 + captionHeight
-        let across = room.width - displayGap * CGFloat(desk.count - 1)
-        let byWidth = across / drawn.reduce(0) { $0 + $1.width }
-        let byHeight = max(1, room.height - chrome) / (drawn.map(\.height).max() ?? 1)
-        let floor = minMapWidth / ((drawn.map(\.width).max()) ?? 1)
-        let scale = max(floor, min(byWidth, byHeight))
-        let maps = drawn.map { CGSize(width: ($0.width * scale).rounded(), height: ($0.height * scale).rounded()) }
-        let thumbs: [CGSize] = zip(desk, maps).enumerated().map { index, pair in
-            let count = CGFloat(max(1, pair.0.spaces.count))
-            let fit = (pair.1.width - thumbGap * (count - 1)) / count
-            let width = max(minThumbWidth, min(thumbWidth, fit)).rounded()
-            let aspect = sizes[index].width / sizes[index].height
-            return CGSize(width: width, height: (width / aspect).rounded())
-        }
-        return Layout(maps: maps, thumbs: thumbs)
-    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
-                let visible = model.projection.desk.filter { !model.deskPreferences.hidden.contains($0.display.displayId) }
-                let pinned = visible.first { $0.display.displayId == model.deskPreferences.pinned }
-                if let pinned {
-                    let others = visible.filter { $0.id != pinned.id }
-                    let room = CGSize(width: max(260, geo.size.width - (others.isEmpty ? 0 : 224)), height: geo.size.height)
-                    let layout = Self.layout([pinned], in: room)
-                    HStack(alignment: .top, spacing: 24) {
-                        OverviewDisplayBlock(model: model, monitor: pinned, mapSize: layout.maps[0], thumbSize: layout.thumbs[0], quiet: false)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        if !others.isEmpty {
-                            ScrollView(.vertical, showsIndicators: true) {
-                                VStack(spacing: 18) {
-                                    ForEach(others) { monitor in
-                                        let aspect = max(0.1, monitor.display.bounds.width / max(1, monitor.display.bounds.height))
-                                        OverviewDisplayBlock(model: model, monitor: monitor,
-                                            mapSize: CGSize(width: 196, height: min(125, 196 / aspect)),
-                                            thumbSize: CGSize(width: 44, height: 44 / aspect), quiet: true)
-                                    }
-                                }
-                            }.frame(width: 200)
+                let visible = model.expandedMonitors
+                let plan = OverviewMonitorLayout.plan(visible, in: geo.size, preferred: model.deskPreferences.pinned)
+                ZStack(alignment: .topLeading) {
+                    ForEach(visible) { monitor in
+                        if let placement = plan.placements.first(where: { $0.id == monitor.id }) {
+                            OverviewDisplayBlock(model: model, monitor: monitor,
+                                mapSize: placement.map, thumbSize: placement.thumb,
+                                quiet: model.workingRows.isEmpty, compact: placement.compact)
+                                .frame(width: placement.frame.width, height: placement.frame.height, alignment: .topLeading)
+                                .position(x: placement.frame.midX, y: placement.frame.midY)
+                                .transition(.opacity)
                         }
                     }
-                } else {
-                    let layout = Self.layout(visible, in: geo.size)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: Self.displayGap) {
-                            ForEach(Array(visible.enumerated()), id: \.element.id) { index, monitor in
-                                OverviewDisplayBlock(model: model, monitor: monitor,
-                                    mapSize: layout.maps[index], thumbSize: layout.thumbs[index], quiet: model.workingRows.isEmpty)
-                            }
-                        }.frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
+                    if visible.isEmpty {
+                        Text("No active displays · restore a display below")
+                            .font(.system(size: 12)).foregroundStyle(Palette.textMuted)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .animation(reduceMotion || model.activeDrag != nil ? nil : .easeOut(duration: 0.18), value: plan)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 14)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
             .padding(.bottom, 4)
-            if !model.deskPreferences.hidden.isEmpty {
+            // Always reserve one chip row: collapsing a screen cannot first
+            // resize the canvas and then trigger a second layout transition.
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(model.projection.desk.filter { model.deskPreferences.hidden.contains($0.display.displayId) }) { monitor in
+                    ForEach(model.collapsedMonitors) { monitor in
+                        let hidden = model.deskPreferences.hidden.contains(monitor.display.displayId)
                         Button { model.restoreDisplay(monitor.display.displayId) } label: {
-                            Label(monitor.display.name + " · hidden", systemImage: "eye.slash")
+                            Label(monitor.display.name + " · " + (hidden ? "hidden" : model.inactiveReason(monitor.display) ?? "inactive"),
+                                  systemImage: hidden ? "eye.slash" : "display")
                         }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Palette.text)
-                            .padding(7).background(Palette.surface).clipShape(RoundedRectangle(cornerRadius: 5))
-                            .help("Show " + monitor.display.name)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(Palette.surface).clipShape(RoundedRectangle(cornerRadius: 5))
+                            .help("Restore " + monitor.display.name)
+                            .accessibilityLabel("Restore " + monitor.display.name)
                     }
-                    Spacer()
-                }.padding(.horizontal, 24).padding(.vertical, 4)
-            }
+                }
+            }.frame(height: 32).padding(.horizontal, 16)
             Group {
                 if let edit = model.editing {
                     OverviewDraftBar(model: model, edit: edit)
@@ -157,6 +110,7 @@ struct OverviewDisplayBlock: View {
     let thumbSize: CGSize
     /// Nothing anywhere is in scope; the stage says so once.
     let quiet: Bool
+    var compact = false
 
     /// The focused Desktop if it's this monitor's, else the one it shows.
     private var viewed: OverviewDeskSpace? {
@@ -177,7 +131,7 @@ struct OverviewDisplayBlock: View {
                 OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
                     .modifier(OverviewScreenDrop(model: model, display: monitor.display, spaceId: viewed.spaceId, mapSize: mapSize))
             }
-            desktops
+            if !compact { desktops }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(monitor.display.name)
@@ -187,6 +141,7 @@ struct OverviewDisplayBlock: View {
         let b = monitor.display.bounds
         let state: String = {
             guard let viewed else { return "" }
+            if let reason = model.inactiveReason(monitor.display) { return reason }
             if viewed.isCurrent { return "live · \(viewed.title)" }
             return "viewing \(viewed.desktop == nil ? "full screen" : viewed.title)"
         }()

@@ -1,0 +1,32 @@
+{
+  "error" : "",
+  "passed" : true,
+  "results" : [
+    {
+      "passed" : true,
+      "phase" : 0,
+      "receipt" : "Moved TextEdit to Desktop 4",
+      "spaces" : [
+        5
+      ],
+      "target" : 5,
+      "viewsUnchanged" : true,
+      "wid" : 212872
+    },
+    {
+      "passed" : true,
+      "phase" : 1,
+      "receipt" : "Moved TextEdit to Desktop 3",
+      "spaces" : [
+        4
+      ],
+      "target" : 4,
+      "viewsUnchanged" : true,
+      "wid" : 212872
+    }
+  ],
+  "spacesAtEnd" : [
+    4
+  ],
+  "wid" : 212872
+}

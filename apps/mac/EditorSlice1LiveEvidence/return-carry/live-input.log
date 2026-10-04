@@ -1,0 +1,27 @@
+: LIVE test-only wid=212872 pid=60680 source=4 next=5 initialViews=[4, 2326, 2377]
+live-out-thumbnail: frontmost-is-source=true postAccess=true
+live-out-thumbnail: input-window=212880 key=true appActive=true source=(0.0, 0.0, 82.0, 62.0)
+live-out-thumbnail: CGEvent wid=212872 from=(365.0, 862.0) to=(568.1, 1044.4) target=5
+live-out-thumbnail: mouseDown wid=212872 eventWindow=212880 sourceWindow=212880 point=(305.0, 498.0)
+live-out-thumbnail: armed wid=212872 source=4
+live-out-thumbnail: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+live-out-thumbnail: screen-validate
+live-out-thumbnail: screen-validate
+live-out-thumbnail: screen-performDrop display=2 target=5 kind=thumbnail busy=false
+live-out-thumbnail: providers dev.lattices.overview-membership
+live-out-thumbnail: decoded-payload windows=[212872]
+live-out-thumbnail: native-end operation=16
+live-out-thumbnail: LIVE result=["wid": 212872, "passed": true, "target": 5, "spaces": [5], "viewsUnchanged": true, "phase": 0, "receipt": "Moved TextEdit to Desktop 4"]
+live-back-map: frontmost-is-source=true postAccess=true
+live-back-map: input-window=212880 key=false appActive=false source=(0.0, 0.0, 513.0, 32.0)
+live-back-map: CGEvent wid=212872 from=(540.5, 1242.0) to=(444.2, 916.85) target=4
+live-back-map: mouseDown wid=212872 eventWindow=212880 sourceWindow=212880 point=(480.5, 118.0)
+live-back-map: armed wid=212872 source=5
+live-back-map: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+live-back-map: screen-validate
+live-back-map: screen-validate
+live-back-map: screen-performDrop display=2 target=4 kind=map busy=false
+live-back-map: providers dev.lattices.overview-membership
+live-back-map: decoded-payload windows=[212872]
+live-back-map: native-end operation=16
+live-back-map: LIVE result=["target": 4, "receipt": "Moved TextEdit to Desktop 3", "wid": 212872, "passed": true, "phase": 1, "viewsUnchanged": true, "spaces": [4]]

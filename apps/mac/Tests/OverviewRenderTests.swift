@@ -376,6 +376,26 @@ final class OverviewRenderTests: XCTestCase {
         }
     }
 
+    func testMonitorFitEvidence() throws {
+        for count in 1...3 {
+            for (orientation, size) in [("wide", CGSize(width: 1450, height: 850)), ("tall", CGSize(width: 930, height: 1220))] {
+                try render("monitors-\(count)-\(orientation)", width: size.width, height: size.height, sidebar: false) { model in
+                    model.update(MonitorLayoutFixture.inputs(count))
+                    model.select(1)
+                }
+            }
+        }
+        try render("monitors-one-off", width: 1450, height: 850, sidebar: false) { model in
+            model.update(MonitorLayoutFixture.inputs(2, off: 1))
+        }
+        try render("monitors-restored-off", width: 1450, height: 850, sidebar: false) { model in
+            model.update(MonitorLayoutFixture.inputs(2, off: 1)); model.restoreDisplay(101)
+        }
+        try render("monitors-pinned", width: 1450, height: 850, sidebar: false) { model in
+            model.update(MonitorLayoutFixture.inputs(3)); model.pinDisplay(102)
+        }
+    }
+
     func testDeskPassEvidence() throws {
         try render("desk-toolbar-strip", width: 1590, height: 688, sidebar: false) { $0.select(2) }
         try render("desk-pinned-display", width: 1590, height: 688, sidebar: false) { $0.pinDisplay(2); $0.select(2) }

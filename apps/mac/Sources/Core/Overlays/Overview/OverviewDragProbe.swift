@@ -55,6 +55,7 @@ final class OverviewDragFixture {
         let defaults = UserDefaults(suiteName: suite)!
         model = OverviewModel(defaults: defaults, actions: FixtureActions(), inputs: .init(windows: windows, layers: [layer], displays: [
             .init(index: 0, name: "Fixture display", bounds: bounds, desktops: [1, 2], currentSpaceId: 1, displayId: 900)], main: bounds))
+        model.restoreDisplay(900)
         model.compositionAdder = { windows, _ in
             let layers = WorkspaceManager.creating(label: "Fixture layer", windows: windows, in: [])
             try JSONEncoder().encode(layers).write(to: OverviewDragProbe.folder!.appendingPathComponent("workspace.json"), options: .atomic)
@@ -100,6 +101,7 @@ final class OverviewDragFixture {
                 event.post(tap: .cghidEventTap)
             }
             post(.mouseMoved, from); Thread.sleep(forTimeInterval: 0.2)
+            DiagnosticLog.shared.info("probe mouse actual=\(String(describing: CGEvent(source: nil)?.location)) requested=\(from)")
             post(.leftMouseDown, from); Thread.sleep(forTimeInterval: 0.15)
             for step in 1...35 {
                 let t = CGFloat(step) / 35

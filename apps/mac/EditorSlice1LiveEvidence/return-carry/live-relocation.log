@@ -1,0 +1,36 @@
+13:24:17.395 › [info] OverviewDrag:  LIVE test-only wid=212872 pid=60680 source=4 next=5 initialViews=[4, 2326, 2377]
+13:24:19.107 › [info] OverviewDrag: live-out-thumbnail CGEvent wid=212872 from=(365.0, 862.0) to=(568.1, 1044.4) target=5
+13:24:20.139 › [info] OverviewDrag: live-out-thumbnail mouseDown wid=212872 eventWindow=212880 sourceWindow=212880 point=(305.0, 498.0)
+13:24:20.140 › [info] OverviewDrag: live-out-thumbnail armed wid=212872 source=4
+13:24:22.020 › [info] OverviewDrag: live-out-thumbnail decoded-payload windows=[212872]
+13:24:22.021 › [info] OverviewMove: source=drop windows=[212872] target=5 display=2 snap=none attempt
+13:24:22.354 › [info] WindowRelocation: source=app.overview wid=212872 target=5 method=relocation attempt
+13:24:22.406 › [info] WindowRelocation: wid=212872 display=0 spaces=[4] → display=0 space=5
+13:24:22.413 › [info] WindowRelocation: wid=212872 source=[4] target=5 method=WindowSpaceCarry attempt
+13:24:22.572 › [info] WindowSpaceCarry: wid=212872 source=4 target=5 Mission Control opened
+13:24:23.063 › [info] WindowSpaceCarry: wid=212872 4 → 5 (Space 4 of 6)
+13:24:24.112 › [info] WindowSpaceCarry: pickup=(322.73954442907205, 256.9516472210039) target=5 drop=(1844.0, 102.0) button=(1844.0, 102.0, 245.0, 129.0)
+13:24:25.411 ✓ [success] WindowSpaceCarry: wid=212872 now on [5]
+13:24:25.545 › [info] WindowRelocation: wid=212872 target=5 method=WindowSpaceCarry outcome=moved
+13:24:25.724 › [info] WindowRelocation: wid=212872 move desktop [4] → 5 on display 0
+13:24:25.724 › [info] WindowRelocation: wid=212872 verified display 0, desktop 5, and frame
+13:24:25.725 › [info] WindowRelocation: source=app.overview wid=212872 target=5 outcome=ok reason=verified
+13:24:26.220 › [info] OverviewDrag: live-out-thumbnail LIVE result=["wid": 212872, "passed": true, "target": 5, "spaces": [5], "viewsUnchanged": true, "phase": 0, "receipt": "Moved TextEdit to Desktop 4"]
+13:24:27.368 › [info] OverviewDrag: live-back-map CGEvent wid=212872 from=(540.5, 1242.0) to=(444.2, 916.85) target=4
+13:24:28.386 › [info] OverviewDrag: live-back-map mouseDown wid=212872 eventWindow=212880 sourceWindow=212880 point=(480.5, 118.0)
+13:24:28.387 › [info] OverviewDrag: live-back-map armed wid=212872 source=5
+13:24:30.308 › [info] OverviewDrag: live-back-map decoded-payload windows=[212872]
+13:24:30.308 › [info] OverviewMove: source=drop windows=[212872] target=4 display=2 snap=left attempt
+13:24:30.624 › [info] WindowRelocation: source=app.overview wid=212872 target=4 method=relocation attempt
+13:24:30.634 › [info] WindowRelocation: wid=212872 display=0 spaces=[5] → display=0 space=4
+13:24:30.641 › [info] WindowRelocation: wid=212872 source=[5] target=4 method=WindowSpaceCarry attempt
+13:24:31.283 › [info] WindowSpaceCarry: wid=212872 source=5 target=4 Mission Control opened
+13:24:31.779 › [info] WindowSpaceCarry: wid=212872 5 → 4 (Space 3 of 6)
+13:24:32.838 › [info] WindowSpaceCarry: pickup=(480.0, 410.0) target=4 drop=(1597.0, 102.0) button=(1597.0, 102.0, 245.0, 129.0)
+13:24:34.077 ✓ [success] WindowSpaceCarry: wid=212872 now on [4]
+13:24:34.612 › [info] WindowRelocation: wid=212872 target=4 method=WindowSpaceCarry outcome=moved
+13:24:34.933 › [info] WindowRelocation: wid=212872 stage source desktop 5 → 4
+13:24:34.933 › [info] WindowRelocation: wid=212872 apply frame on display 0, desktop 4
+13:24:34.933 › [info] WindowRelocation: wid=212872 verified display 0, desktop 4, and frame
+13:24:34.934 › [info] WindowRelocation: source=app.overview wid=212872 target=4 outcome=ok reason=verified
+13:24:35.542 › [info] OverviewDrag: live-back-map LIVE result=["target": 4, "receipt": "Moved TextEdit to Desktop 3", "wid": 212872, "passed": true, "phase": 1, "viewsUnchanged": true, "spaces": [4]]

@@ -171,6 +171,9 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
                           width: preview.width, height: preview.height)
         }
         func observe(_ event: NSEvent) -> NSEvent? {
+            if OverviewDragProbe.enabled, event.type == .leftMouseDown {
+                OverviewDragProbe.log("mouseDown wid=\(wid) eventWindow=\(event.windowNumber) sourceWindow=\(window?.windowNumber ?? -1) point=\(event.locationInWindow)")
+            }
             guard event.window === window, let model else { return event }
             switch event.type {
             case .leftMouseDown:

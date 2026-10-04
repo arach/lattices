@@ -203,7 +203,7 @@ final class OverviewModel: ObservableObject {
     }
     func pinDisplay(_ id: UInt32) { deskPreferences.togglePin(id); saveDeskPreferences() }
     func hideDisplay(_ id: UInt32) { deskPreferences.hide(id); saveDeskPreferences() }
-    func restoreDisplay(_ id: UInt32) { deskPreferences.hidden.remove(id); saveDeskPreferences() }
+    func restoreDisplay(_ id: UInt32) { deskPreferences.reveal(id); saveDeskPreferences() }
     @Published var activeDrag: OverviewMembershipDrag?
     private var pendingDropMove: (() -> Void)?
 
@@ -328,6 +328,7 @@ final class OverviewModel: ObservableObject {
     let layerStore = LayerOverviewStore()
     private let defaults: UserDefaults
     private let actions: OverviewActions
+    private var knownDisplays: [OverviewDisplay] = []
     private var inputs: OverviewProjection.Inputs
     private weak var canvas: ScreenMapController?
     private var watches: Set<AnyCancellable> = []
@@ -358,9 +359,16 @@ final class OverviewModel: ObservableObject {
     func start() {
         guard watches.isEmpty else { return }
         layerStore.start()
-        layerStore.$layers
-            .merge(with: DesktopModel.shared.$windows.map { _ in [] }.debounce(for: .milliseconds(150), scheduler: DispatchQueue.main))
-            .receive(on: DispatchQueue.main)
+        let screenEvents = NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification).map { _ in () }
+        let wakeEvents = NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.screensDidWakeNotification).map { _ in () }
+        let sleepEvents = NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.screensDidSleepNotification).map { _ in () }
+        let spaceEvents = NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification).map { _ in () }
+        Publishers.MergeMany([
+            layerStore.$layers.map { _ in () }.eraseToAnyPublisher(),
+            DesktopModel.shared.$windows.map { _ in () }.eraseToAnyPublisher(),
+            screenEvents.eraseToAnyPublisher(), wakeEvents.eraseToAnyPublisher(), sleepEvents.eraseToAnyPublisher(), spaceEvents.eraseToAnyPublisher()
+        ])
+            .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &watches)
         refresh()
@@ -389,10 +397,16 @@ final class OverviewModel: ObservableObject {
         let windows = DesktopModel.shared.allWindows()
         var extras: [String: Set<UInt32>] = [:]
         for layer in layerStore.layers { extras[layer.id] = stage.extras(of: layer.id) }
+        // Screen state and current-desktop activity are sampled together. An
+        // inventory notification arriving later must not cause a second layout.
+        let activity = DesktopModel.shared.spaceMembershipSnapshot().filter(DesktopModel.isContent)
+        var current = Self.liveDisplays(known: knownDisplays)
+        for i in current.indices { current[i].hasCurrentWindows = Self.hasWindows(on: current[i], windows: activity) }
+        knownDisplays = Self.retainingDisconnected(current: current, previous: knownDisplays)
         update(OverviewProjection.Inputs(
             windows: windows.filter(DesktopModel.isContent),
             layers: layerStore.layers,
-            displays: Self.liveDisplays(),
+            displays: knownDisplays,
             main: CGDisplayBounds(CGMainDisplayID()),
             homes: stage.homes(),
             tucked: stage.tuckedByLayer(),
@@ -973,9 +987,9 @@ final class OverviewModel: ObservableObject {
     // MARK: Displays
 
     /// Monitors in `NSScreen.screens` order, Studio's display indices.
-    static func liveDisplays() -> [OverviewDisplay] {
+    static func liveDisplays(known: [OverviewDisplay] = []) -> [OverviewDisplay] {
         let spaces = WindowTiler.getDisplaySpaces()
-        return NSScreen.screens.enumerated().map { index, screen in
+        var result = NSScreen.screens.enumerated().map { index, screen in
             let id = displayID(of: screen)
             let owned = WindowTiler.displaySpaces(forDisplayID: id, in: spaces)
             return OverviewDisplay(
@@ -985,9 +999,56 @@ final class OverviewModel: ObservableObject {
                 desktops: owned?.spaces.map(\.id) ?? [],
                 currentSpaceId: owned?.currentSpaceId ?? 0,
                 spaceIds: owned?.orderedSpaceIds ?? [],
-                displayId: id
+                displayId: id,
+                availability: CGDisplayIsAsleep(id) != 0 ? .asleep : CGDisplayMirrorsDisplay(id) != kCGNullDirectDisplay ? .mirrored : CGDisplayIsActive(id) == 0 ? .off : .online,
+                isMain: id == CGMainDisplayID()
             )
         }
+        // Mirrored and sleeping online displays can be absent from NSScreen.
+        var ids = [CGDirectDisplayID](repeating: 0, count: 32)
+        var count: UInt32 = 0
+        if CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success {
+            for id in ids.prefix(Int(count)) where !result.contains(where: { $0.displayId == id }) {
+                let old = known.first { $0.displayId == id }
+                let owned = WindowTiler.displaySpaces(forDisplayID: id, in: spaces)
+                result.append(OverviewDisplay(index: result.count, name: old?.name ?? "Display \(result.count + 1)",
+                    bounds: old?.bounds ?? CGDisplayBounds(id), desktops: owned?.spaces.map(\.id) ?? [],
+                    currentSpaceId: owned?.currentSpaceId ?? 0, spaceIds: owned?.orderedSpaceIds ?? [], displayId: id,
+                    availability: CGDisplayIsAsleep(id) != 0 ? .asleep : CGDisplayMirrorsDisplay(id) != kCGNullDirectDisplay ? .mirrored : .off,
+                    isMain: id == CGMainDisplayID()))
+            }
+        }
+        return result
+    }
+
+    static func hasWindows(on display: OverviewDisplay, windows: [WindowEntry]) -> Bool {
+        windows.contains { window in
+            guard window.spaceIds.contains(display.currentSpaceId), !window.appHidden else { return false }
+            let f = window.frame
+            return display.bounds.intersects(CGRect(x: f.x, y: f.y, width: f.w, height: f.h))
+        }
+    }
+
+    static func retainingDisconnected(current: [OverviewDisplay], previous: [OverviewDisplay]) -> [OverviewDisplay] {
+        var result = current
+        for old in previous where !current.contains(where: { $0.displayId == old.displayId }) {
+            var off = old; off.availability = .off; off.hasCurrentWindows = false
+            off.index = (result.map(\.index).max() ?? -1) + 1
+            result.append(off)
+        }
+        return result
+    }
+
+    func inactiveReason(_ display: OverviewDisplay) -> String? {
+        if display.availability != .online { return display.availability.rawValue }
+        return (display.hasCurrentWindows ?? Self.hasWindows(on: display, windows: inputs.windows)) ? nil : "empty"
+    }
+
+    var expandedMonitors: [OverviewDeskMonitor] {
+        projection.desk.filter { deskPreferences.isExpanded($0.display.displayId, inactive: inactiveReason($0.display) != nil) }
+    }
+    var collapsedMonitors: [OverviewDeskMonitor] {
+        projection.desk.filter { !deskPreferences.isExpanded($0.display.displayId, inactive: inactiveReason($0.display) != nil) }
     }
 
     static func displayID(of screen: NSScreen) -> CGDirectDisplayID {

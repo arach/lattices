@@ -41,6 +41,8 @@ enum OverviewSnap: String, Codable, CaseIterable {
 struct OverviewDeskPreferences: Codable, Equatable {
     var pinned: UInt32?
     var hidden: Set<UInt32> = []
+    /// Optional so existing v1 preferences decode without losing pin/hide data.
+    var revealed: Set<UInt32>? = nil
     var toolbar: [String: CGPoint] = [:]
     var lastToolbar: CGPoint?
     static let key = "overview.desk.preferences.v1"
@@ -53,7 +55,17 @@ struct OverviewDeskPreferences: Codable, Equatable {
         pinned = pinned == id ? nil : id
         hidden.remove(id)
     }
-    mutating func hide(_ id: UInt32) { hidden.insert(id); if pinned == id { pinned = nil } }
+    mutating func hide(_ id: UInt32) {
+        hidden.insert(id); revealed?.remove(id); if pinned == id { pinned = nil }
+    }
+    mutating func reveal(_ id: UInt32) {
+        hidden.remove(id)
+        if revealed == nil { revealed = [] }
+        revealed?.insert(id)
+    }
+    func isExpanded(_ id: UInt32, inactive: Bool) -> Bool {
+        !hidden.contains(id) && (!inactive || pinned == id || revealed?.contains(id) == true)
+    }
     static func load(_ defaults: UserDefaults) -> Self {
         defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(Self.self, from: $0) } ?? Self()
     }

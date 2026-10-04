@@ -523,3 +523,107 @@ the partial live result above. The ordinary dev app was reopened with this
 checkout's explicit CLI root; no release app was rebuilt or launched. Final
 view readback is `carry/final-view-readback.log`; no test TextEdit documents
 remain. Workspace mtime remains `1791063065` and the hash above is unchanged.
+
+## Return carry and active-first monitors (October 4, 2026)
+
+### Return carry: closed out by a verified round trip
+
+The previous carry accepted the first Spaces-bar frame with nonnegative Y.
+That is an animation-start test, not a settled-target test. WindowManager's AX
+position changes in **both axes** as the bar expands. The captured Desktop 3
+button starts at `(1673, -33)` and settles at `(1597, 102)` during a drag;
+hover-only expansion puts it at `(1473, 102)`. AXSize remains the label's size,
+so adding half that size is not a valid way to find the drop point either.
+The desktop index stayed correct; cached/in-flight target geometry was unsafe,
+particularly for a leftward return. Earlier logs did not record the exact
+failed drop coordinate, so they cannot prove which intermediate point it hit.
+
+Carry now reacquires the live Spaces bar, validates its count, and waits until
+the target frame is stable for 200ms (and expansion has had at least 350ms)
+before dragging to its AXPosition. It also resolves the actual source AX
+thumbnail by bundle, source Space and title, rather than relying on a cached
+CG frame. Duplicate app/title candidates require a unique geometry match;
+otherwise the move fails safely instead of picking another window. Both
+source and target geometry are logged. The fix was verified as a whole, not
+as separate experiments for each safeguard.
+
+There were exactly **three real-input runs** in this pass. The first two never
+armed a native drag or reached relocation. A separate fake-window input trace
+caught an extra, unrelated mouse-down, and the live probe now records input
+window identity and source hit-testing. Two read-only Mission Control
+inspections captured the collapsed/expanded AX tree; they did not drag windows.
+No further live carry runs were used after the successful third run.
+
+Final live test: newly created TextEdit document **`lattices-carry-test`**,
+window **212872**, main display **2**:
+
+- Real CGEvent thumbnail drop **Space 4 → 5** / Desktop 3 → 4: verified `[5]`.
+- Real CGEvent big-map drop **Space 5 → 4**, left half: verified `[4]` and frame.
+- Mission Control appeared in both directions. The three displays were back
+  on `[4, 2326, 2377]` after each completion. The test document was closed.
+- The JSON result is `passed: true`. This supersedes the partial result in the
+  previous section. No test operated on an existing user document.
+
+Evidence is in `EditorSlice1LiveEvidence/return-carry/`: native input trace,
+relocation outcomes, JSON verification, and redacted AX trees. Unrelated app
+window titles were omitted from the committed AX evidence. This live test used
+an isolated host for the production Overview drag source/drop handlers and
+LiveOverviewActions; it is not a claim of exhaustive Mission Control coverage.
+
+### Active-first, aspect-fitted layout
+
+`OverviewMonitorLayout` is a pure layout planner. It uses the canvas space
+already allocated above the toolbar and tray; it does not measure the views it
+just laid out. One monitor gets the whole aspect-fitted room. Two go side by
+side in a wide room and stack in a tall one. Three or more give the pinned/main
+monitor the lead map and evaluate both a secondary column and a secondary row,
+choosing the greatest drawn map area. The lead stays larger than each secondary
+map. Actual aspect-fitted bounds are packed together with aligned headers and
+16pt gaps, not centered separately in oversized allocation cells.
+
+Off, asleep, mirrored, and empty-current-desktop displays collapse to labeled
+chips. Activity comes from the unfiltered window snapshot, not the selected
+layer, search, or browsed Desktop. Clicking a chip explicitly restores it.
+Manual hide wins over automatic activity; pin and explicit restore win over
+automatic collapse. The new optional `revealed` preference decodes old v1
+preferences without losing existing pin/hide settings. These choices use only
+UserDefaults, not workspace.json.
+
+Live screen state comes from CoreGraphics plus NSScreen. Online mirrored or
+sleeping displays absent from NSScreen are included. A disconnected display
+already seen by this model remains as an off chip with its name and identity;
+a device entirely unknown to the running app cannot be discovered while it is
+disconnected. Stable display IDs keep views from being replaced when NSScreen
+indices change. Screen, sleep/wake, active-Space, and window notifications share
+one 200ms debounce. Activity and screen state are sampled together. A fixed
+chip-row reservation prevents collapse from first resizing the canvas and then
+reflowing it again. One short 180ms animation follows the resulting plan; Reduce
+Motion and native dragging disable it.
+
+Nine `monitors-*.png` fixtures cover one/two/three monitors, wide/tall canvases,
+one off, restored-off and a different pinned lead. They were inspected in one
+batch, internal aspect-fit gutters were packed in one correction, and the
+confirmation batch was inspected. Toolbar/tray remain clear. Physical monitor
+power cycling was not performed; topology/activity behavior is covered with
+fixtures and pure unit tests.
+
+Validation: **495 app tests, 13 skipped, zero failures** (including all fixture
+renders); **22 Swift package tests passed**; `bun run test` passed (47 CLI tests,
+one skip, 9 Bun tests); `bun run check:types` passed. New tests cover layout
+choice and bounds/aspects, main/pin ordering, inactive reasons and overrides,
+old preference decoding, disconnect/reconnect identity, scope-independent
+activity, and rejecting unsettled leftward targets / ambiguous thumbnails.
+Logs: `/tmp/lattices-monitors-tests-final.log`,
+`/tmp/lattices-monitors-packages.log`, `/tmp/lattices-monitors-bun.log`,
+`/tmp/lattices-monitors-types.log`, and `/tmp/lattices-return-run3.log`.
+
+Final optimized dev build/install/restart passed
+(`/tmp/lattices-monitors-dev-build.log`). The installed app passed all four
+fake-window CGEvent drop assertions with the new layout
+(`return-carry/shipped-fixture-input.log`). It was reopened normally with this
+checkout's explicit CLI root; bundle ID remains `dev.lattices.app.dev`. No
+release app was rebuilt or launched. Final readback confirms original display
+views `[4, 2326, 2377]` and zero remaining test windows
+(`return-carry/final-view-readback.log`). Workspace hash and mtime remain
+`d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f` and
+`1791063065` respectively. No workspace.json write, push, merge or PR.

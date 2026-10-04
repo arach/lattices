@@ -29,7 +29,7 @@ final class OverviewCarryLiveProbe {
               let index = CommandLine.arguments.firstIndex(of: "--overview-carry-live"),
               CommandLine.arguments.indices.contains(index + 1) else { finish("Missing explicit live-test document or existing permissions"); return }
         let file = URL(fileURLWithPath: CommandLine.arguments[index + 1]).standardizedFileURL.resolvingSymlinksInPath()
-        guard (file.path.hasPrefix("/private/tmp/") || file.path.hasPrefix("/tmp/")), file.lastPathComponent.hasPrefix("lattices-carry-test-"), FileManager.default.fileExists(atPath: file.path) else { finish("Unsafe test document path: \(file.path); exists=\(FileManager.default.fileExists(atPath: file.path))"); return }
+        guard (file.path.hasPrefix("/private/tmp/") || file.path.hasPrefix("/tmp/")), file.lastPathComponent.hasPrefix("lattices-carry-test"), FileManager.default.fileExists(atPath: file.path) else { finish("Unsafe test document path: \(file.path); exists=\(FileManager.default.fileExists(atPath: file.path))"); return }
         title = file.lastPathComponent
         guard let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]],
               let window = windows.first(where: { ($0[kCGWindowOwnerName as String] as? String) == "TextEdit" && ($0[kCGWindowName as String] as? String) == title }),
@@ -46,9 +46,17 @@ final class OverviewCarryLiveProbe {
         let bounds = DisplayGeometryMapper.topLeftFrame(screen.frame, primaryHeight: NSScreen.screens.first?.frame.height ?? 0)
         display = OverviewDisplay(index: main.displayIndex, name: screen.localizedName, bounds: bounds, desktops: main.spaces.map(\.id), currentSpaceId: original, displayId: CGMainDisplayID())
         guard let entry = entry(), bounds.contains(CGPoint(x: entry.frame.x + entry.frame.w / 2, y: entry.frame.y + entry.frame.h / 2)) else { finish("Test window is not on main display"); return }
+        if CommandLine.arguments.contains("--overview-carry-inspect-only") {
+            DispatchQueue.global(qos: .userInitiated).async {
+                WindowSpaceCarry.inspectOnly(wid: self.wid)
+                DispatchQueue.main.async { self.finish(nil) }
+            }
+            return
+        }
         let actions = RestrictedActions(wid: wid, pid: pid, allowedSpaces: [original, next])
         fixture.model = OverviewModel(defaults: UserDefaults(suiteName: suite)!, actions: actions,
             inputs: .init(windows: [entry], displays: [display], main: bounds))
+        fixture.model.restoreDisplay(display.displayId)
         fixture.model.compositionAdder = { _, _ in throw NSError(domain: "LiveProbe", code: 1) }
         fixture.model.compositionCreator = { _ in false }
         fixture.root = NSHostingView(rootView: OverviewView(model: fixture.model, controller: ScreenMapController(), live: false, fixtureInteractions: true).environment(\.colorScheme, .dark))
@@ -81,14 +89,24 @@ final class OverviewCarryLiveProbe {
         let marker = "\(phase == 0 ? "thumb" : "screen"):\(display.displayId):\(targetSpace)"
         guard let source = views.compactMap({ $0 as? OverviewImmediateDragSource.Source }).first(where: { $0.wid == wid && !$0.visibleRect.isEmpty }),
               let target = views.compactMap({ $0 as? OverviewProbeMark.Mark }).first(where: { $0.id == marker }) else { finish("Source or destination missing: \(marker)"); return }
+        fixture.window.makeKeyAndOrderFront(nil); fixture.window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
         let from = fixture.point(source), to = fixture.point(target, fraction: .init(x: 0.3, y: 0.45))
+        let front = OverviewImmediateDragSource.Source.frontmost(in: fixture.root, windowPoint: source.convert(CGPoint(x: source.bounds.midX, y: source.bounds.midY), to: nil))
+        OverviewDragProbe.log("frontmost-is-source=\(front === source) postAccess=\(CGPreflightPostEventAccess())")
+        OverviewDragProbe.log("input-window=\(fixture.window.windowNumber) key=\(fixture.window.isKeyWindow) appActive=\(NSApp.isActive) source=\(source.frame)")
+        let capture = Process(); capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-l", String(fixture.window.windowNumber), OverviewDragProbe.folder!.appendingPathComponent("live-\(phase).png").path]
+        try? capture.run()
         OverviewDragProbe.log("CGEvent wid=\(wid) from=\(from) to=\(to) target=\(targetSpace)")
         DispatchQueue.global(qos: .userInitiated).async {
             func post(_ type: CGEventType, _ point: CGPoint) {
                 let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)!
                 event.setIntegerValueField(.mouseEventClickState, value: 1); event.post(tap: .cghidEventTap)
             }
+            Thread.sleep(forTimeInterval: 0.8)
             post(.mouseMoved, from); Thread.sleep(forTimeInterval: 0.2)
+            DiagnosticLog.shared.info("probe mouse actual=\(String(describing: CGEvent(source: nil)?.location)) requested=\(from)")
             post(.leftMouseDown, from); Thread.sleep(forTimeInterval: 0.15)
             for i in 1...35 {
                 let t = CGFloat(i) / 35

@@ -4,8 +4,8 @@ import ApplicationServices
 /// Moves a window to another Space the one way macOS still allows since
 /// 14.5: open Mission Control and drag the window's thumbnail onto the
 /// target desktop in the Spaces bar, as a person would. The CGS move calls
-/// are silently refused for other apps' windows, so this is the fallback
-/// `window.move` and `window.present` use.
+/// are silently refused for other apps' windows. Same-display moves use
+/// carry directly; cross-display transfers can use it for staging.
 ///
 /// Holding a window by its title bar and switching Spaces doesn't work where
 /// Lattices owns ⌃-arrow: the Dock ignores its own shortcut once Lattices
@@ -81,21 +81,28 @@ enum WindowSpaceCarry {
         }
         diag.info("WindowSpaceCarry: wid=\(wid) source=\(source) target=\(target) Mission Control opened")
         defer { closeMissionControl(windowManager) }
-        var thumb = home
-        let openedAt = Date()
-        var stableSince = Date()
-        let settled = waitUntil(timeout: 1.5) {
-            guard let now = bounds(wid) else { return false }
-            if now != thumb {
-                thumb = now
-                stableSince = Date()
-            }
-            // A small lone window can keep its original bounds in Mission
-            // Control. Stable geometry, not a mandatory size change, is the
-            // condition for a settled thumbnail.
-            return Date().timeIntervalSince(openedAt) >= 0.35 && Date().timeIntervalSince(stableSince) >= 0.15
+        // WindowManager retains buttons for other Spaces too. Resolve the
+        // source Space's actual AX thumbnail, not a cached CG window frame.
+        guard let title = windowTitle(wid),
+              let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else {
+            return .failed("couldn't identify the source window's Mission Control thumbnail")
         }
-        guard settled else { return .failed("no Mission Control thumbnail for window \(wid)") }
+        let identifier = "\(bundle).space.\(source)"
+        var thumb = CGRect.zero
+        var stableSince = Date()
+        let openedAt = Date()
+        let settled = waitUntil(timeout: 2.0) {
+            let candidates = missionControlDisplays(windowManager).flatMap(children).filter {
+                self.identifier($0) == identifier && string($0, kAXTitleAttribute) == title
+            }
+            // Ambiguous app/title pairs are rejected rather than dragging a
+            // different window. CG geometry can disambiguate only if it agrees.
+            let frames = candidates.compactMap(frame)
+            guard let now = thumbnailFrame(candidates: frames, observed: bounds(wid)) else { return false }
+            if !WindowRelocation.framesClose(now, thumb, tolerance: 1) { thumb = now; stableSince = Date() }
+            return Date().timeIntervalSince(openedAt) >= 0.45 && Date().timeIntervalSince(stableSince) >= 0.2
+        }
+        guard settled else { return .failed("source window's Mission Control thumbnail was missing or ambiguous") }
         guard let bar = spacesBar(windowManager, containing: CGPoint(x: home.midX, y: home.midY)) else {
             return .failed("no Spaces bar on the window's display")
         }
@@ -103,6 +110,8 @@ enum WindowSpaceCarry {
             return .failed("the Spaces bar shows \(bar.buttons.count) Spaces, expected \(display.orderedSpaceIds.count)")
         }
         let button = bar.buttons[targetIndex]
+        diag.info("WindowSpaceCarry: source=\(source) target=\(target) index=\(targetIndex) home=\(home) thumb=\(thumb) bar=\(bar.frame)")
+        dumpTree(windowManager, stage: "pickup-\(source)-\(target)")
 
         // 3. Pick the thumbnail up and bring it to the bar, which expands
         //    under the cursor.
@@ -132,12 +141,21 @@ enum WindowSpaceCarry {
 
         // Collapsed, the buttons sit above the display's top edge.
         var drop = CGPoint.zero
-        let expanded = waitUntil(timeout: 1.5) {
-            guard let frame = frame(button), frame.minY >= bar.frame.minY else { return false }
-            // WindowManager reports an expanded thumbnail's centre as its
-            // position (the size is the collapsed label's). Drop there: a
-            // drop in the gap between thumbnails makes a full-screen Space.
-            drop = frame.origin
+        var targetStability = StableFrame()
+        let hoverStart = Date()
+        let expanded = waitUntil(timeout: 2.0) {
+            guard let liveBar = spacesBar(windowManager, containing: CGPoint(x: home.midX, y: home.midY)),
+                  liveBar.buttons.count == display.orderedSpaceIds.count,
+                  let current = frame(liveBar.buttons[targetIndex]), current.minY >= liveBar.frame.minY else {
+                _ = targetStability.observe(nil, at: Date().timeIntervalSince1970)
+                return false
+            }
+            guard let settled = targetStability.observe(current, at: Date().timeIntervalSince1970),
+                  Date().timeIntervalSince(hoverStart) >= 0.35 else { return false }
+            // AXPosition is the thumbnail centre; AXSize remains the label's.
+            // Both X and Y animate during expansion. First nonnegative Y is
+            // NOT ready: a leftward target can still sit over the source Space.
+            drop = settled.origin
             return true
         }
         guard expanded else {
@@ -145,6 +163,8 @@ enum WindowSpaceCarry {
             mouse(.leftMouseUp, pickup)
             return .failed("the Spaces bar didn't expand")
         }
+        diag.info("WindowSpaceCarry: pickup=\(pickup) target=\(target) drop=\(drop) button=\(frame(button).map(String.init(describing:)) ?? "nil")")
+        dumpTree(windowManager, stage: "expanded-\(source)-\(target)")
         drag(to: drop, steps: 12)
         usleep(400_000)
         mouse(.leftMouseUp, drop)
@@ -166,6 +186,61 @@ enum WindowSpaceCarry {
         }
         diag.warn("WindowSpaceCarry: wid=\(wid) stayed on \(after)")
         return .failed("the drop didn't take (window still on \(after))")
+    }
+
+    struct StableFrame {
+        private var value: CGRect?
+        private var since: TimeInterval = 0
+        mutating func observe(_ frame: CGRect?, at time: TimeInterval) -> CGRect? {
+            guard let frame else { value = nil; since = time; return nil }
+            guard let value, WindowRelocation.framesClose(value, frame, tolerance: 0.5) else {
+                value = frame; since = time; return nil
+            }
+            return time - since >= 0.2 ? frame : nil
+        }
+    }
+
+    static func thumbnailFrame(candidates: [CGRect], observed: CGRect?) -> CGRect? {
+        let valid = candidates.filter { $0.width > 0 && $0.height > 0 }
+        if valid.count == 1 { return valid[0] }
+        guard let observed else { return nil }
+        let matching = valid.filter { WindowRelocation.framesClose($0, observed, tolerance: 4) }
+        return matching.count == 1 ? matching[0] : nil
+    }
+
+    private static func windowTitle(_ wid: UInt32) -> String? {
+        guard let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, wid) as? [[String: Any]] else { return nil }
+        return windows.first?[kCGWindowName as String] as? String
+    }
+
+    static func inspectOnly(wid: UInt32) {
+        guard let app = windowManagerApp(), openMissionControl(app) else { return }
+        usleep(600_000)
+        DiagnosticLog.shared.info("WindowSpaceCarry: inspect-only wid=\(wid) bounds=\(String(describing: bounds(wid)))")
+        dumpTree(app, stage: "inspection")
+        let cursor = CGEvent(source: nil)?.location
+        if let home = bounds(wid), let bar = spacesBar(app, containing: CGPoint(x: home.midX, y: home.midY)) {
+            CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: bar.frame.midX, y: bar.frame.minY + 15), mouseButton: .left)?.post(tap: .cghidEventTap)
+            usleep(900_000)
+            dumpTree(app, stage: "inspection-expanded")
+        }
+        closeMissionControl(app)
+        if let cursor { CGWarpMouseCursorPosition(cursor) }
+    }
+
+    /// Opt-in diagnostic only: capture WindowManager's MC tree, not app contents.
+    private static func dumpTree(_ app: AXUIElement, stage: String) {
+        guard CommandLine.arguments.contains("--overview-carry-live"), let folder = OverviewDragProbe.folder else { return }
+        var lines: [String] = []
+        func walk(_ element: AXUIElement, depth: Int) {
+            guard depth < 10, lines.count < 1200 else { return }
+            var wid: CGWindowID = 0
+            _ = _AXUIElementGetWindow(element, &wid)
+            lines.append(String(repeating: " ", count: depth * 2) + "role=\(string(element, kAXRoleAttribute) ?? "") id=\(identifier(element) ?? "") title=\(string(element, kAXTitleAttribute) ?? "") desc=\(string(element, kAXDescriptionAttribute) ?? "") wid=\(wid) frame=\(frame(element).map(String.init(describing:)) ?? "nil")")
+            for child in children(element) { walk(child, depth: depth + 1) }
+        }
+        walk(app, depth: 0)
+        try? lines.joined(separator: "\n").write(to: folder.appendingPathComponent("mc-\(stage).log"), atomically: true, encoding: .utf8)
     }
 
     // MARK: - Mission Control

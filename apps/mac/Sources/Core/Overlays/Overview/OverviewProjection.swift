@@ -40,7 +40,7 @@ struct OverviewScope: Codable, Equatable {
 
 /// One monitor as Overview sees it, in CG coordinates.
 struct OverviewDisplay: Equatable {
-    let index: Int
+    var index: Int
     let name: String
     /// CG (top-left origin) bounds.
     let bounds: CGRect
@@ -52,6 +52,11 @@ struct OverviewDisplay: Equatable {
     var spaceIds: [Int] = []
     /// CGDirectDisplayID, to find its screen when acting.
     var displayId: UInt32 = 0
+    enum Availability: String { case online, off, asleep, mirrored }
+    var availability: Availability = .online
+    var isMain: Bool = false
+    /// One live snapshot supplies activity independent of list/search scope.
+    var hasCurrentWindows: Bool? = nil
 
     func desktopNumber(of spaceId: Int) -> Int? {
         desktops.firstIndex(of: spaceId).map { $0 + 1 }
@@ -228,7 +233,7 @@ struct OverviewDeskMonitor: Identifiable, Equatable {
     /// Its desktops in order, all of them, then any full-screen Space
     /// showing or holding a matched window.
     let spaces: [OverviewDeskSpace]
-    var id: Int { display.index }
+    var id: Int { display.displayId == 0 ? -(display.index + 1) : Int(display.displayId) }
     var rowCount: Int { spaces.reduce(0) { $0 + $1.rows.count } }
 }
 
