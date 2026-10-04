@@ -2,11 +2,13 @@
 
 **[lattices.dev/action](https://lattices.dev/action)** · Native-first macOS automation, capture, and review from Lattices.
 
+> **Action has moved into Lattices.** All ongoing development lives in [`arach/lattices`](https://github.com/arach/lattices), under [`products/action/`](https://github.com/arach/lattices/tree/main/products/action). The original Action `main` history was merged on August 27, 2026 ([import commit](https://github.com/arach/lattices/commit/b1ad511adf509c0c60d7f3edce7cd15257601db2)). The old `arach/action` repository is historical.
+
+On Arach's Mac, `/Users/arach/dev/action` is a compatibility symlink to `/Users/arach/dev/lattices/products/action`. Both paths use the same Lattices Git checkout. Agents must read the [Lattices instructions](../../AGENTS.md) and the [Action instructions](AGENTS.md) before working here. Action retains its own `Action.app`, agent runtime, and recording lifecycle within the monorepo.
+
 `action` is a local runtime for observing a Mac surface, executing deterministic actions, recording what happened, and preserving the result as inspectable session artifacts.
 
 The project is built around a signed AppKit application, a local agent runtime, and shared CLI/MCP interfaces. Its strongest path today is native capture and replay; live inspection and durable companion jobs are the active development edge.
-
-Source lives in the Lattices monorepo at [`products/action`](https://github.com/arach/lattices/tree/main/products/action).
 
 ## Status At A Glance
 
