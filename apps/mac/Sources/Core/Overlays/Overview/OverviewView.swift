@@ -15,6 +15,7 @@ struct OverviewView: View {
     @ObservedObject var controller: ScreenMapController
     /// Off for fixture renders: no live reads, no shared selection.
     var live = true
+    var fixtureInteractions = false
     @FocusState private var searchFocused: Bool
     @FocusState private var canvasFocused: Bool
     @ObservedObject private var index = LayerIndexState.shared
@@ -24,7 +25,7 @@ struct OverviewView: View {
     var body: some View {
         HStack(spacing: 0) {
             OverviewLayerIndex(rows: indexRows, selected: selectedLayers, readAt: index.readAt, live: live,
-                               membershipDrop: live ? model.receiveMembership : nil,
+                               membershipDrop: (live || fixtureInteractions) ? model.receiveMembership : nil,
                                addSelected: live ? { model.addComposition(Array(model.selection), to: $0) } : nil,
                                selectionCount: model.selection.count, activeDrag: model.activeDrag, newLayer: { model.compose() }) { id, additive in
                 if live { index.choose(id, additive: additive); applyIndex() }
@@ -91,8 +92,6 @@ struct OverviewView: View {
                         .overlay(alignment: .leading) {
                             Rectangle().fill(Palette.borderLit).frame(width: 1)
                         }
-                        .compositingGroup()
-                        .shadow(color: .black.opacity(0.45), radius: 18, x: -6)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
@@ -152,7 +151,7 @@ struct OverviewView: View {
         let count = Set((selectedLayers.isEmpty ? indexRows : selected).flatMap(\.windows)).count
         return HStack(spacing: 6) {
             Text(title + (selectedLayers.isEmpty ? " · \(count) on \(model.projection.displays.count) displays" : " · \(count) open"))
-                .font(Typo.body(12)).foregroundColor(Palette.textDim).lineLimit(1)
+                .font(.system(size: 12)).foregroundColor(Palette.textDim).lineLimit(1)
             if !selectedLayers.isEmpty {
                 Button {
                     if live { index.select([]); applyIndex() } else { model.chooseIndex([], rows: indexRows) }
@@ -192,7 +191,7 @@ struct OverviewView: View {
             set: { model.scope.search = $0 }
         ))
         .textFieldStyle(.plain)
-        .font(Typo.mono(10))
+        .font(.system(size: 11))
         .foregroundColor(Palette.text)
         .padding(.horizontal, 9)
         .frame(height: OverviewChrome.controlHeight)
@@ -225,13 +224,13 @@ struct OverviewView: View {
                     .font(.system(size: 10))
                 if barWidth >= 1000 {
                     Text(name)
-                        .font(Typo.mono(10))
+                        .font(.system(size: 11))
                         .lineLimit(1)
                         .frame(maxWidth: 110, alignment: .leading)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 Text("\(count)")
-                    .font(Typo.mono(9))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
                 if unsaved {
                     Circle().fill(Palette.detach).frame(width: 5, height: 5)
@@ -389,12 +388,12 @@ private struct OverviewCapsule: View {
         return HStack(spacing: 4) {
             HStack(spacing: 6) {
                 Text(row.app)
-                    .font(Typo.monoBold(10))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Palette.text)
                     .fixedSize()
                 if !row.title.isEmpty {
                     Text(row.title)
-                        .font(Typo.mono(10))
+                        .font(.system(size: 11))
                         .foregroundColor(Palette.textDim)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -405,7 +404,7 @@ private struct OverviewCapsule: View {
             .padding(.trailing, 4)
             if model.selection.count > 1 {
                 Text("+\(model.selection.count - 1) selected")
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
                     .fixedSize()
                     .padding(.horizontal, 4)
@@ -415,8 +414,8 @@ private struct OverviewCapsule: View {
                 model.focus(row.wid)
             } label: {
                 HStack(spacing: 5) {
-                    Text("Focus").font(Typo.monoBold(10))
-                    Text("↵").font(Typo.mono(9)).opacity(0.55)
+                    Text("Focus").font(.system(size: 11, weight: .medium))
+                    Text("↵").font(.system(size: 11)).opacity(0.55)
                 }
             }
             .buttonStyle(.overview(.primary))
@@ -466,7 +465,7 @@ private struct OverviewCapsule: View {
 
     private func why(_ text: String) -> some View {
         Text(text)
-            .font(Typo.mono(8))
+            .font(.system(size: 11))
             .foregroundColor(Palette.textMuted)
             .lineLimit(2)
             .frame(maxWidth: 200, alignment: .leading)
@@ -490,7 +489,7 @@ private struct OverviewCapsule: View {
     private func moveMenu(_ row: OverviewRow) -> some View {
         let targets = model.projection.moveTargets(for: row.wid)
         if model.moving.contains(row.wid) {
-            Text("Moving…").font(Typo.mono(9)).foregroundColor(Palette.textMuted).padding(.horizontal, 6)
+            Text("Moving…").font(.system(size: 11)).foregroundColor(Palette.textMuted).padding(.horizontal, 6)
         } else {
             Menu {
                 ForEach(targets, id: \.spaceId) { target in
@@ -575,20 +574,20 @@ struct OverviewWorkingList: View {
         let membership = model.workingMembership
         return HStack(spacing: 8) {
             Text(Self.name(model))
-                .font(Typo.monoBold(10))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(Palette.text)
                 .lineLimit(1)
             if let membership {
                 if let slot = membership.slot {
-                    Text("⌘⌥\(slot)").font(Typo.mono(9)).foregroundColor(Palette.textMuted)
+                    Text("⌘⌥\(slot)").font(.system(size: 11)).foregroundColor(Palette.textMuted)
                 }
                 if membership.isActive {
-                    Text("active").font(Typo.mono(8)).foregroundColor(Palette.textDim)
+                    Text("active").font(.system(size: 11)).foregroundColor(Palette.textDim)
                 }
             }
             Spacer(minLength: 6)
             Text("\(Self.count(model))")
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
             Button {
                 model.membershipShown = false
@@ -630,11 +629,11 @@ struct OverviewWorkingList: View {
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(scoped.space.title) · \(scoped.monitor.display.name)")
-                    .font(Typo.monoBold(9))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Palette.text)
                     .lineLimit(1)
                 Text(hidden > 0 ? "\(hidden) more on other desktops" : (scoped.space.isCurrent ? "showing" : scoped.space.mapNote ?? "not showing"))
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
                     .lineLimit(1)
             }
@@ -680,7 +679,7 @@ struct OverviewWorkingList: View {
             }
             if membership.isEmpty {
                 Text(model.scope.spaceId == nil ? "Nothing configured" : "Nothing on this Desktop")
-                    .font(Typo.mono(9))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
             }
             if let layer = model.layers.first(where: { $0.id == membership.layerId }) {
@@ -723,7 +722,7 @@ struct OverviewWorkingList: View {
         let groups = self.groups
         if groups.isEmpty {
             Text(model.scope.spaceId == nil ? "No windows" : "Nothing on this Desktop")
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
         }
         ForEach(groups) { group in
@@ -742,12 +741,12 @@ struct OverviewWorkingList: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(title.uppercased())
-                    .font(Typo.monoBold(8))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Palette.textMuted)
                     .lineLimit(1)
                 Spacer()
                 Text("\(count)")
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
             }
             .padding(.bottom, 2)
@@ -768,12 +767,12 @@ struct OverviewWorkingList: View {
                         .padding(.top, 4)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(item.title.isEmpty ? item.app : "\(item.app) — \(item.title)")
-                            .font(Typo.mono(9))
+                            .font(.system(size: 11))
                             .foregroundColor(listed ? Palette.text : Palette.textDim)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text(secondary)
-                            .font(Typo.mono(8))
+                            .font(.system(size: 11))
                             .foregroundColor(Palette.textMuted)
                             .lineLimit(1)
                     }
@@ -816,11 +815,11 @@ struct OverviewWorkingList: View {
                 .padding(.top, 4)
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.name)
-                    .font(Typo.mono(9))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textDim)
                     .lineLimit(1)
                 Text(([entry.pattern].compactMap { $0 } + [entry.note]).joined(separator: " · "))
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
                     .lineLimit(1)
             }
@@ -842,7 +841,7 @@ struct OverviewWorkingList: View {
             // A rearrange fails after the draft closed; say so here.
             if let error = model.editError {
                 Text(error)
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.kill)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -866,7 +865,7 @@ struct OverviewWorkingList: View {
                     Text(option.label).tag(option.value ?? "")
                 }
             }
-            .font(Typo.mono(9))
+            .font(.system(size: 11))
 
             ForEach(layer.entries.flatMap(\.windows)) { window in
                 Toggle(isOn: Binding(
@@ -876,7 +875,7 @@ struct OverviewWorkingList: View {
                     }
                 )) {
                     Text("Tuck \(window.title.isEmpty ? window.app : window.title)")
-                        .font(Typo.mono(8))
+                        .font(.system(size: 11))
                         .lineLimit(1)
                 }
                 .toggleStyle(.checkbox)
@@ -884,7 +883,7 @@ struct OverviewWorkingList: View {
 
             if let error = model.editError {
                 Text(error)
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.kill)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -902,7 +901,7 @@ struct OverviewWorkingList: View {
                         .help("Saves, then lays out the active layer's windows again")
                 }
             }
-            .font(Typo.mono(9))
+            .font(.system(size: 11))
         }
     }
 }
@@ -923,7 +922,7 @@ private struct OverviewSelectionPanel: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(model.selection.isEmpty ? "No selection" : "\(model.selection.count) selected")
-                    .font(Typo.monoBold(10))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(model.selection.isEmpty ? Palette.textMuted : Palette.text)
                     .fixedSize()
                 if !model.selection.isEmpty {
@@ -949,7 +948,7 @@ private struct OverviewSelectionPanel: View {
             bulkActions
             if let error = model.actionError {
                 Text(error)
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.kill)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -965,12 +964,12 @@ private struct OverviewSelectionPanel: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(row.title.isEmpty ? row.app : row.title)
-                        .font(Typo.monoBold(9))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Palette.text)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text([row.app, row.state.label, row.position.label].compactMap { $0 }.joined(separator: " · "))
-                        .font(Typo.mono(8))
+                        .font(.system(size: 11))
                         .foregroundColor(Palette.textMuted)
                         .lineLimit(1)
                 }
@@ -1012,7 +1011,7 @@ private struct OverviewSelectionPanel: View {
         .help(placeBlock.map { "Can't tile: \($0.label)" } ?? "Tile this window on its monitor")
         if let placeBlock {
             Text("Can't tile: \(placeBlock.label)")
-                .font(Typo.mono(8))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
                 .lineLimit(1)
         }
@@ -1022,7 +1021,7 @@ private struct OverviewSelectionPanel: View {
     private func moveControl(_ row: OverviewRow) -> some View {
         let targets = model.projection.moveTargets(for: row.wid)
         if model.moving.contains(row.wid) {
-            Text("Moving…").font(Typo.mono(8)).foregroundColor(Palette.textMuted)
+            Text("Moving…").font(.system(size: 11)).foregroundColor(Palette.textMuted)
         } else if !targets.isEmpty {
             Menu {
                 ForEach(targets, id: \.spaceId) { target in
@@ -1037,7 +1036,7 @@ private struct OverviewSelectionPanel: View {
             .accessibilityLabel("Move to desktop")
         } else if let block = OverviewProjection.moveExclusion(row) {
             Text("Can't move: \(block.label)")
-                .font(Typo.mono(8))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
                 .lineLimit(1)
         }

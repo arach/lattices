@@ -218,7 +218,9 @@ final class OverviewModel: ObservableObject {
         actionError = nil
         composition = OverviewComposition(windows: windows)
     }
+    var compositionCreator: ((OverviewComposition) -> Bool)?
     func createComposition(_ draft: OverviewComposition) -> Bool {
+        if let compositionCreator { return compositionCreator(draft) }
         actionError = nil
         compositionNotice = nil
         do {

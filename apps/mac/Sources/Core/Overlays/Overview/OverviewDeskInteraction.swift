@@ -46,8 +46,8 @@ struct OverviewDeskPreferences: Codable, Equatable {
     static let key = "overview.desk.preferences.v1"
     static func sizeKey(_ size: CGSize) -> String { "\(Int(size.width.rounded()))x\(Int(size.height.rounded()))" }
     static func clamp(_ origin: CGPoint, toolbar: CGSize, room: CGSize) -> CGPoint {
-        CGPoint(x: min(max(0, origin.x), max(0, room.width - toolbar.width)),
-                y: min(max(0, origin.y), max(0, room.height - toolbar.height)))
+        CGPoint(x: floor(min(max(0, origin.x), max(0, room.width - toolbar.width))),
+                y: floor(min(max(0, origin.y), max(0, room.height - toolbar.height))))
     }
     mutating func togglePin(_ id: UInt32) {
         pinned = pinned == id ? nil : id
@@ -95,6 +95,7 @@ struct OverviewScreenDrop: ViewModifier {
                         .allowsHitTesting(false)
                 }
             }
+            .background { if OverviewDragProbe.enabled { OverviewProbeMark(id: "\(mapSize == nil ? "thumb" : "screen"):\(display.displayId):\(spaceId)") } }
             .onDrop(of: [OverviewMembershipDrag.type], delegate: OverviewScreenDropDelegate(
                 model: model, display: display, spaceId: spaceId, size: mapSize,
                 targeted: $targeted, snap: $snap))
@@ -112,7 +113,7 @@ private struct OverviewScreenDropDelegate: DropDelegate {
     let size: CGSize?
     @Binding var targeted: Bool
     @Binding var snap: OverviewSnap?
-    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [OverviewMembershipDrag.type]) }
+    func validateDrop(info: DropInfo) -> Bool { OverviewDragProbe.log("screen-validate"); return info.hasItemsConforming(to: [OverviewMembershipDrag.type]) }
     func dropEntered(info: DropInfo) { targeted = true; update(info) }
     func dropExited(info: DropInfo) { targeted = false; snap = nil }
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -121,6 +122,7 @@ private struct OverviewScreenDropDelegate: DropDelegate {
     }
     private func update(_ info: DropInfo) { snap = size.flatMap { OverviewSnap.at(info.location, in: $0) } }
     func performDrop(info: DropInfo) -> Bool {
+        OverviewDragProbe.log("screen-performDrop")
         let zone = size.flatMap { OverviewSnap.at(info.location, in: $0) }
         targeted = false; snap = nil
         guard model.moving.isEmpty else { return false }

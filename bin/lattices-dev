@@ -256,6 +256,31 @@ write_info_plist() {
     <string>26.0</string>
     <key>LSUIElement</key>
     <true/>
+
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Lattices Overview membership</string>
+			<key>UTTypeIdentifier</key>
+			<string>dev.lattices.overview-membership</string>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Lattices Overview window</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.lattices.overview-window</string>
+		</dict>
+	</array>
+
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>

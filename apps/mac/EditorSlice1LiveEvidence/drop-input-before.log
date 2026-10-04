@@ -1,0 +1,20 @@
+: postAccess=true
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: registered _PlatformDraggingDestinationView: public.data,public.item
+screen: CGEvent from=(472.0, 1178.0) to=(688.6, 847.4)
+screen: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+screen: native-end operation=0
+thumb: CGEvent from=(472.0, 1178.0) to=(620.2, 988.6)
+thumb: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+thumb: native-end operation=0
+layer: CGEvent from=(472.0, 1178.0) to=(188.4, 765.2)
+layer: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+layer: native-end operation=0
+new: CGEvent from=(472.0, 1178.0) to=(188.4, 1190.6)
+new: native-begin types=dev.lattices.overview-membership,com.lattices.overview-window
+new: native-end operation=0

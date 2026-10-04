@@ -72,7 +72,7 @@ struct OverviewLayerIndex: View {
                 Spacer()
                 Text("\(max(0, rows.count - 1))")
             }
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .font(Typo.monoBold(10))
             .foregroundColor(faint).frame(height: 15).padding(.horizontal, 12).padding(.top, 24).padding(.bottom, 18)
             ScrollView {
                 VStack(spacing: 0) {
@@ -90,7 +90,7 @@ struct OverviewLayerIndex: View {
                     Text("workspace.json")
                     Text("Read \(live ? max(0, Int(context.date.timeIntervalSince(readAt))) : 0)s ago")
                 }
-                .font(.system(size: 11, design: .monospaced)).foregroundColor(faint)
+                .font(Typo.mono(11)).foregroundColor(faint)
             }.padding(12).padding(.bottom, 10)
         }
         .padding(.horizontal, 12)
@@ -129,17 +129,19 @@ struct OverviewLayerIndex: View {
                 }
                 Text((dropTarget ?? previewDropTarget) == id && id != nil ? OverviewDragLabel.layer(label, id: id!, drag: activeDrag) : label).font(.system(size: 13)).lineLimit(2)
                 Spacer(minLength: 4)
-                Text(id == "__new_layer__" ? "" : count > 0 || id == nil ? "\(count)" : "—").font(.system(size: 11, design: .monospaced)).foregroundColor(faint)
+                Text(id == "__new_layer__" ? "" : count > 0 || id == nil ? "\(count)" : "—").font(Typo.mono(11)).foregroundColor(faint)
             }
             .foregroundColor(active ? Color(red: 236 / 255, green: 237 / 255, blue: 239 / 255) : ink)
             .padding(.horizontal, 12).frame(height: id == "__new_layer__" ? 52 : 44)
             .background(RoundedRectangle(cornerRadius: 6).fill((dropTarget ?? previewDropTarget) == id && id != nil ? Color.green.opacity(0.2) : active ? Color(red: 36 / 255, green: 40 / 255, blue: 46 / 255) : .clear))
             .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityAddTraits(active ? .isSelected : [])
+        .background { if OverviewDragProbe.enabled { OverviewProbeMark(id: "layer:" + (id ?? "all")) } }
         .onDrop(of: [OverviewMembershipDrag.type], isTargeted: Binding(
             get: { id != nil && dropTarget == id },
             set: { dropTarget = $0 ? id : nil }
         )) { providers in
+            OverviewDragProbe.log("layer-onDrop " + (id ?? "nil"))
             guard let id, let membershipDrop else { return false }
             return OverviewMembershipDrag.receive(providers) { membershipDrop($0, id) }
         }

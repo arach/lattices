@@ -342,3 +342,92 @@ PID 58000. The release app was not rebuilt or relaunched. The workspace file's
 SHA-256 and mtime remain the pre-launch values:
 `d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`,
 `1791063065` seconds.
+
+## Native drop delivery and text/tray follow-up
+
+### Confirmed missing-drop cause
+
+The prior fix covered drag **arming**, not delivery. A real CGEvent sequence in
+an isolated dev-app fixture reproduced four failures: screen, thumbnail, layer
+row, and New layer all started native drags and ended with operation 0; no
+SwiftUI drop callback ran. Instrumentation showed SwiftUI's native destination
+views registered for `public.data,public.item`, while the NSPasteboardItem
+advertised only two **undeclared custom UTIs**. They had no public.data
+conformance, so AppKit never delivered them to SwiftUI. This was not payload
+visibility or a hidden drop surface.
+
+Both UTIs now explicitly conform to public.data at runtime and are exported
+in the source, dev-build, and package-build Info.plists. The same real input
+then reached the production handlers, decoded the session-bound payload, and
+completed all four fixture operations. Only temporary fixture membership was
+saved; physical placement ran through WindowRelocation environment fakes.
+`EditorSlice1LiveEvidence/drop-input-before.log` and `drop-input-after.log`
+retain the protocol trace; `drop-input-result.json` records the four assertions.
+
+Re-run with `scripts/test-overview-drag.sh`. It quits the dev app, launches its
+isolated fixture, posts CGEvent down/drag/up to the actual window, asserts all
+four outcomes, and prints the temporary evidence directory. It requires the
+**dev app's** existing event-posting permission and never requests or changes
+permissions. `--debug` additionally builds/installs a signed debug executable
+and synchronizes its UTI declarations. Use `bin/lattices-build dev:restart`
+after that diagnostic mode to restore the normal dev build. The default test
+mode does not rebuild or re-sign anything. Reopen the dev app after testing.
+The fixture starts before the live daemon/inventory, uses fake window IDs and
+a unique defaults suite, writes only below its dedicated /private/tmp folder,
+and blocks sheet Create from reaching production persistence.
+
+The preview frame now preserves the relative grab point: grabbing the middle
+puts the cursor at the preview's middle, not its bottom-left corner. Tests cover
+center and off-center grabs.
+
+### Text audit and tray changes
+
+The concrete readability problems were 8–10pt JetBrains Mono used for ordinary
+UI text, low-contrast ink multiplied by whole-map/tile/row opacity, and fractional
+map/text origins. Overview also had a sidebar compositing boundary. There was
+**no text scaleEffect or drawingGroup**, and the dot texture is a background,
+not an overlay over the glyphs. No GPU rasterization defect was established.
+
+UI text now uses integer-size SF Pro; section labels/data use JetBrains Mono.
+Map rectangles and toolbar positions align to whole points, layout no longer
+centers map groups at fractional origins, whole text-container dimming and the
+sidebar compositing boundary are removed, and muted titles keep one foreground
+color instead of compounded opacity. The AppKit Layer picker also uses SF Pro.
+
+Tray columns share integer widths, 12pt insets, 18pt section headers, and 32pt
+rows. Each row starts with an 18pt NSWorkspace app icon (generic fallback only
+when the app cannot be resolved), followed by SF Pro 13 medium app name and a
+muted SF Pro 12 title. Source selection and dragging are unchanged.
+
+`tray-before/after-1x/2x.png` and `crisp-before/after-1x/2x.png` are fixture
+comparisons in EditorSlice1LiveEvidence. The tray evidence test uses
+a native NSHostingView with explicit window backing, layer contents, and
+SwiftUI display scales of 1 and 2, including its NSScrollView-backed rows.
+ImageRenderer alone omits those native scrolling contents and is not used. These are fixture
+renders, not claims of testing every physical monitor's display settings.
+
+Validation: **484 app tests, 13 conditional skips, zero failures**, including
+all fixture renders; **22 Swift package tests passed**; `bun run test` passed
+(47 CLI tests, one skip; 9 Bun tests); `bun run check:types` passed. Plist and
+shell syntax checks, `git diff --check`, and the UI design scan passed. The
+fixture's own CGEvent input test is separate from the Swift test suite; it
+asserts actual handler delivery, not direct model calls.
+
+Logs: `/tmp/lattices-drop-final-tests.log`, `/tmp/lattices-drop-packages.log`,
+`/tmp/lattices-drop-bun.log`, `/tmp/lattices-drop-types.log`,
+`/tmp/lattices-drop-input-registration.log`, `/tmp/lattices-drop-input-final.log`,
+`/tmp/lattices-drop-dev-final.log`, and `/tmp/lattices-drop-shipped-input.log`.
+Remaining hand acceptance: preview attachment feel at arbitrary grab points,
+real-window relocation (intentionally not exercised), and text appearance on
+the user's physical 1x/2x displays. Input delivery to all four target kinds is
+now automated and verified rather than left entirely to hand acceptance.
+
+The final installed dev build passed the **same four CGEvent-driven drop
+assertions again**, without a debug executable substitution. The checked-in
+result/after trace are from that installed build. Dev build/install/restart
+passed; the ordinary dev app was reopened afterward with this checkout's CLI
+root. Bundle: `/Users/arach/Applications/dev/Lattices/Lattices.app`, identifier
+`dev.lattices.app.dev`. No release bundle was rebuilt or launched.
+Workspace SHA-256 and mtime stayed unchanged across the input runs and launches:
+`d5c47f68d67ea83f59ffc74d25227b6be2f867b8b3bac659f8abe193388ce95f`,
+`1791063065` seconds.

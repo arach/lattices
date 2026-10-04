@@ -45,7 +45,7 @@ struct OverviewButtonStyle: ButtonStyle {
         var body: some View {
             let live = enabled && hovered
             configuration.label
-                .font(Typo.mono(10))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(foreground)
                 .lineLimit(1)
                 .padding(.horizontal, fill ? 4 : 9)
@@ -115,7 +115,7 @@ struct OverviewKeycap: View {
     let key: String
     var body: some View {
         Text(key)
-            .font(Typo.mono(8))
+            .font(Typo.mono(10))
             .foregroundColor(Palette.textMuted)
             .padding(.horizontal, 4)
             .frame(minWidth: 15)
@@ -162,7 +162,7 @@ struct OverviewMenuLabel: View {
     var selected = false
     var body: some View {
         HStack(spacing: 5) {
-            Text(title).font(Typo.mono(10))
+            Text(title).font(.system(size: 11, weight: .medium))
             Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold))
         }
         .foregroundColor(selected ? Palette.text : Palette.textDim)

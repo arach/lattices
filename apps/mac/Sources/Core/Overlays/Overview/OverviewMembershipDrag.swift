@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct OverviewMembershipDrag: Codable, Equatable {
-    static let type = "dev.lattices.overview-membership"
+    static let type = UTType(exportedAs: "dev.lattices.overview-membership", conformingTo: .data).identifier
     let session: String
     let windows: [UInt32]
     let sourceLayer: String?
@@ -23,11 +24,12 @@ struct OverviewMembershipDrag: Codable, Equatable {
         return provider
     }
     static func receive(_ providers: [NSItemProvider], perform: @escaping (Self) -> Void) -> Bool {
+        OverviewDragProbe.log("providers " + providers.map { $0.registeredTypeIdentifiers.joined(separator: ",") }.joined(separator: ";"))
         guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type) }) else { return false }
         provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in
             guard let data, data.count < 65536, let payload = try? JSONDecoder().decode(Self.self, from: data),
                   !payload.windows.isEmpty, payload.windows.count <= 512 else { return }
-            DispatchQueue.main.async { perform(payload) }
+            DispatchQueue.main.async { OverviewDragProbe.log("decoded-payload"); perform(payload) }
         }
         return true
     }
@@ -162,6 +164,12 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
             if view is Source || view is OverviewDragShield.Shield { return view }
             return nil
         }
+        static func previewFrame(cursor: CGPoint, grab: CGPoint, source: CGSize, preview: CGSize) -> CGRect {
+            let x = min(1, max(0, grab.x / max(1, source.width)))
+            let y = min(1, max(0, grab.y / max(1, source.height)))
+            return CGRect(x: cursor.x - x * preview.width, y: cursor.y - y * preview.height,
+                          width: preview.width, height: preview.height)
+        }
         func observe(_ event: NSEvent) -> NSEvent? {
             guard event.window === window, let model else { return event }
             switch event.type {
@@ -198,7 +206,9 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
                     .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor])
                 image.unlockFocus()
                 let dragging = NSDraggingItem(pasteboardWriter: item)
-                dragging.setDraggingFrame(NSRect(origin: convert(event.locationInWindow, from: nil), size: image.size), contents: image)
+                dragging.setDraggingFrame(Self.previewFrame(cursor: convert(event.locationInWindow, from: nil),
+                    grab: convert(down.locationInWindow, from: nil), source: bounds.size, preview: image.size), contents: image)
+                OverviewDragProbe.log("native-begin types=" + item.types.map(\.rawValue).joined(separator: ","))
                 model.activeDrag = payload
                 beginDraggingSession(with: [dragging], event: event, source: self)
                 return nil
@@ -210,6 +220,7 @@ struct OverviewImmediateDragSource: NSViewRepresentable {
             context == .withinApplication ? [.copy, .move] : []
         }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            OverviewDragProbe.log("native-end operation=\(operation.rawValue)")
             model?.activeDrag = nil
         }
     }

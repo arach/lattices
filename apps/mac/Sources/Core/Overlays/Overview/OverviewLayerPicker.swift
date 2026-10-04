@@ -65,7 +65,7 @@ struct OverviewLayerPicker: NSViewRepresentable {
     func makeNSView(context: Context) -> NSButton {
         let button = NSButton(title: "Layer ▾", target: context.coordinator, action: #selector(Coordinator.open(_:)))
         button.bezelStyle = .roundRect
-        button.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        button.font = .systemFont(ofSize: 12, weight: .medium)
         return button
     }
     func updateNSView(_ button: NSButton, context: Context) {

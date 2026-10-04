@@ -20,6 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if OverviewDragFixture.start() { return }
         if LatticesRecordingProbeAppRunner.startFromCommandLineIfNeeded() {
             return
         }
@@ -178,11 +179,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
+        if OverviewDragFixture.requested { return }
         resetInputCapture(reason: "app became active")
         PermissionChecker.shared.passiveRecheck(reason: "app became active")
     }
 
     func applicationWillResignActive(_ notification: Notification) {
+        if OverviewDragFixture.requested { return }
         resetInputCapture(reason: "app resigned active")
     }
 

@@ -1,10 +1,11 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A second, own-process representation on the membership drag's one provider.
 /// Physical relocation is deliberately single-window; membership remains plural.
 struct OverviewWindowDragPayload: Codable, Equatable {
-    static let type = "com.lattices.overview-window"
+    static let type = UTType(exportedAs: "com.lattices.overview-window", conformingTo: .data).identifier
     let session: String
     let wid: UInt32
 

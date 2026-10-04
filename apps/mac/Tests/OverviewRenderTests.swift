@@ -343,6 +343,39 @@ final class OverviewRenderTests: XCTestCase {
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
 
 
+    func testTrayCrispEvidence() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else { throw XCTSkip("Set OVERVIEW_RENDER_DIR") }
+        let phase = ProcessInfo.processInfo.environment["OVERVIEW_EVIDENCE_PHASE"] ?? "after"
+        let suite = "tray.evidence." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, actions: RenderActions(), inputs: inputs())
+        for scale: CGFloat in [1, 2] {
+            let host = NSHostingView(rootView: OverviewTray(model: model).background(Palette.bg)
+                .environment(\.colorScheme, .dark).environment(\.displayScale, scale))
+            host.frame = CGRect(x: 0, y: 0, width: 1378, height: OverviewTray.height)
+            let window = OverviewEvidenceWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.evidenceScale = scale
+            window.appearance = NSAppearance(named: .darkAqua); window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            func setScale(_ view: NSView) {
+                view.layer?.contentsScale = scale
+                view.needsDisplay = true
+                for child in view.subviews { setScale(child) }
+            }
+            setScale(host)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            XCTAssertEqual(window.backingScaleFactor, scale)
+            let bitmap = try snapshot(host, scale: scale)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("tray-\(phase)-\(Int(scale))x.png"))
+            let crop = try XCTUnwrap(bitmap.cgImage?.cropping(to: CGRect(x: 0, y: 0, width: 440 * scale, height: 90 * scale)))
+            let data = try XCTUnwrap(NSBitmapImageRep(cgImage: crop).representation(using: .png, properties: [:]))
+            try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("crisp-\(phase)-\(Int(scale))x.png"))
+            _ = window
+        }
+    }
+
     func testDeskPassEvidence() throws {
         try render("desk-toolbar-strip", width: 1590, height: 688, sidebar: false) { $0.select(2) }
         try render("desk-pinned-display", width: 1590, height: 688, sidebar: false) { $0.pinDisplay(2); $0.select(2) }
@@ -561,4 +594,10 @@ private struct RenderActions: OverviewActions {
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, displayId: UInt32, completion: @escaping (String?) -> Void) {}
     func saveLayer(_ plan: LayerEditPlan) throws {}
     func rearrange(layerId: String) throws {}
+}
+
+/// Offscreen native density fixture, including NSScrollView-backed content.
+private final class OverviewEvidenceWindow: NSWindow {
+    var evidenceScale: CGFloat = 1
+    override var backingScaleFactor: CGFloat { evidenceScale }
 }

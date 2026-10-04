@@ -84,7 +84,7 @@ struct OverviewStage: View {
                     let layout = Self.layout([pinned], in: room)
                     HStack(alignment: .top, spacing: 24) {
                         OverviewDisplayBlock(model: model, monitor: pinned, mapSize: layout.maps[0], thumbSize: layout.thumbs[0], quiet: false)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         if !others.isEmpty {
                             ScrollView(.vertical, showsIndicators: true) {
                                 VStack(spacing: 18) {
@@ -106,7 +106,7 @@ struct OverviewStage: View {
                                 OverviewDisplayBlock(model: model, monitor: monitor,
                                     mapSize: layout.maps[index], thumbSize: layout.thumbs[index], quiet: model.workingRows.isEmpty)
                             }
-                        }.frame(minWidth: geo.size.width, minHeight: geo.size.height)
+                        }.frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
                     }
                 }
             }
@@ -175,7 +175,6 @@ struct OverviewDisplayBlock: View {
                 .frame(width: mapSize.width, height: OverviewStage.headHeight)
             if let viewed {
                 OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
-                    .opacity(scopedOut ? 0.55 : 1)
                     .modifier(OverviewScreenDrop(model: model, display: monitor.display, spaceId: viewed.spaceId, mapSize: mapSize))
             }
             desktops
@@ -192,7 +191,7 @@ struct OverviewDisplayBlock: View {
             return "viewing \(viewed.desktop == nil ? "full screen" : viewed.title)"
         }()
         let name = Text(monitor.display.name)
-            .font(Typo.monoBold(11))
+            .font(.system(size: 11, weight: .medium))
             .foregroundColor(Palette.text)
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
             // The size only where there's room for it whole.
@@ -200,7 +199,7 @@ struct OverviewDisplayBlock: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     name.fixedSize()
                     Text("\(Int(b.width))×\(Int(b.height))")
-                        .font(Typo.mono(9))
+                        .font(.system(size: 11))
                         .foregroundColor(Palette.textMuted)
                         .fixedSize()
                 }
@@ -208,7 +207,7 @@ struct OverviewDisplayBlock: View {
             }
             Spacer(minLength: 6)
             if mapSize.width > 320 { Text(state)
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(viewed?.isCurrent == false ? Palette.text : Palette.textDim)
                 .lineLimit(1)
                 .fixedSize() }
@@ -263,13 +262,13 @@ struct OverviewDisplayBlock: View {
                     // Narrow thumbs keep just the number; help and
                     // accessibility still name the Desktop and monitor.
                     Text(thumbSize.width < 76 ? space.desktop.map { "\($0)" } ?? "FS" : space.title)
-                        .font(Typo.mono(8))
+                        .font(.system(size: 11))
                         .foregroundColor(space.isCurrent || focused ? Palette.text : Palette.textMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 2)
                     Text(space.rows.isEmpty ? "–" : "\(space.rows.count)")
-                        .font(Typo.mono(8))
+                        .font(.system(size: 11))
                         .foregroundColor(Palette.textMuted)
                         .fixedSize()
                 }
@@ -307,7 +306,7 @@ struct OverviewMap: View {
             ForEach(tiles.reversed(), id: \.row.wid) { tile in tileView(tile) }
             if !quiet, !space.rows.contains(where: \.inScope) {
                 Text("Nothing in scope here")
-                    .font(Typo.mono(9))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
                     .frame(width: size.width, height: size.height)
                     .allowsHitTesting(false)
@@ -337,7 +336,7 @@ struct OverviewMap: View {
                 .font(.system(size: 9))
                 .foregroundColor(Palette.textDim)
             Text(text)
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textDim)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -372,7 +371,7 @@ struct OverviewMap: View {
             width: frame.width * sx, height: frame.height * sy
         ).intersection(CGRect(origin: .zero, size: size))
         guard !rect.isNull, rect.width >= 3, rect.height >= 3 else { return nil }
-        return rect
+        return rect.integral
     }
 
     private var tiles: [Tile] {
@@ -382,7 +381,7 @@ struct OverviewMap: View {
                 return Tile(row: row, rect: CGRect(origin: .zero, size: size).insetBy(dx: 8, dy: 8), live: live)
             }
             guard let frame = row.frame, let rect = scaled(frame) else { return nil }
-            return Tile(row: row, rect: rect, live: live)
+            return Tile(row: row, rect: rect.integral, live: live)
         }
     }
 
@@ -394,7 +393,7 @@ struct OverviewMap: View {
         let scoped = !(model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? []).isEmpty
         let member = scoped && tile.row.inScope
         let fill: Color = member ? Palette.running.opacity(0.16) : scoped ? Color.clear : selected ? Color.white.opacity(0.2) : (tile.live ? Color(white: 0.17) : Color.white.opacity(0.025))
-        let ink: Color = selected ? Palette.text : (tile.live ? Palette.textDim : Palette.textMuted)
+        let ink: Color = selected ? Palette.text : Palette.textDim
         let showsApp = tile.rect.width > 36 && tile.rect.height > 15
         let showsTitle = !tile.row.title.isEmpty && tile.rect.width > 60 && tile.rect.height > 32
         let base = ZStack(alignment: .topLeading) {
@@ -407,12 +406,12 @@ struct OverviewMap: View {
             if showsApp {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(scoped && !tile.row.inScope ? tile.row.title : tile.row.app)
-                        .font(Typo.monoBold(10))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(ink)
                         .lineLimit(1)
                     if showsTitle && (!scoped || tile.row.inScope) {
                         Text(tile.row.title)
-                            .font(Typo.mono(9))
+                            .font(.system(size: 11))
                             .foregroundColor(selected ? Palette.text : Palette.textMuted)
                             .lineLimit(tile.rect.height > 60 ? 2 : 1)
                             .truncationMode(.tail)
@@ -423,7 +422,6 @@ struct OverviewMap: View {
             }
         }
         .frame(width: tile.rect.width, height: tile.rect.height)
-        .opacity(tile.row.inScope ? 1 : (scoped ? 0.18 : 0.4))
         .contentShape(Rectangle())
         .modifier(OverviewMembershipInteractions(model: model, wid: wid))
         .onTapGesture { OverviewDeskRow.pick(wid, model: model) }
@@ -491,10 +489,10 @@ struct OverviewEmptyScope: View {
     var body: some View {
         VStack(spacing: 8) {
             Text("Nothing in scope")
-                .font(Typo.monoBold(11))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(Palette.text)
             Text(sentence)
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textDim)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -541,13 +539,13 @@ struct OverviewHint: View {
                 }
                 Text("T · D · / · ↵")
             }
-            .font(Typo.mono(9))
+            .font(.system(size: 11))
             .foregroundColor(Palette.textMuted)
             .lineLimit(1)
             Spacer(minLength: 8)
             (Text("\(rows.count)").foregroundColor(Palette.text) + Text(" in scope · ")
                 + Text("\(live)").foregroundColor(Palette.text) + Text(" can arrange · \(rows.count - live) elsewhere"))
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
                 .lineLimit(1)
                 .fixedSize()
@@ -567,10 +565,10 @@ struct OverviewDraftBar: View {
             Image(systemName: "square.3.layers.3d")
                 .font(.system(size: 10))
                 .foregroundColor(Palette.textDim)
-            Text("Editing ").font(Typo.mono(9)).foregroundColor(Palette.textDim)
-                + Text(name).font(Typo.monoBold(9)).foregroundColor(Palette.text)
+            Text("Editing ").font(.system(size: 11)).foregroundColor(Palette.textDim)
+                + Text(name).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text)
             Text(edit.hasChanges ? "unsaved changes" : "no changes yet")
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
                 .lineLimit(1)
             Spacer(minLength: 6)
@@ -599,7 +597,7 @@ struct OverviewDraftBar: View {
 struct OverviewTray: View {
     @ObservedObject var model: OverviewModel
 
-    static let height: CGFloat = 150
+    static let height: CGFloat = 172
 
     struct Group: Identifiable {
         let id: String
@@ -635,11 +633,11 @@ struct OverviewTray: View {
                 let groups = self.groups
                 if groups.isEmpty {
                     Text("Every listed window is on a map")
-                        .font(Typo.mono(9))
+                        .font(.system(size: 11))
                         .foregroundColor(Palette.textMuted)
                         .frame(width: geo.size.width, height: geo.size.height)
                 } else {
-                    let width = max(190, min(280, geo.size.width / CGFloat(groups.count)))
+                    let width = max(280, floor(geo.size.width / CGFloat(groups.count)))
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(alignment: .top, spacing: 0) {
                             ForEach(groups) { group in
@@ -660,29 +658,30 @@ struct OverviewTray: View {
     }
 
     private func groupView(_ group: Group) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(group.title.uppercased())
-                    .font(Typo.monoBold(8))
+                    .font(Typo.monoBold(10))
                     .foregroundColor(Palette.textDim)
                     .lineLimit(1)
                     .fixedSize()
                 Text(group.detail)
-                    .font(Typo.mono(8))
+                    .font(Typo.mono(10))
                     .foregroundColor(Palette.textMuted)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
                 Text("\(group.rows.count)")
-                    .font(Typo.mono(8))
+                    .font(Typo.mono(10))
                     .foregroundColor(Palette.textMuted)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
+            .frame(height: 18)
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(group.rows) { row in chip(row, unplaced: group.id == "unplaced") }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 12)
             }
         }
         .padding(.top, 12)
@@ -701,34 +700,34 @@ struct OverviewTray: View {
             default: return LayerOverviewDetail.tierLabel(row.tier)
             }
         }()
-        return HStack(spacing: 7) {
+        return HStack(spacing: 8) {
+            OverviewAppIcon(app: row.app, pid: row.pid)
+                .frame(width: 18, height: 18)
             Text(row.app)
-                .font(Typo.monoBold(9))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundColor(Palette.text)
                 .lineLimit(1)
                 .fixedSize()
             Text(row.title.isEmpty ? "Untitled" : row.title)
-                .font(Typo.mono(9))
+                .font(.system(size: 12))
                 .foregroundColor(Palette.textDim)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)
             if let why {
                 Text(why)
-                    .font(Typo.mono(8))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.textMuted)
                     .lineLimit(1)
                     .fixedSize()
             }
         }
-        .padding(.horizontal, 6)
-        .frame(height: 24)
+        .frame(height: 32)
         .background(RoundedRectangle(cornerRadius: 5).fill(selected ? Palette.surfaceHov : Color.clear))
         .overlay(
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(selected ? OverviewChrome.edgeOn : Color.clear, lineWidth: OverviewChrome.stroke)
         )
-        .opacity(row.inScope ? 1 : 0.45)
         .contentShape(Rectangle())
         .modifier(OverviewMembershipInteractions(model: model, wid: row.wid))
         .onTapGesture { OverviewDeskRow.pick(row.wid, model: model) }
@@ -761,18 +760,18 @@ struct OverviewArrangeBox: View {
             : "Left out: \(tile.excludedSummary)"
         VStack(alignment: .leading, spacing: 7) {
             Text("ARRANGE SELECTION")
-                .font(Typo.monoBold(8))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(Palette.textDim)
             HStack(spacing: 8) {
                 arrangeButton(tile, key: "T")
                 arrangeButton(distribute, key: "D")
             }
             Text(split)
-                .font(Typo.mono(9))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textDim)
                 .lineLimit(1)
             Text(leftOut)
-                .font(Typo.mono(8))
+                .font(.system(size: 11))
                 .foregroundColor(Palette.textMuted)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -805,14 +804,14 @@ struct OverviewArrangeBox: View {
     private var layerLine: some View {
         if let ids = model.scope.layerIds, ids.count > 1 {
             Text(model.layers.filter { ids.contains($0.id) }.map(\.label).joined(separator: " + ") + " · \(ids.count) layers")
-                .font(Typo.mono(9)).foregroundColor(Palette.textDim).lineLimit(1)
+                .font(.system(size: 11)).foregroundColor(Palette.textDim).lineLimit(1)
         } else if let id = model.scope.layerId, let layer = model.layers.first(where: { $0.id == id }) {
             HStack(spacing: 6) {
                 Image(systemName: "square.3.layers.3d")
                     .font(.system(size: 10))
                     .foregroundColor(Palette.textDim)
-                Text(layer.label).font(Typo.monoBold(9)).foregroundColor(Palette.text)
-                    + Text(layer.isActive ? " · active layer" : " · not active").font(Typo.mono(9)).foregroundColor(Palette.textDim)
+                Text(layer.label).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text)
+                    + Text(layer.isActive ? " · active layer" : " · not active").font(.system(size: 11)).foregroundColor(Palette.textDim)
                 Spacer(minLength: 4)
                 if model.editing == nil {
                     Button("Edit layer") {
@@ -881,7 +880,7 @@ struct OverviewMiniDesktop: View {
             )
             let rect = scaled.intersection(map)
             guard !rect.isNull, rect.width >= 2, rect.height >= 2 else { return nil }
-            return Tile(wid: row.wid, rect: rect, live: live)
+            return Tile(wid: row.wid, rect: rect.integral, live: live)
         }
     }
 
@@ -927,19 +926,19 @@ struct OverviewDeskRow: View {
         } label: {
             HStack(spacing: 8) {
                 Text(row.app)
-                    .font(Typo.monoBold(9))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Palette.textDim)
                     .frame(width: 70, alignment: .leading)
                     .lineLimit(1)
                 Text(row.title.isEmpty ? "Untitled" : row.title)
-                    .font(Typo.mono(9))
+                    .font(.system(size: 11))
                     .foregroundColor(Palette.text)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 6)
                 if let note {
                     Text(note)
-                        .font(Typo.mono(8))
+                        .font(.system(size: 11))
                         .foregroundColor(Palette.textMuted)
                         .lineLimit(1)
                         .fixedSize()
@@ -971,5 +970,25 @@ struct OverviewDeskRow: View {
         default: break
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// Cache NSWorkspace icons by app identity, never decode an icon on each hover.
+struct OverviewAppIcon: View {
+    let app: String
+    let pid: Int32
+    private static var cache: [String: NSImage] = [:]
+    private var icon: NSImage? {
+        if let cached = Self.cache[app] { return cached }
+        let running = NSRunningApplication(processIdentifier: pid)?.bundleURL
+        let paths: [String] = (running.map { [$0.path] } ?? []) + ["/Applications", "/System/Applications", "/Applications/Utilities", NSHomeDirectory() + "/Applications"].map { "\($0)/\(app).app" }
+        guard let path = paths.first(where: { FileManager.default.fileExists(atPath: $0) }) else { return nil }
+        let image = NSWorkspace.shared.icon(forFile: path)
+        Self.cache[app] = image
+        return image
+    }
+    var body: some View {
+        if let icon { Image(nsImage: icon).resizable().interpolation(.high).accessibilityHidden(true) }
+        else { Image(systemName: "app").font(.system(size: 16)).foregroundStyle(Palette.textDim).accessibilityHidden(true) }
     }
 }

@@ -1,0 +1,10 @@
+{
+  "error" : "",
+  "passed" : true,
+  "results" : {
+    "layer" : true,
+    "new" : true,
+    "screen" : true,
+    "thumb" : true
+  }
+}
