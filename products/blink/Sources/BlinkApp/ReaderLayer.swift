@@ -17,7 +17,7 @@ import HudsonObservability
 /// titled, resizable window at the normal level, and Blink activates while it
 /// is up, so it is the frontmost app's focused window — the target window
 /// managers (Lattices placement shortcuts) act on. Wherever it gets placed is
-/// where it opens next time on that screen.
+/// where it opens next time on that screen; its height always fits the text.
 ///
 /// It is not a note: its text never touches NoteStore unless kept, and it
 /// renders under the editor's untrusted-text policy.
@@ -130,7 +130,7 @@ final class ReaderLayer {
 
         let backdrop = ReaderBackdrop(screen: screen, config: config)
         backdrop.onClick = { [weak self] in self?.close() }
-        let frame = columnFrame(on: screen, config: config)
+        let frame = columnFrame(on: screen, config: config, content: content)
         let column = ReaderColumn(frame: frame, webView: editor.webView)
 
         // The sheet rises 14pt into place (fab's mock rise) as the screen dims.
@@ -239,25 +239,59 @@ final class ReaderLayer {
         onKeep?(content)
     }
 
-    /// The last placed frame when it sits on `screen`; otherwise a centered
-    /// sheet in the screen's visible frame.
-    private func columnFrame(on screen: NSScreen, config: BlinkConfig) -> NSRect {
+    /// Width and placement come from the last placed frame when it sits on
+    /// `screen`, otherwise a centered sheet. Height always fits the content,
+    /// capped at the screen: a short answer gets a short sheet.
+    private func columnFrame(on screen: NSScreen, config: BlinkConfig, content: String) -> NSRect {
         let visible = screen.visibleFrame
+        var width = min(config.reader.width, visible.width * 0.8)
+        var top: CGFloat?
+        var midX = visible.midX
         if let saved = UserDefaults.standard.string(forKey: Self.frameKey) {
             let frame = NSRectFromString(saved)
             if frame.width >= 200, frame.height >= 200,
                visible.contains(NSPoint(x: frame.midX, y: frame.midY)) {
-                return frame
+                width = min(frame.width, visible.width)
+                midX = frame.midX
+                top = frame.maxY
             }
         }
-        let width = min(config.reader.width, visible.width * 0.8)
-        let height = visible.height * 0.86
-        return NSRect(
-            x: visible.midX - width / 2,
-            y: visible.midY - height / 2,
-            width: width,
-            height: height
-        ).integral
+        let cap = visible.height * 0.86
+        let height = min(cap, max(min(240, cap), fittedHeight(content, width: width, config: config)))
+        let y = top.map { max(visible.minY, min($0, visible.maxY) - height) } ?? (visible.midY - height / 2)
+        let x = max(visible.minX, min(midX - width / 2, visible.maxX - width))
+        return NSRect(x: x, y: y, width: width, height: height).integral
+    }
+
+    /// The sheet height `content` needs at `width`: rows of wrapped text at the
+    /// reader's type, plus the card's padding. Measured from the markdown, not
+    /// the rendered page, so the sheet settles at its final size before the
+    /// text streams in.
+    private func fittedHeight(_ content: String, width: CGFloat, config: BlinkConfig) -> CGFloat {
+        let size = CGFloat(fontSize)
+        let lineHeight = size * CGFloat(config.editor.lineHeight)
+        let padX = CGFloat(Int(fontSize * 2.6)), padY = CGFloat(Int(fontSize * 2.2))
+        let perRow = max(20, Int((width - padX * 2) / (size * 0.5)))
+        var rows: CGFloat = 0
+        var inFence = false
+        var lastBlank = false
+        for line in content.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                inFence.toggle()
+                rows += 0.5
+            } else if trimmed.isEmpty {
+                // Markdown collapses a run of blank lines into one gap.
+                if inFence { rows += 1 } else if !lastBlank { rows += 0.6 }
+            } else if inFence {
+                rows += 1
+            } else {
+                let wrapped = CGFloat((trimmed.count + perRow - 1) / perRow)
+                rows += trimmed.hasPrefix("#") ? wrapped * 1.5 + 0.5 : wrapped
+            }
+            lastBlank = trimmed.isEmpty
+        }
+        return ceil((rows + 0.5) * lineHeight + padY * 2)
     }
 
     // MARK: - Keys
