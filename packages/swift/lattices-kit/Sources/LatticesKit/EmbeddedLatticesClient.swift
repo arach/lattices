@@ -14,6 +14,7 @@ public enum EmbeddedLatticesError: LocalizedError, Equatable, Sendable {
     case sessionNotFound(String)
     case windowNotFound(String)
     case accessibilityUnavailable
+    case elementNotFound(String)
 
     public var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ public enum EmbeddedLatticesError: LocalizedError, Equatable, Sendable {
             return "Lattices window not found: \(target)"
         case .accessibilityUnavailable:
             return "Accessibility access is unavailable for this host app."
+        case .elementNotFound(let detail):
+            return detail
         }
     }
 }
@@ -793,6 +796,48 @@ public final class EmbeddedLatticesAccessibility: Sendable {
         return LatticesAccessibilitySnapshot(target: window, elements: elements)
     }
 
+    /// Focuses the one text element in `pid` whose value is exactly `value`
+    /// (whitespace-normalized) and returns it. Anchoring on content rather
+    /// than a label or window lets a host that just put text into another
+    /// app's composer act on that very composer. Throws instead of guessing
+    /// when nothing matches, several elements match, or the tree couldn't be
+    /// read in full within the traversal limits.
+    ///
+    /// Chromium and Electron apps publish only their window frame until an
+    /// assistive client sets `AXEnhancedUserInterface`. When nothing matches
+    /// and the flag is off, this turns it on, waits up to `exposeTimeout` for
+    /// the web content to appear, and turns it back off afterwards (it slows
+    /// window animation). A flag that was already on is left alone.
+    @discardableResult
+    public func focusElement(
+        holdingValue value: String,
+        pid: pid_t,
+        roles: Set<String> = ["AXTextArea", "AXTextField"],
+        exposeTimeout: TimeInterval = 3
+    ) throws -> LatticesAXElement {
+        guard AXIsProcessTrusted() else { throw EmbeddedLatticesError.accessibilityUnavailable }
+        guard pid > 0 else {
+            throw EmbeddedLatticesError.invalidConfig("Focusing an element needs a target process; got pid \(pid).")
+        }
+        let hit = try EmbeddedAXAnchor.focusUnique(
+            holding: value,
+            in: LiveAXAnchorApplication(pid: pid),
+            roles: roles,
+            limits: .standard,
+            exposeTimeout: exposeTimeout
+        )
+        return LatticesAXElement(
+            id: "e1",
+            path: "anchor",
+            depth: hit.depth,
+            role: stringAttribute(hit.node.element, kAXRoleAttribute) ?? "",
+            title: stringAttribute(hit.node.element, kAXTitleAttribute),
+            value: stringAttribute(hit.node.element, kAXValueAttribute),
+            label: stringAttribute(hit.node.element, kAXDescriptionAttribute),
+            frame: frame(hit.node.element)
+        )
+    }
+
     private func traverse(
         _ element: AXUIElement,
         path: String,
@@ -902,6 +947,17 @@ public final class EmbeddedLatticesInput: Sendable {
         up.flags = parsed.flags
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
+        return true
+    }
+
+    /// Posts one key press to a specific process rather than to whichever app
+    /// is frontmost, so it lands in that app's focused element. Pair it with
+    /// `accessibility.focusElement(holdingValue:pid:)` to submit a composer.
+    /// There is no fallback to a global event tap.
+    @discardableResult
+    public func pressKey(_ shortcut: String, pid: pid_t) throws -> Bool {
+        guard AXIsProcessTrusted() else { throw EmbeddedLatticesError.accessibilityUnavailable }
+        try EmbeddedProcessKeyPress.press(shortcut, pid: pid)
         return true
     }
 
@@ -1039,7 +1095,7 @@ private enum EmbeddedSkyLight {
     }
 }
 
-private struct EmbeddedShortcut {
+struct EmbeddedShortcut {
     var keyCode: CGKeyCode
     var flags: CGEventFlags
 
