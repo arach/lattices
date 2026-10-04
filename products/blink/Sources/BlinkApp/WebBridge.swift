@@ -260,6 +260,18 @@ final class EditorWebView: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         evaluate("window.blink.finishTypeOn && window.blink.finishTypeOn()")
     }
 
+    /// Install `text` and stream its rendered blocks in (reader layer arrival).
+    /// Callers wait for `onReady`; a stale bundle without `stream` falls back
+    /// to a plain `setContent`. Never echoes `contentChanged`.
+    func stream(_ text: String) {
+        guard isReady else {
+            pendingContent = text
+            return
+        }
+        let encoded = Self.jsString(text)
+        evaluate("window.blink.stream ? window.blink.stream(\(encoded)) : window.blink.setContent(\(encoded))")
+    }
+
     /// Render content under the untrusted-text policy (raw HTML escaped, only
     /// web links, no remote images). For text that is not a note, such as the
     /// reader layer's terminal selections. Queued before `ready` and applied

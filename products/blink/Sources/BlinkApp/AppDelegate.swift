@@ -977,9 +977,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             )
             let window = NSWindow(contentViewController: host)
             window.title = "Blink Settings"
-            window.styleMask = [.titled, .closable, .resizable]
-            window.setContentSize(NSSize(width: 760, height: 640))
-            window.contentMinSize = NSSize(width: 604, height: 540)
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            WindowFrameChrome.configure(window)
+            window.setContentSize(NSSize(width: 780, height: 580))
+            window.contentMinSize = NSSize(width: 620, height: 460)
             // No explicit appearance — inherit NSApp.appearance, which
             // AppearanceManager pins (light/dark) or clears (auto → the OS).
             window.isReleasedWhenClosed = false

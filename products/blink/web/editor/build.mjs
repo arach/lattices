@@ -321,6 +321,18 @@ body[data-type-on] .cm-cursor {
   49%, 100% { opacity: 0.18; }
 }
 
+/* STREAM — the reader layer's arrival: the whole document is rendered in its
+ * final layout, then each block (paragraph, list item, heading, code) rises
+ * 4px and fades in turn, staggered by --blink-stream-delay (expo out). */
+.blink-stream {
+  animation: blink-stream-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--blink-stream-delay, 0ms);
+}
+@keyframes blink-stream-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* Attribution is presentation-only and never takes pointer focus. Its quiet
  * capsule mirrors the panel's hover-earned chrome without reserving layout. */
 .blink-attribution {
@@ -400,8 +412,8 @@ body[data-sheet="card"] .blink-reader {
 }
 /* Generous padding for the printed feel. */
 body[data-sheet="card"] {
-  --blink-pad-x: 28px;
-  --blink-pad-y: 24px;
+  --blink-pad-x: var(--blink-card-pad-x, 28px);
+  --blink-pad-y: var(--blink-card-pad-y, 24px);
 }
 /* Printed-feeling reader type (Charter/Georgia). The editor stays in the
  * system font — writing markdown source in a serif reads oddly. */
@@ -584,6 +596,9 @@ body[data-enter="draw"] .blink-reader {
     animation: none !important;
   }
   .blink-typeon-caret {
+    animation: none;
+  }
+  .blink-stream {
     animation: none;
   }
   .blink-attribution {

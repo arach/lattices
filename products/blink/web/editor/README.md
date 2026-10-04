@@ -54,6 +54,7 @@ logs to the console.
 | `typeOn` | `(base: string, suffix: string, source?: string \| null) => void` | Install `base + suffix` as the complete document immediately, then reveal only `suffix` at ~180 characters/sec with a blinking caret. **Never** echoes `contentChanged`. `source` shows `✳ source · just now` during the reveal and for four seconds after. A new call snaps and supersedes the old reveal. |
 | `finishTypeOn` | `() => void` | Snap an in-flight typed reveal to the already-installed complete document. Silent and idempotent. Real user edits invoke this before their `contentChanged` message is posted. |
 | `setUntrusted` | `(value: boolean) => void` | Render the document as untrusted text (the reader layer's terminal selections): raw HTML is escaped, only `http(s)`/`mailto` links stay clickable, images show their alt text, and single newlines are kept (`breaks: true`). Re-renders in read mode. No echo message. |
+| `stream` | `(text: string) => void` | `setContent`, then in read mode stream the rendered blocks in (list items one by one, everything else per top-level block) with a staggered blur-fade capped at ~0.9 s. Reduce Motion shows them at once. No echo message. |
 
 ### JS -> native: `postMessage`
 
