@@ -433,7 +433,7 @@ const tickerMethods = [
   "lattices.search",
   "windows.search",
   "terminals.search",
-  "ocr.search",
+  "ocr.snapshot",
   "window.focus",
   "window.place",
   "layer.activate",

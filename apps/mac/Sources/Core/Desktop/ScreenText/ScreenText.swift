@@ -40,9 +40,8 @@ struct OcrSearchResult {
 
 // MARK: - Screen Text Index
 
-/// The background screen-text index (periodic OCR of on-screen windows plus
-/// its history). The bundle installs one; the free build has none, and every
-/// read through `ScreenText` comes back empty.
+/// The live screen-text index: periodic OCR of on-screen windows, held in
+/// memory. Core installs `OcrModel` at boot.
 protocol ScreenTextIndex: AnyObject {
     var changes: ObservableObjectPublisher { get }
     var results: [UInt32: OcrWindowResult] { get }
@@ -55,13 +54,29 @@ protocol ScreenTextIndex: AnyObject {
     func scanSingle(wid: UInt32)
 }
 
+/// Where scanned text is kept once it leaves the live index. The bundle
+/// installs the SQLite store behind `ocr.search`; the free build keeps none.
+protocol ScreenTextHistory: AnyObject {
+    func insert(results: [OcrWindowResult])
+}
+
 /// Core's view of screen text. Views observe `ScreenText.shared`; one-shot
-/// recognition of a single image (capture analysis) is core and needs no index.
+/// recognition of a single image (capture analysis) needs no index.
 final class ScreenText: ObservableObject {
     static let shared = ScreenText()
 
     private(set) var index: ScreenTextIndex?
+    private(set) var history: ScreenTextHistory?
     private var forward: AnyCancellable?
+
+    func installHistory(_ history: ScreenTextHistory) {
+        self.history = history
+    }
+
+    /// Hands freshly scanned windows to the history, when there is one.
+    func record(_ results: [OcrWindowResult]) {
+        history?.insert(results: results)
+    }
 
     func install(_ index: ScreenTextIndex) {
         self.index = index

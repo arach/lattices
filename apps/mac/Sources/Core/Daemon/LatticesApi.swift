@@ -646,6 +646,32 @@ final class LatticesApi {
             }
         ))
 
+        // MARK: - Screen Text
+
+        api.register(Endpoint(
+            method: "ocr.snapshot",
+            description: "Get the latest OCR scan results for all on-screen windows",
+            access: .read,
+            params: [],
+            returns: .array(model: "OcrResult"),
+            handler: { _ in
+                let results = OcrModel.shared.results
+                return .array(results.values.map { Encoders.ocrResult($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "ocr.scan",
+            description: "Trigger an immediate OCR scan",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                OcrModel.shared.scan()
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
         // MARK: - Unified Search
 
         api.register(Endpoint(

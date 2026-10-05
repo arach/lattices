@@ -121,7 +121,7 @@ struct SettingsContentView: View {
         /// Sections whose feature is compiled into this build.
         var isAvailable: Bool {
             switch self {
-            case .search, .companion, .deck: return LatticesTier.isBundle
+            case .companion, .deck: return LatticesTier.isBundle
             default: return true
             }
         }
