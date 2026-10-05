@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CryptoKit
 
 
@@ -99,7 +100,7 @@ final class OcrModel: ObservableObject {
                     timestamp: Date(),
                     source: .accessibility
                 )
-                OcrStore.shared.insert(results: [result])
+                ScreenText.shared.record([result])
                 DispatchQueue.main.async {
                     var merged = self.results
                     merged[wid] = result
@@ -155,7 +156,7 @@ final class OcrModel: ObservableObject {
                         source: .accessibility
                     )
                     fresh[win.wid] = result
-                    OcrStore.shared.insert(results: [result])
+                    ScreenText.shared.record([result])
                 }
             }
 
@@ -285,7 +286,7 @@ final class OcrModel: ObservableObject {
             self.imageHashes = newHashes
 
             if !changedResults.isEmpty {
-                OcrStore.shared.insert(results: changedResults)
+                ScreenText.shared.record(changedResults)
             }
 
             let liveWids = Set(self.enumerateWindows().map(\.wid))
@@ -489,4 +490,8 @@ final class OcrModel: ObservableObject {
     func recognizeText(in image: CGImage) -> [OcrTextBlock] {
         ScreenText.recognize(in: image)
     }
+}
+
+extension OcrModel: ScreenTextIndex {
+    var changes: ObservableObjectPublisher { objectWillChange }
 }

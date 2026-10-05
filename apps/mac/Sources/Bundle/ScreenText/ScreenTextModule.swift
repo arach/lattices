@@ -1,30 +1,17 @@
-import Combine
 import Foundation
 
-/// Screen text: the periodic OCR index of on-screen windows, its SQLite
-/// history and the `ocr.*` endpoints. Core reads it through `ScreenText`.
+/// Screen text history: the SQLite record of every scan and the endpoints
+/// that read it. The live index is core (`OcrModel`, `ocr.snapshot`,
+/// `ocr.scan`); this module keeps what it scanned after the window changes.
 final class ScreenTextModule: BundleModule {
     let id = "screen-text"
 
     func startServices() {
         OcrStore.shared.open()
-        ScreenText.shared.install(OcrModel.shared)
-        OcrModel.shared.start()
+        ScreenText.shared.installHistory(OcrStore.shared)
     }
 
     func registerEndpoints(_ api: LatticesApi) {
-        api.register(Endpoint(
-            method: "ocr.snapshot",
-            description: "Get the latest OCR scan results for all on-screen windows",
-            access: .read,
-            params: [],
-            returns: .array(model: "OcrResult"),
-            handler: { _ in
-                let results = OcrModel.shared.results
-                return .array(results.values.map { Encoders.ocrResult($0) })
-            }
-        ))
-
         api.register(Endpoint(
             method: "ocr.search",
             description: "Search OCR text across all windows (queries persistent SQLite FTS5 index by default)",
@@ -92,21 +79,7 @@ final class ScreenTextModule: BundleModule {
                 return .array(results.map { Encoders.ocrSearchResult($0) })
             }
         ))
-
-        api.register(Endpoint(
-            method: "ocr.scan",
-            description: "Trigger an immediate OCR scan",
-            access: .mutate,
-            params: [],
-            returns: .ok,
-            handler: { _ in
-                OcrModel.shared.scan()
-                return .object(["ok": .bool(true)])
-            }
-        ))
     }
 }
 
-extension OcrModel: ScreenTextIndex {
-    var changes: ObservableObjectPublisher { objectWillChange }
-}
+extension OcrStore: ScreenTextHistory {}

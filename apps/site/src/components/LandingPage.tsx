@@ -6,7 +6,7 @@ import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.13.0/Lattices.dmg";
+const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.13.1/Lattices.dmg";
 
 declare global {
   interface Window {
@@ -433,7 +433,7 @@ const tickerMethods = [
   "lattices.search",
   "windows.search",
   "terminals.search",
-  "ocr.search",
+  "ocr.snapshot",
   "window.focus",
   "window.place",
   "layer.activate",

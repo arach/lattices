@@ -85,11 +85,8 @@ enum Capability: String, CaseIterable, Identifiable {
         }
     }
 
-    /// The capabilities this build asks for. Screen text search is the
-    /// bundle's OCR index, so the free build never asks for it.
-    static var available: [Capability] {
-        allCases.filter { $0 != .screenSearch || LatticesTier.isBundle }
-    }
+    /// The capabilities this build asks for.
+    static var available: [Capability] { allCases }
 
     /// All capabilities that are not yet granted.
     static var missing: [Capability] {
