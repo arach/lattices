@@ -114,6 +114,32 @@ final class OverviewDragPassTests: XCTestCase {
         XCTAssertEqual(model.plyPose, .snapBack, "Ply brings a failed move back")
     }
 
+    func testDotBoardPointsFromTheWindowsDesktopToTheHoveredOne() throws {
+        let suite = "drag.dots." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let three = OverviewDisplay(index: 0, name: "Fixture display", bounds: display.bounds, desktops: [1, 2, 3], currentSpaceId: 2, displayId: 7)
+        var middle = window(1); middle.spaceIds = [2]
+        let model = OverviewModel(defaults: defaults, actions: DragPassActions(),
+            inputs: .init(windows: [middle], displays: [three], main: three.bounds))
+        func sign(_ id: String?) -> OverviewDotSign? {
+            OverviewDotSign.sign(targetId: id, windows: [1], projection: model.projection)
+        }
+        XCTAssertEqual(sign("tray:7:1"), .init(direction: .left, desktop: 1))
+        XCTAssertEqual(sign("map:7:3"), .init(direction: .right, desktop: 3))
+        XCTAssertEqual(sign("desktop-strip:7:2"), .init(direction: .here, desktop: 2))
+        XCTAssertNil(sign("slot:left"), "Compose slots aren't desktops")
+        XCTAssertNil(sign(nil))
+
+        let right = OverviewDotBoard.grid(.init(direction: .right, desktop: 3), time: 0)
+        let left = OverviewDotBoard.grid(.init(direction: .left, desktop: 3), time: 0)
+        XCTAssertTrue(right.joined().contains(.arrow) && right.joined().contains(.digit))
+        XCTAssertEqual(right[1].last, .digit, "The number sits at the end the chevrons point to")
+        XCTAssertEqual(left[1].first, .digit)
+        let later = OverviewDotBoard.grid(.init(direction: .right, desktop: 3), time: OverviewDotBoard.march)
+        XCTAssertNotEqual(right, later, "The chevrons march")
+    }
+
     func testBatchRunsVerifiedRelocationWithEnvironmentFakes() throws {
         let suite = "drag.verified." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

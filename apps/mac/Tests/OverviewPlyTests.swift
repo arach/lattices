@@ -26,4 +26,20 @@ final class OverviewPlyTests: XCTestCase {
             }
         }
     }
+
+    func testDotBoardRendersEachDirection() throws {
+        let out = ProcessInfo.processInfo.environment["LATTICES_PLY_RENDER_DIR"].map { URL(fileURLWithPath: $0) }
+        let signs: [OverviewDotSign] = [.init(direction: .left, desktop: 1), .init(direction: .right, desktop: 3),
+                                        .init(direction: .here, desktop: 2), .init(direction: .right, desktop: 12)]
+        for (i, sign) in signs.enumerated() {
+            let renderer = ImageRenderer(content: OverviewDotBoard(sign: sign).padding(6).background(Palette.bg))
+            renderer.scale = 3
+            let image = try XCTUnwrap(renderer.cgImage)
+            if let out {
+                try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+                try NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                    .write(to: out.appendingPathComponent("board-\(i).png"))
+            }
+        }
+    }
 }
