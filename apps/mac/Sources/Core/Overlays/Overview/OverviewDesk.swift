@@ -692,9 +692,7 @@ struct OverviewTray: View {
                 .truncationMode(.tail)
             Spacer(minLength: 4)
             if moving {
-                ProgressView()
-                    .controlSize(.mini)
-                    .help("Moving…")
+                OverviewPly(pose: model.plyPose, height: 18)
             } else if let why {
                 Text(why)
                     .font(.system(size: 11))

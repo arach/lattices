@@ -107,9 +107,11 @@ final class OverviewDragPassTests: XCTestCase {
         model.moveDragged(.init(session: model.membershipDragSession, windows: [1], sourceLayer: nil, move: false), to: destination)
         XCTAssertEqual(model.projection.all[1]?.spaceId, 2, "The row moves before the carry finishes")
         XCTAssertEqual(model.moving, [1])
+        XCTAssertEqual(model.plyPose, .pickUp, "Ply picks the window up on drop")
         actions.finish?("the drop didn't take")
         XCTAssertEqual(model.projection.all[1]?.spaceId, 1, "A failed carry puts the row back")
         XCTAssertTrue(model.moving.isEmpty)
+        XCTAssertEqual(model.plyPose, .snapBack, "Ply brings a failed move back")
     }
 
     func testBatchRunsVerifiedRelocationWithEnvironmentFakes() throws {

@@ -326,6 +326,33 @@ final class OverviewModel: ObservableObject {
         recompute()
     }
 
+    /// What Ply, the Overview's mover, is doing.
+    @Published private(set) var plyPose: OverviewPlyPose = .idle
+    private var plySerial = 0
+
+    /// Pick up, then carry; a carry that runs long becomes a wait.
+    private func plyPickUp() {
+        plySerial += 1
+        let serial = plySerial
+        plyPose = .pickUp
+        plyAfter(0.5, serial) { $0.moving.isEmpty ? nil : .carry }
+        plyAfter(1.7, serial) { $0.moving.isEmpty ? nil : .wait }
+    }
+
+    private func plySetDown(_ moved: Bool) {
+        plySerial += 1
+        let serial = plySerial
+        plyPose = moved ? .setDown : .snapBack
+        plyAfter(moved ? 1.6 : 2.2, serial) { _ in .idle }
+    }
+
+    private func plyAfter(_ delay: TimeInterval, _ serial: Int, _ next: @escaping (OverviewModel) -> OverviewPlyPose?) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.plySerial == serial, let pose = next(self) else { return }
+            self.plyPose = pose
+        }
+    }
+
     private func endPending(_ wid: UInt32) {
         guard pendingSpace.removeValue(forKey: wid) != nil else { return }
         // Live, the carry has just polled the desktop: read it now so a
@@ -880,11 +907,13 @@ final class OverviewModel: ObservableObject {
         DiagnosticLog.shared.info("OverviewMove: source=menu wid=\(wid) from=\(row.spaceId ?? -1) target=\(spaceId) attempt")
         let started = Date()
         beginPending(wid, spaceId: spaceId)
+        plyPickUp()
         actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId, displayId: destination.displayId) { [weak self] failure in
             guard let self else { return }
             DiagnosticLog.shared.info("OverviewMove: wid=\(wid) total=\(Int(Date().timeIntervalSince(started) * 1000))ms")
             self.moving.remove(wid)
             self.endPending(wid)
+            self.plySetDown(failure == nil)
             self.moveProgress = nil
             self.compositionNotice = failure == nil ? "Moved \(row.app) to Desktop \(destination.desktop)" : nil
             DiagnosticLog.shared.info("OverviewMove: source=menu wid=\(wid) target=\(spaceId) outcome=\(failure ?? "moved")")
@@ -907,6 +936,7 @@ final class OverviewModel: ObservableObject {
         }
         let ids = Array(Set(drag.windows)).sorted()
         moving = Set(ids)
+        plyPickUp()
         actionError = nil
         compositionNotice = nil
         moveProgress = "Moving to Desktop \(destination.desktop)…"
@@ -915,6 +945,7 @@ final class OverviewModel: ObservableObject {
         func next(_ index: Int) {
             guard index < ids.count else {
                 moving.removeAll()
+                plySetDown(succeeded > 0 && failures.isEmpty)
                 moveProgress = nil
                 actionError = nil
                 DiagnosticLog.shared.info("OverviewMove: source=drop target=\(destination.spaceId) moved=\(succeeded) failures=\(failures)")
