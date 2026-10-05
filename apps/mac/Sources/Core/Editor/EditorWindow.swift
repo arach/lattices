@@ -197,7 +197,11 @@ final class LayersPageModel: ObservableObject {
             guard let self, self.state != nil, self.state?.selectedLayerIds != ids else { return }
             self.bridge.selectLayers(ids)
         }
-        let root = Bundle.module.resourceURL!.appendingPathComponent("Editor", isDirectory: true)
+        let root = AppResources.directory(named: "Editor") ?? {
+            // Loading fails and shows the "Editor unavailable" page instead of trapping.
+            DiagnosticLog.shared.error("Editor: no bundled Editor resources found")
+            return Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Editor", isDirectory: true)
+        }()
         let host = EditorWebHost(bundleRoot: root, bridge: bridge)
         retainedHost = host
         host.start()

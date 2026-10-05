@@ -571,31 +571,17 @@ private extension LatticesCompanionBridgeServer {
 }
 
 extension LatticesCompanionBridgeServer {
-    /// Resolve both the hand-built app bundle and SwiftPM's nested resource
-    /// bundles without touching `Bundle.module`, whose generated accessor traps
-    /// when a manually packaged app does not contain the expected bundle.
+    /// Where the DeckBuilder assets can live; see `AppResources`.
     static func deckBuilderResourceRoots(
         applicationResourceURL: URL? = Bundle.main.resourceURL,
         loadedBundles: [Bundle] = Bundle.allBundles + Bundle.allFrameworks,
         fileManager: FileManager = .default
     ) -> [URL] {
-        var resourceURLs = [applicationResourceURL].compactMap { $0 }
-        resourceURLs.append(contentsOf: loadedBundles.compactMap(\.resourceURL))
-
-        if let applicationResourceURL,
-           let children = try? fileManager.contentsOfDirectory(
-               at: applicationResourceURL,
-               includingPropertiesForKeys: nil
-           ) {
-            resourceURLs.append(contentsOf: children.compactMap { child in
-                guard child.pathExtension == "bundle" else { return nil }
-                return Bundle(url: child)?.resourceURL
-            })
-        }
-
-        var seen = Set<String>()
-        return resourceURLs
-            .map { $0.appendingPathComponent("DeckBuilder", isDirectory: true) }
-            .filter { seen.insert($0.standardizedFileURL.path).inserted }
+        AppResources.roots(
+            named: "DeckBuilder",
+            applicationResourceURL: applicationResourceURL,
+            loadedBundles: loadedBundles,
+            fileManager: fileManager
+        )
     }
 }
