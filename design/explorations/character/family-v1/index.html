@@ -1,0 +1,282 @@
+<!doctype html>
+<!-- One family, six activities. All artwork is local. CSS owns the 2.5-second
+     sequence; the script waits for artwork, controls playback and respects reduced motion.
+     This is an exploration, not a live Overview operation. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Ply, one careful Lattices character in six activity poses. Compare the same masters at actual 16, 24 and 32 pixel sizes on dark and light surfaces.">
+  <title>Ply — one Lattices family</title>
+  <style>
+    @font-face { font-family: "JetBrains Mono"; src: local("JetBrains Mono"), local("JetBrainsMono-Regular"); font-style: normal; font-weight: 400; font-display: swap; }
+    :root { color-scheme: dark; --app: #141416; --paper: #f2f2f2; --raised: #1c1c1e; --muted: #aaaab0; --rule: #39393d; --green: #33c773; --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    html { background: var(--app); scrollbar-color: #68686b var(--app); }
+    body { margin: 0; color: var(--paper); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    ::selection { background: var(--green); color: var(--app); }
+    a { color: var(--green); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    a:hover { text-decoration-thickness: 2px; }
+    :focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+    button { font: inherit; }
+    button:disabled { cursor: default; opacity: .5; }
+    img { display: block; flex-shrink: 0; object-fit: contain; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1, h2, h3 { text-wrap: balance; }
+    .page { width: min(1440px, 100%); margin-inline: auto; padding: 30px 40px; }
+    .masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--rule); }
+    .wordmark { font-size: 23px; font-weight: 650; letter-spacing: -.035em; }
+    .masthead p { color: var(--muted); font-size: 12px; line-height: 1.6; text-align: right; }
+    .masthead strong { color: var(--paper); font-weight: 500; }
+    .intro { display: flex; justify-content: space-between; align-items: end; gap: 36px; padding: 39px 0 36px; }
+    h1 { font-size: clamp(68px, 8vw, 96px); font-weight: 560; letter-spacing: -.04em; line-height: .95; }
+    .personality { font-size: 21px; line-height: 1.45; margin-top: 20px; }
+    .intro-note { max-width: 38ch; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .intro-note strong { color: var(--paper); font-weight: 500; }
+    .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+    h2 { font-size: 24px; font-weight: 520; letter-spacing: -.025em; line-height: 1.25; }
+    .section-heading p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .surface { border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; background: var(--app); }
+    .surface + .surface { margin-top: 18px; }
+    .surface.light { background: var(--paper); color: var(--app); color-scheme: light; border-color: #c2c2c6; }
+    .surface-heading { display: flex; justify-content: space-between; gap: 20px; padding: 16px 19px 13px; color: var(--muted); font: 11px/1.5 var(--mono); }
+    .light .surface-heading { color: #5f5f65; }
+    .comparison-scroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #68686b var(--app); }
+    .light .comparison-scroll { scrollbar-color: #838388 var(--paper); }
+    .comparison { min-width: 1080px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .pose { min-width: 0; text-align: center; padding: 0 12px 19px; }
+    .pose + .pose { border-left: 1px solid var(--rule); }
+    .light .pose + .pose { border-color: #d0d0d3; }
+    .portrait { display: flex; align-items: center; justify-content: center; min-height: 150px; margin-bottom: 7px; }
+    .portrait img { width: 144px; height: 144px; }
+    .light a:focus-visible { outline-color: #087437; }
+    h3 { font-size: 16px; font-weight: 550; line-height: 1.4; letter-spacing: -.015em; }
+    .when { color: var(--muted); font-size: 12px; line-height: 1.5; min-height: 17px; margin-top: 3px; white-space: nowrap; }
+    .light .when, .light .sample figcaption { color: #5f5f65; }
+    .samples { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 17px; padding-top: 10px; border-top: 1px solid var(--rule); gap: 2px; }
+    .light .samples { border-color: #d0d0d3; }
+    .sample-slot { display: flex; justify-content: center; align-items: center; height: 36px; }
+    .sample figcaption { color: var(--muted); font: 11px/1.5 var(--mono); margin-top: 5px; white-space: nowrap; }
+    .control { display: flex; justify-content: center; align-items: center; width: 32px; height: 32px; border-radius: 6px; background: var(--raised); outline: 1px solid #4a4a50; }
+    .light .control { background: #e5e5e7; outline-color: #a2a2a8; }
+    .scale-note { max-width: 76ch; color: var(--muted); font-size: 12px; line-height: 1.7; padding: 16px 0 33px; }
+    .scale-note strong { color: var(--paper); font-weight: 500; }
+    .sequence-section { padding: 30px 0 32px; border-top: 1px solid var(--rule); }
+    .sequence { display: grid; grid-template-columns: 160px minmax(0, 1fr); align-items: center; gap: 28px; }
+    .live-view { text-align: center; }
+    .live-stack { position: relative; width: 144px; height: 144px; margin-inline: auto; }
+    .live-frame { position: absolute; inset: 0; width: 144px; height: 144px; opacity: 0; }
+    .live-frame:first-child { opacity: 1; }
+    .live-view figcaption { color: var(--muted); font: 11px/1.5 var(--mono); }
+    .beats { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 0; margin: 0; gap: 0; border-bottom: 1px solid var(--rule); }
+    .beat { position: relative; display: flex; flex-direction: column; align-items: center; padding: 5px 8px 18px; text-align: center; color: var(--muted); }
+    .beat img { width: 72px; height: 72px; margin-bottom: 8px; }
+    .beat strong { color: var(--paper); font-size: 13px; line-height: 1.5; font-weight: 500; }
+    .beat span { font: 11px/1.6 var(--mono); margin-top: 3px; white-space: nowrap; }
+    .beat::after { content: ""; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background: var(--green); opacity: 0; }
+    .beat:first-child::after { opacity: 1; }
+    .sequence[data-playing="true"] .live-frame, .sequence[data-playing="true"] .beat::after { animation-duration: 2.5s; animation-timing-function: step-end; animation-fill-mode: both; animation-iteration-count: 1; }
+    .sequence[data-playing="true"] .live-frame:nth-child(1), .sequence[data-playing="true"] .beat:nth-child(1)::after { animation-name: idle; }
+    .sequence[data-playing="true"] .live-frame:nth-child(2), .sequence[data-playing="true"] .beat:nth-child(2)::after { animation-name: pickup; }
+    .sequence[data-playing="true"] .live-frame:nth-child(3), .sequence[data-playing="true"] .beat:nth-child(3)::after { animation-name: carry; }
+    .sequence[data-playing="true"] .live-frame:nth-child(4), .sequence[data-playing="true"] .beat:nth-child(4)::after { animation-name: wait; }
+    .sequence[data-playing="true"] .live-frame:nth-child(5), .sequence[data-playing="true"] .beat:nth-child(5)::after { animation-name: placed; }
+    .sequence[data-paused="true"] .live-frame, .sequence[data-paused="true"] .beat::after { animation-play-state: paused; }
+    @keyframes idle { 0% { opacity: 1; } 14%, 100% { opacity: 0; } }
+    @keyframes pickup { 0% { opacity: 0; } 14% { opacity: 1; } 32%, 100% { opacity: 0; } }
+    @keyframes carry { 0% { opacity: 0; } 32% { opacity: 1; } 56%, 100% { opacity: 0; } }
+    @keyframes wait { 0% { opacity: 0; } 56% { opacity: 1; } 84%, 100% { opacity: 0; } }
+    @keyframes placed { 0% { opacity: 0; } 84%, 100% { opacity: 1; } }
+    .sequence-bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 30px; margin-top: 20px; }
+    .sequence-note { max-width: 72ch; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .sequence-note strong { color: var(--paper); font-weight: 500; }
+    .controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .playback-status { color: var(--muted); font-size: 11px; line-height: 1.5; margin-right: 4px; }
+    .controls[hidden] { display: none; }
+    .controls button { padding: 8px 12px; border: 1px solid #55555d; border-radius: 6px; color: var(--paper); background: transparent; cursor: pointer; font-size: 12px; line-height: 1.4; min-height: 34px; }
+    .controls button:hover:not(:disabled) { background: #29292d; border-color: #898992; }
+    .reduced-note { display: none; }
+    footer { display: flex; justify-content: space-between; gap: 24px; padding-top: 23px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 12px; line-height: 1.7; }
+    footer p { max-width: 44ch; }
+    footer nav { display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 20px; row-gap: 8px; }
+    .skip-link { position: absolute; left: 20px; top: -80px; padding: 10px 14px; background: var(--raised); z-index: 2; }
+    .skip-link:focus { top: 12px; }
+    @media (max-width: 1100px) { .page { padding-inline: 26px; } .intro { gap: 24px; } .surface-heading::after { content: "Scroll to compare"; color: inherit; } .surface-heading span:last-child { margin-left: auto; } }
+    @media (max-width: 760px) {
+      .page { padding: 24px 18px; }
+      .intro { display: block; padding: 30px 0; }
+      .intro-note { max-width: 54ch; margin-top: 19px; }
+      .personality { font-size: 19px; }
+      .section-heading { display: block; }
+      .section-heading p { margin-top: 7px; }
+      .sequence { grid-template-columns: 1fr; gap: 17px; }
+      .live-stack, .live-frame { width: 112px; height: 112px; }
+      .beat { padding-inline: 3px; }
+      .beat img { width: 48px; height: 48px; }
+      .beat span { white-space: normal; max-width: 10ch; }
+      .sequence-bottom { flex-direction: column; gap: 16px; }
+      .controls { order: -1; }
+      footer { flex-direction: column; gap: 15px; }
+      footer nav { justify-content: flex-start; }
+    }
+    @media (max-width: 400px) { .beat strong { font-size: 11px; } .beat span { letter-spacing: -.025em; } .surface-heading { font-size: 11px; padding-inline: 14px; gap: 12px; } }
+    @media (prefers-reduced-motion: reduce) {
+      .sequence .live-frame, .sequence .beat::after { animation: none !important; }
+      .sequence .live-frame { opacity: 0; }
+      .sequence .live-frame:first-child { opacity: 1; }
+      .sequence .beat::after { opacity: 0; }
+      .reduced-note { display: inline; }
+      .normal-note { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the family study</a>
+  <div class="page">
+    <header class="masthead">
+      <span class="wordmark">lattices</span>
+      <p><strong>One character · Six activities</strong><br>Family study / v1</p>
+    </header>
+    <main id="main">
+      <header class="intro">
+        <div><h1>Ply.</h1><p class="personality">A careful mover. A shape for every step.</p></div>
+        <p class="intro-note"><strong>Ply, Span and Plinth become one creature.</strong> The same pale face, two dark eyes and green top edge; its body changes with the work.</p>
+      </header>
+      <section aria-labelledby="poses-title">
+        <div class="section-heading"><h2 id="poses-title">One face, six poses.</h2><p>144 px views · Actual-size samples beneath each pose</p></div>
+        <section class="surface dark" aria-label="Six Ply poses on the dark app surface">
+          <div class="surface-heading"><span>App surface</span><span>#141416</span></div>
+          <div class="comparison-scroll" tabindex="0" role="region" aria-label="Dark comparison; scroll horizontally on narrow screens">
+            <div class="comparison">
+              <article class="pose"><a class="portrait" href="01-idle.png" aria-label="Open idle PNG master"><img src="01-idle.png" width="144" height="144" alt="Ply resting as a low slab on a steady base."></a><h3>Idle</h3><p class="when">Ready for a move</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="01-idle.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="01-idle.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="01-idle.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="01-idle.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="02-pick-up.png" aria-label="Open pick up PNG master"><img src="02-pick-up.png" width="144" height="144" alt="Ply lifting its upper slab, offset from the base."></a><h3>Pick up</h3><p class="when">Drop accepted</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="02-pick-up.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="02-pick-up.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="02-pick-up.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="02-pick-up.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="03-carry.png" aria-label="Open carry PNG master"><img src="03-carry.png" width="144" height="144" alt="Ply on broad bridge legs, carrying a small window card on its flat top."></a><h3>Carry</h3><p class="when">Move in flight</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="03-carry.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="03-carry.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="03-carry.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="03-carry.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="04-wait.png" aria-label="Open wait PNG master"><img src="04-wait.png" width="144" height="144" alt="Ply settled low, patiently looking upward to the side."></a><h3>Wait</h3><p class="when">Mission Control running</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="04-wait.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="04-wait.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="04-wait.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="04-wait.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="05-set-down.png" aria-label="Open set down PNG master"><img src="05-set-down.png" width="144" height="144" alt="Ply resting beside the placed window card, with one small green confirmation mark."></a><h3>Set down</h3><p class="when">Placement confirmed</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="05-set-down.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="05-set-down.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="05-set-down.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="05-set-down.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="06-snap-back.png" aria-label="Open snap back PNG master"><img src="06-snap-back.png" width="144" height="144" alt="Ply back on its bridge legs with the window card on top, looking down calmly."></a><h3>Snap back</h3><p class="when">Could not move it</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="06-snap-back.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="06-snap-back.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="06-snap-back.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="06-snap-back.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+            </div>
+          </div>
+        </section>
+        <section class="surface light" aria-label="Six Ply poses on the light surface">
+          <div class="surface-heading"><span>Light surface</span><span>#f2f2f2</span></div>
+          <div class="comparison-scroll" tabindex="0" role="region" aria-label="Light comparison; scroll horizontally on narrow screens">
+            <div class="comparison">
+              <article class="pose"><a class="portrait" href="01-idle.png" aria-label="Open idle PNG master"><img src="01-idle.png" width="144" height="144" alt="Ply resting as a low slab on a steady base."></a><h3>Idle</h3><p class="when">Ready for a move</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="01-idle.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="01-idle.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="01-idle.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="01-idle.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="02-pick-up.png" aria-label="Open pick up PNG master"><img src="02-pick-up.png" width="144" height="144" alt="Ply lifting its upper slab, offset from the base."></a><h3>Pick up</h3><p class="when">Drop accepted</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="02-pick-up.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="02-pick-up.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="02-pick-up.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="02-pick-up.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="03-carry.png" aria-label="Open carry PNG master"><img src="03-carry.png" width="144" height="144" alt="Ply on broad bridge legs, carrying a small window card on its flat top."></a><h3>Carry</h3><p class="when">Move in flight</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="03-carry.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="03-carry.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="03-carry.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="03-carry.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="04-wait.png" aria-label="Open wait PNG master"><img src="04-wait.png" width="144" height="144" alt="Ply settled low, patiently looking upward to the side."></a><h3>Wait</h3><p class="when">Mission Control running</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="04-wait.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="04-wait.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="04-wait.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="04-wait.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="05-set-down.png" aria-label="Open set down PNG master"><img src="05-set-down.png" width="144" height="144" alt="Ply resting beside the placed window card, with one small green confirmation mark."></a><h3>Set down</h3><p class="when">Placement confirmed</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="05-set-down.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="05-set-down.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="05-set-down.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="05-set-down.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+              <article class="pose"><a class="portrait" href="06-snap-back.png" aria-label="Open snap back PNG master"><img src="06-snap-back.png" width="144" height="144" alt="Ply back on its bridge legs with the window card on top, looking down calmly."></a><h3>Snap back</h3><p class="when">Could not move it</p><div class="samples">
+                <figure class="sample"><div class="sample-slot"><img src="06-snap-back.png" width="16" height="16" alt=""></div><figcaption>16 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="06-snap-back.png" width="24" height="24" alt=""></div><figcaption>24 px</figcaption></figure><figure class="sample"><div class="sample-slot"><img src="06-snap-back.png" width="32" height="32" alt=""></div><figcaption>32 px</figcaption></figure><figure class="sample"><div class="sample-slot"><span class="control"><img src="06-snap-back.png" width="24" height="24" alt=""></span></div><figcaption>24/32</figcaption></figure>
+              </div></article>
+            </div>
+          </div>
+        </section>
+        <p class="scale-note"><strong>Compare at 100% browser zoom.</strong> Sizes describe the square image frame in CSS pixels. The visible body is smaller where a pose leaves clear space. Each outlined control is exactly 32 × 32 px, with a 24 × 24 px image centered inside. The 16 px view is the lower-bound stress test.</p>
+      </section>
+      <section class="sequence-section" aria-labelledby="sequence-title">
+        <div class="section-heading"><h2 id="sequence-title">One deliberate move.</h2><p>Five poses · 2.5 seconds · One pass</p></div>
+        <div class="sequence" id="sequence" data-playing="false" data-paused="false">
+          <figure class="live-view">
+            <div class="live-stack" role="img" aria-label="Illustrative sequence: idle, pick up, carry, wait, set down.">
+              <img class="live-frame" src="01-idle.png" width="144" height="144" alt=""><img class="live-frame" src="02-pick-up.png" width="144" height="144" alt=""><img class="live-frame" src="03-carry.png" width="144" height="144" alt=""><img class="live-frame" src="04-wait.png" width="144" height="144" alt=""><img class="live-frame" src="05-set-down.png" width="144" height="144" alt="">
+            </div>
+            <figcaption>Same frame · changing pose</figcaption>
+          </figure>
+          <ol class="beats" aria-label="Proposed move timing">
+            <li class="beat"><img src="01-idle.png" width="72" height="72" alt=""><strong>Idle</strong><span>0–<wbr>350 ms</span></li>
+            <li class="beat"><img src="02-pick-up.png" width="72" height="72" alt=""><strong>Pick up</strong><span>350–<wbr>800 ms</span></li>
+            <li class="beat"><img src="03-carry.png" width="72" height="72" alt=""><strong>Carry</strong><span>800–<wbr>1,400 ms</span></li>
+            <li class="beat"><img src="04-wait.png" width="72" height="72" alt=""><strong>Wait</strong><span>1,400–<wbr>2,100 ms</span></li>
+            <li class="beat"><img src="05-set-down.png" width="72" height="72" alt=""><strong>Set down</strong><span>2,100–<wbr>2,500 ms</span></li>
+          </ol>
+        </div>
+        <div class="sequence-bottom">
+          <p class="sequence-note"><strong>Timing study, not a live move.</strong> In Overview, the operation sets the pace: hold Wait while Mission Control runs, show Set down only when placement is confirmed, and use Snap back if the move fails. <span class="normal-note">Replay to inspect the pose changes; there is no automatic loop.</span><span class="reduced-note">Reduced motion is on. The sequence stays still, with every step visible.</span></p>
+          <div class="controls" hidden><span class="playback-status" id="playback-status" role="status">Loading poses…</span><button id="pause" type="button" aria-pressed="false" disabled>Pause</button><button id="replay" type="button" disabled>Replay move</button></div>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <p>One exploratory character family for Lattices.<br>Proposed state artwork; no app integration.</p>
+      <nav aria-label="Study files"><a href="README.md">Activity mapping</a><a href="prompts.json">Exact prompts</a><a href="contact-sheet.png">Contact sheet</a><a href="../index.html">Earlier alternatives</a></nav>
+    </footer>
+  </div>
+  <script>
+    (() => {
+      const sequence = document.getElementById('sequence');
+      const pause = document.getElementById('pause');
+      const replay = document.getElementById('replay');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const status = document.getElementById('playback-status');
+      const frames = [...sequence.querySelectorAll('.live-frame')];
+      const lastFrame = sequence.querySelector('.live-frame:last-child');
+      let artworkReady = false;
+      let complete = false;
+      document.querySelector('.controls').hidden = false;
+      const resetPause = () => { sequence.dataset.paused = 'false'; pause.textContent = 'Pause'; pause.setAttribute('aria-pressed', 'false'); };
+      const motionPreference = () => {
+        resetPause();
+        replay.disabled = !artworkReady || reduced.matches;
+        pause.disabled = !artworkReady || reduced.matches || complete || sequence.dataset.playing !== 'true';
+        if (reduced.matches) { sequence.dataset.playing = 'false'; status.textContent = 'Reduced motion'; }
+        else if (artworkReady) status.textContent = complete ? 'Complete' : 'Ready';
+      };
+      const play = () => {
+        if (!artworkReady || reduced.matches) return;
+        complete = false;
+        sequence.dataset.playing = 'false';
+        resetPause();
+        void sequence.offsetWidth;
+        sequence.dataset.playing = 'true';
+        pause.disabled = false;
+        status.textContent = 'Playing';
+      };
+      pause.addEventListener('click', () => {
+        const isPaused = sequence.dataset.paused !== 'true';
+        sequence.dataset.paused = String(isPaused);
+        pause.textContent = isPaused ? 'Resume' : 'Pause';
+        pause.setAttribute('aria-pressed', String(isPaused));
+        status.textContent = isPaused ? 'Paused' : 'Playing';
+      });
+      replay.addEventListener('click', play);
+      lastFrame.addEventListener('animationend', () => { complete = true; resetPause(); pause.disabled = true; status.textContent = 'Complete'; });
+      reduced.addEventListener('change', motionPreference);
+      motionPreference();
+      Promise.all(frames.map(frame => frame.decode())).then(() => {
+        artworkReady = true;
+        motionPreference();
+        play();
+      }).catch(() => {
+        sequence.dataset.playing = 'false';
+        pause.disabled = true;
+        replay.disabled = true;
+        status.textContent = 'A pose could not load. Reload to retry.';
+      });
+    })();
+  </script>
+</body>
+</html>

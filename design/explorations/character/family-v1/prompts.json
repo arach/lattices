@@ -1,0 +1,111 @@
+{
+  "name": "Ply",
+  "personality": "A patient little mover who keeps things level and puts them down precisely.",
+  "mode": "Built-in image generation",
+  "status": "Exploratory family artwork; no app integration.",
+  "notes": "Exact prompts and local reference inputs. All six1254x1254 RGBA masters are byte-identical copies of built-in output; no pixel edits. Contact sheet and size-proof samples are derived compositions. The initial prompt requested1024x1024; the tool returned1254x1254 consistently, retained here.",
+  "palette": {
+    "body": "#f2f2f2",
+    "eyes": "#141416",
+    "accent": "#33C773",
+    "shading": "neutral gray"
+  },
+  "poses": [
+    {
+      "id": "01-idle",
+      "name": "Idle",
+      "file": "01-idle.png",
+      "prompt": "Create a unified character master for Lattices called PLY, using the attached Plinth study as the design reference. This is pose 1 of one six-pose family, not a new species. Preserve the reference's broad off-white rounded rectangular slab face, exactly two widely spaced dark vertical pill eyes directly in the material, running green top plane, short broad pedestal with small underside notch. Improve construction into clean, deliberate, minimal editorial toy artwork with broad flat fills and subtle broad neutral-gray thickness plane only. Face shape is a low rounded rectangle about twice as wide as tall, neutral off-white #f2f2f2, eyes #141416, top plane #33C773. The top green plane must remain identical for every future pose. No mouth, eyebrows, nose, cheeks or extra features. Use a continuous strong near-black #141416 outline around all exterior contours, roughly 2.5% of face width, so this off-white character reads on both #141416 and #f2f2f2 at 24 pixels. Smooth clean alpha edge, no white extraction flecks, no stray pixels, no noisy gradients, no halo, no texture. POSE: IDLE / RESTING. Broad head/slab rests low and level on a narrower short off-white pedestal/base. Small shallow central notch in base. Eyes open calm vertical pills, broad and clearly separated. No carried window card yet. Exact framing for a swappable pose set: transparent SQUARE 1024x1024 canvas; near-frontal view with just enough top visible to show the green surface and a very narrow right depth plane. Face occupies x=200..800 (600px wide), y=410..700 (290px tall), bottom of pedestal at y=850. Main body anchored at x=500. Reserve upper area for a carried card in later poses and the rightmost 180px for a delivered card. Do not zoom to fill canvas or center-crop the character. SAME neutral material, camera, face dimensions, dark eye geometry and spacing in all poses. Gentle intentional architecture, steady and patient, not bouncy. GENUINE transparent background and internal gaps. No ground or cast shadow outside character. No text, labels, letters, logo, watermark. Never purple, violet, magenta, red or any warm/alarm color. No limbs, hands, antennae or costume. Return one isolated PNG master, no gallery.",
+      "references": [
+        "../alternatives-v1/06-plinth.png"
+      ],
+      "canvas": {
+        "width": 1254,
+        "height": 1254,
+        "mode": "RGBA"
+      },
+      "sha256": "b0c84195aff886a0ece7711350e6844e5a91d8521d0f12c190511bad66489d9f",
+      "generatedSource": "/Users/arach/.codex/generated_images/01a10965-cd40-7913-9eae-d33a3822e9fd/exec-c63379d7-4e3c-4d6f-84f6-46ecc00c240d.png"
+    },
+    {
+      "id": "02-pick-up",
+      "name": "Pick up",
+      "file": "02-pick-up.png",
+      "prompt": "Precise pose edit of the attached PLY character master for a six-pose Lattices character family. The attached file is the single identity source. Preserve EXACTLY its off-white rounded rectangular face slab, aspect ratio, thick clean dark perimeter, corner radius, green top plane, neutral material, subtle right depth plane, camera, and TWO widely spaced dark pill eyes. Do not redraw a new face or alter its proportions. Exactly the same character. Change only the supporting body and indicated pose/prop. Same square transparent canvas dimensions as reference, same character scale, same baseline at 85 percent canvas height. The reference face spans approximately x=14..86 percent of the canvas, and in the resting image its green upper plane begins at y=40 percent, face lower edge y=73 percent, base lower edge y=85 percent. Keep this common registration and all transparent padding; DO NOT zoom, crop tightly or auto-center to the occupied bounds. Eye width approximately 8.5 percent of canvas, spacing exactly as reference. Match outline width and clean smooth continuous edges; no flecks, halos, matte residue, disconnected dust pixels, grain or texture. All exterior empty space genuinely transparent alpha zero. Neutral off-white near #f2f2f2, near-black #141416, neutral gray, single running-green accent #33C773 on the SAME top plane. NEVER purple, violet, magenta, red, yellow, orange, or alarm colors. No mouth, nose, eyebrows, blush, arms, hands, costume or other character. No ground, no cast shadow outside character. Minimal deliberate architectural toy illustration with broad clear forms that survive a 24px image frame. No text, logos, labels, watermark. Return one PNG pose master.\n\nPOSE: PICKING UP A WINDOW / TOP SLAB LIFT. Keep the lower low pedestal planted in EXACTLY its idle position. Lift the complete face slab, its two eyes and its green top as ONE RIGID PIECE up by 11 percent of canvas height and offset left by 5 percent of canvas width. Its size, material and face never deform. A very clear transparent horizontal gap of about 10 percent canvas height separates head and pedestal. Green remains on the upper slab top, not duplicated on the base. No extra limbs or connectors. A single small simple neutral white WINDOW CARD, a rounded rectangle about 25 percent canvas width by 15 percent canvas height, stands squarely on the green top at the upper center; card has dark outline and exactly one thick neutral gray titlebar line, no buttons, no text, no colored dots. Eyes attentive and identical to idle, gazing slightly toward the window without changing eye shape. The offset slab and gap are the primary pickup silhouette cue.",
+      "references": [
+        "01-idle.png"
+      ],
+      "canvas": {
+        "width": 1254,
+        "height": 1254,
+        "mode": "RGBA"
+      },
+      "sha256": "319cd24dbff252b32c313182d9bde5c90a241c0853da4613507f085f17ef51db",
+      "generatedSource": "/Users/arach/.codex/generated_images/01a10965-cd40-7913-9eae-d33a3822e9fd/exec-26b12d9d-cd61-4efe-a493-bffd49c7d340.png"
+    },
+    {
+      "id": "03-carry",
+      "name": "Carry",
+      "file": "03-carry.png",
+      "prompt": "Precise pose edit of the attached PLY character master for a six-pose Lattices character family. The attached file is the single identity source. Preserve EXACTLY its off-white rounded rectangular face slab, aspect ratio, thick clean dark perimeter, corner radius, green top plane, neutral material, subtle right depth plane, camera, and TWO widely spaced dark pill eyes. Do not redraw a new face or alter its proportions. Exactly the same character. Change only the supporting body and indicated pose/prop. Same square transparent canvas dimensions as reference, same character scale, same baseline at 85 percent canvas height. The reference face spans approximately x=14..86 percent of the canvas, and in the resting image its green upper plane begins at y=40 percent, face lower edge y=73 percent, base lower edge y=85 percent. Keep this common registration and all transparent padding; DO NOT zoom, crop tightly or auto-center to the occupied bounds. Eye width approximately 8.5 percent of canvas, spacing exactly as reference. Match outline width and clean smooth continuous edges; no flecks, halos, matte residue, disconnected dust pixels, grain or texture. All exterior empty space genuinely transparent alpha zero. Neutral off-white near #f2f2f2, near-black #141416, neutral gray, single running-green accent #33C773 on the SAME top plane. NEVER purple, violet, magenta, red, yellow, orange, or alarm colors. No mouth, nose, eyebrows, blush, arms, hands, costume or other character. No ground, no cast shadow outside character. Minimal deliberate architectural toy illustration with broad clear forms that survive a 24px image frame. No text, logos, labels, watermark. Return one PNG pose master.\n\nPOSE: CARRYING A WINDOW ACROSS DESKTOPS. Keep face slab EXACTLY in its idle x/y position, SAME shape and dimensions, SAME green top and eyes. Transform ONLY its lower pedestal into TWO broad solid bridge supports under its outer ends, with a large squared open transparent arch between them extending from the slab's lower edge down to the shared baseline. No separate middle pedestal. Feet planted at baseline 85 percent, no lift or walking stride. Window card stands upright and level on the middle of the flat green top, about 28 percent canvas width by 20 percent canvas height, its lower edge visibly resting on the green top. Simple off-white rounded rectangle, dark perimeter, one thick neutral gray titlebar line only, no buttons or writing. Eyes look forward, calm and steady. The wide open bridge beneath and square upright card above are unmistakable at 24px. Keep card inside existing reserved upper transparent area.",
+      "references": [
+        "01-idle.png"
+      ],
+      "canvas": {
+        "width": 1254,
+        "height": 1254,
+        "mode": "RGBA"
+      },
+      "sha256": "0122407c184ef5beb9f21170059348287347db8f07cf7e10b48ca9cbcbfcd3d9",
+      "generatedSource": "/Users/arach/.codex/generated_images/01a10965-cd40-7913-9eae-d33a3822e9fd/exec-237ca8c8-e15f-4c05-bb7d-3d7e9436bb1a.png"
+    },
+    {
+      "id": "04-wait",
+      "name": "Wait",
+      "file": "04-wait.png",
+      "prompt": "Precise pose edit of the attached PLY character master for a six-pose Lattices character family. The attached file is the single identity source. Preserve EXACTLY its off-white rounded rectangular face slab, aspect ratio, thick clean dark perimeter, corner radius, green top plane, neutral material, subtle right depth plane, camera, and TWO widely spaced dark pill eyes. Do not redraw a new face or alter its proportions. Exactly the same character. Change only the supporting body and indicated pose/prop. Same square transparent canvas dimensions as reference, same character scale, same baseline at 85 percent canvas height. The reference face spans approximately x=14..86 percent of the canvas, and in the resting image its green upper plane begins at y=40 percent, face lower edge y=73 percent, base lower edge y=85 percent. Keep this common registration and all transparent padding; DO NOT zoom, crop tightly or auto-center to the occupied bounds. Eye width approximately 8.5 percent of canvas, spacing exactly as reference. Match outline width and clean smooth continuous edges; no flecks, halos, matte residue, disconnected dust pixels, grain or texture. All exterior empty space genuinely transparent alpha zero. Neutral off-white near #f2f2f2, near-black #141416, neutral gray, single running-green accent #33C773 on the SAME top plane. NEVER purple, violet, magenta, red, yellow, orange, or alarm colors. No mouth, nose, eyebrows, blush, arms, hands, costume or other character. No ground, no cast shadow outside character. Minimal deliberate architectural toy illustration with broad clear forms that survive a 24px image frame. No text, logos, labels, watermark. Return one PNG pose master.\n\nPOSE: WAITING WHILE MISSION CONTROL WORKS. Use the same compact low pedestal construction as IDLE, with its shallow notch, same exact face size and x/y placement. The difference from carry is that the bridge gap is CLOSED back to the low solid base: character is settled and waiting. Keep a single small upright window card supported on the green top, 28 percent canvas width by 20 percent canvas height, SAME neutral card design as carry (dark border and one thick neutral gray titlebar, no writing or dots). Shift BOTH unchanged pill eyes modestly upward and to the right, a small patient upward-sideways gaze within the SAME face, never add pupils or eyebrows. Keep top slab level. Do not enlarge or tilt the whole character. Its low resting base plus the supported upright card distinguish this wait pose from empty idle and arched carry. Quiet, small and patient, no clock, ellipsis, spinner or motion lines.",
+      "references": [
+        "01-idle.png"
+      ],
+      "canvas": {
+        "width": 1254,
+        "height": 1254,
+        "mode": "RGBA"
+      },
+      "sha256": "e6127996822fb2bb31fdf8e8909c4bf015017ccc28ef9eab5351729e7fd0fe16",
+      "generatedSource": "/Users/arach/.codex/generated_images/01a10965-cd40-7913-9eae-d33a3822e9fd/exec-d4a15030-082f-4da0-bbf0-2500b99d0f05.png"
+    },
+    {
+      "id": "05-set-down",
+      "name": "Set down",
+      "file": "05-set-down.png",
+      "prompt": "Precise pose edit of the attached PLY character master for a six-pose Lattices character family. The attached file is the single identity source. Preserve EXACTLY its off-white rounded rectangular face slab, aspect ratio, thick clean dark perimeter, corner radius, green top plane, neutral material, subtle right depth plane, camera, and TWO widely spaced dark pill eyes. Do not redraw a new face or alter its proportions. Exactly the same character. Change only the supporting body and indicated pose/prop. Same square transparent canvas dimensions as reference, same character scale, same baseline at 85 percent canvas height. The reference face spans approximately x=14..86 percent of the canvas, and in the resting image its green upper plane begins at y=40 percent, face lower edge y=73 percent, base lower edge y=85 percent. Keep this common registration and all transparent padding; DO NOT zoom, crop tightly or auto-center to the occupied bounds. Eye width approximately 8.5 percent of canvas, spacing exactly as reference. Match outline width and clean smooth continuous edges; no flecks, halos, matte residue, disconnected dust pixels, grain or texture. All exterior empty space genuinely transparent alpha zero. Neutral off-white near #f2f2f2, near-black #141416, neutral gray, single running-green accent #33C773 on the SAME top plane. NEVER purple, violet, magenta, red, yellow, orange, or alarm colors. No mouth, nose, eyebrows, blush, arms, hands, costume or other character. No ground, no cast shadow outside character. Minimal deliberate architectural toy illustration with broad clear forms that survive a 24px image frame. No text, logos, labels, watermark. Return one PNG pose master.\n\nPOSE: SET DOWN / CONFIRMED SUCCESS. Preserve EXACT idle character body, exact face proportions, idle head and base placement and scale, same open calm pill eyes, green top, outline, material. The window is no longer on top. Place ONE small neutral window card down BESIDE the character at far right, clearly separated from its side by a small transparent gap, lower edge on the same baseline at 85 percent. Card occupies the reserved far right margin (approximately x=87..99 percent) and rises alongside only the base and bottom right edge of the face (approximately y=63..85 percent). Do not shrink or move the character to make space. Card is an off-white rounded rectangle with dark border and a simple gray titlebar, no text, no dots. Above this little placed card, add ONE small, bold #33C773 check mark, simple two-stroke tick legible at 24px; no sparkle field, no confetti, no additional colors. Keep the tick separate from the character and card. Deliberate completion, no jump or grin.",
+      "references": [
+        "01-idle.png"
+      ],
+      "canvas": {
+        "width": 1254,
+        "height": 1254,
+        "mode": "RGBA"
+      },
+      "sha256": "13b55197ffa3b33562fd3468a34eea85d7713b76344b8f5540a44f11b93af2d5",
+      "generatedSource": "/Users/arach/.codex/generated_images/01a10965-cd40-7913-9eae-d33a3822e9fd/exec-6ae9d594-c32e-4982-9759-fdf6d90ff07a.png"
+    },
+    {
+      "id": "06-snap-back",
+      "name": "Snap back",
+      "file": "06-snap-back.png",
+      "prompt": "Precise pose edit of the attached PLY character master for a six-pose Lattices character family. The attached file is the single identity source. Preserve EXACTLY its off-white rounded rectangular face slab, aspect ratio, thick clean dark perimeter, corner radius, green top plane, neutral material, subtle right depth plane, camera, and TWO widely spaced dark pill eyes. Do not redraw a new face or alter its proportions. Exactly the same character. Change only the supporting body and indicated pose/prop. Same square transparent canvas dimensions as reference, same character scale, same baseline at 85 percent canvas height. The reference face spans approximately x=14..86 percent of the canvas, and in the resting image its green upper plane begins at y=40 percent, face lower edge y=73 percent, base lower edge y=85 percent. Keep this common registration and all transparent padding; DO NOT zoom, crop tightly or auto-center to the occupied bounds. Eye width approximately 8.5 percent of canvas, spacing exactly as reference. Match outline width and clean smooth continuous edges; no flecks, halos, matte residue, disconnected dust pixels, grain or texture. All exterior empty space genuinely transparent alpha zero. Neutral off-white near #f2f2f2, near-black #141416, neutral gray, single running-green accent #33C773 on the SAME top plane. NEVER purple, violet, magenta, red, yellow, orange, or alarm colors. No mouth, nose, eyebrows, blush, arms, hands, costume or other character. No ground, no cast shadow outside character. Minimal deliberate architectural toy illustration with broad clear forms that survive a 24px image frame. No text, logos, labels, watermark. Return one PNG pose master.\n\nPOSE: COULD NOT MOVE THE WINDOW / SNAP BACK. The same broad face slab at EXACT idle x/y position, aspect ratio, material and scale. Replace lower pedestal with the same TWO broad bridge supports and wide squared transparent arch as CARRY, both feet at common baseline. The SAME window card has returned to rest on the flat green top but is now laid LOW and sideways, tilted down about 18 degrees clockwise like a supported tray, rather than the upright card in carry; a broad muted neutral gray rectangle approximately 31 percent canvas width and 10 percent tall. Simple dark border, one plain gray titlebar, no text/dots. Its entire lower edge is supported by the top, not floating. Move both unchanged pill eyes slightly down inside the same face to make a calm downward gaze. Keep eyes dark, no mouth, no sad tears. Retain green on the top edge as the character identity. Use muted gray in the card as the failure cue, NO red and NO alarm symbol, no exclamation, no cross, no check. Upright steady bridge body, card lies diagonally low, quietly unable to complete.",
+      "references": [
+        "01-idle.png"
+      ],
+      "canvas": {
+        "width": 1254,
+        "height": 1254,
+        "mode": "RGBA"
+      },
+      "sha256": "c9094b8c81fccec6f255e30463546d147e2602c3cc6f5ff8ffd8694119c91916",
+      "generatedSource": "/Users/arach/.codex/generated_images/01a10965-cd40-7913-9eae-d33a3822e9fd/exec-d6364deb-f43e-4dc5-90ae-0dcb2e20d67f.png"
+    }
+  ]
+}
