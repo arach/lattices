@@ -68,7 +68,14 @@ Requests go through `control.request.json` next to the state file and a `SIGUSR2
 The layer also tears down when its owner dies:
 
 - **MCP.** The layer watches the MCP server (`--parent-pid`) and restores the windows if the server exits.
-- **CLI.** The CLI exits once the layer is up, so the layer is detached. Run `layer close` to take it down.
+- **CLI.** The CLI exits once the layer is up, so the layer is detached. Run `layer close` to take it down when the work is done.
+
+A detached layer doesn't wait for `layer close` forever. It also comes down when:
+
+- **Its owners exit.** Every process in the opener's chain that was alive at `open` has exited.
+- **It goes idle.** 30 minutes pass with no act, no snapshot or recording request, and no use of the viewer. A recording in progress keeps the layer up. Pass `--idle-timeout <seconds>` to the host to change the lease; `0` turns it off.
+
+Either way the windows go back first, as with `layer close`.
 
 `layer status` reports the live layer. If the recorded process is gone, status removes the stale files and reports the layer as inactive.
 

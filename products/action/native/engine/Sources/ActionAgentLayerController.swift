@@ -19,6 +19,8 @@ import ScreenCaptureKit
 /// only through the panel.
 ///
 /// Lifecycle mirrors the drape: a stop file, the parent pid, or SIGTERM tears it down.
+/// A detached layer has no parent to watch, so it also leaves once its owners are gone
+/// or it has sat idle past its lease; otherwise it holds a display nobody is using.
 /// Teardown puts every moved window back where it was before the display goes away.
 @MainActor
 final class ActionAgentLayerController: NSObject {
@@ -39,6 +41,12 @@ final class ActionAgentLayerController: NSObject {
     private let parentProcessID: pid_t?
     /// The processes driving this layer, nearest first: where "go to owner" goes.
     private let ownerPIDs: [pid_t]
+    /// Owners that were alive at open. A detached CLI exits right away, so it doesn't count.
+    private let liveOwnerPIDs: [pid_t]
+    /// How long a detached layer may go without an act, a control request, or the
+    /// operator touching the viewer. Nil for a layer whose parent is watched.
+    private let idleLimit: TimeInterval?
+    private var lastActivity = Date()
     /// Narrow the move to one window, so a layer can borrow a single browser window
     /// without taking the operator's others.
     private let windowID: CGWindowID?
@@ -71,6 +79,9 @@ final class ActionAgentLayerController: NSObject {
         self.stateFile = options.options["state-file"]
         self.parentProcessID = options.options["parent-pid"].flatMap { pid_t($0) }
         self.ownerPIDs = (options.options["owner-pids"] ?? "").split(separator: ",").compactMap { pid_t($0) }
+        self.liveOwnerPIDs = ownerPIDs.filter { kill($0, 0) == 0 }
+        let idleSeconds = options.double("idle-timeout", default: 30 * 60)
+        self.idleLimit = parentProcessID == nil && idleSeconds > 0 ? idleSeconds : nil
         self.windowID = options.options["window-id"].flatMap { CGWindowID($0) }
         self.windowTitle = options.options["window-title"].flatMap { $0.isEmpty ? nil : $0.lowercased() }
         if options.options["pid"] != nil || options.options["bundle-id"] != nil || options.options["bundle-path"] != nil {
@@ -174,7 +185,10 @@ final class ActionAgentLayerController: NSObject {
                 guard let x = number("fx"), let y = number("fy"), let w = number("fw"), let h = number("fh") else { return nil }
                 return CGRect(x: x, y: y, width: w, height: h)
             }()
-            Task { @MainActor in self?.pip?.mark(point: point, frame: frame) }
+            Task { @MainActor in
+                self?.lastActivity = Date()
+                self?.pip?.mark(point: point, frame: frame)
+            }
         }
 
         if showsPiP {
@@ -188,6 +202,7 @@ final class ActionAgentLayerController: NSObject {
 
     private func showPiP() async {
         guard pip == nil, !shuttingDown, let feed else { return }
+        lastActivity = Date()
         let pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger)
         pip.hasOwner = !ownerPIDs.isEmpty
         pip.onTogglePause = { [weak self] in self?.togglePause() }
@@ -212,6 +227,7 @@ final class ActionAgentLayerController: NSObject {
     // MARK: Operator controls
 
     private func togglePause() {
+        lastActivity = Date()
         paused.toggle()
         pip?.state = liveState
         try? writeState()
@@ -439,6 +455,7 @@ final class ActionAgentLayerController: NSObject {
             logger.log("agent-layer: control signal without a readable request")
             return
         }
+        lastActivity = Date()
         var reply: [String: Any]
         if let feed {
             switch json["op"] as? String {
@@ -498,6 +515,18 @@ final class ActionAgentLayerController: NSObject {
         }
         if let parentProcessID, kill(parentProcessID, 0) != 0 {
             logger.log("agent-layer: parent \(parentProcessID) is gone, closing")
+            shutdown()
+            return
+        }
+        guard parentProcessID == nil else { return }
+        if !liveOwnerPIDs.isEmpty, liveOwnerPIDs.allSatisfy({ kill($0, 0) != 0 }) {
+            logger.log("agent-layer: owners \(liveOwnerPIDs) are gone, closing")
+            shutdown()
+            return
+        }
+        // A take in progress is the operator's to stop; it never expires underneath them.
+        if let idleLimit, feed?.recordingPath == nil, Date().timeIntervalSince(lastActivity) > idleLimit {
+            logger.log("agent-layer: idle for \(Int(idleLimit))s, closing")
             shutdown()
         }
     }
