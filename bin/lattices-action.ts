@@ -12,7 +12,7 @@
 //   lattices action call <m> [j] Raw Action agent call (params as JSON)
 //   lattices action <cmd> [args] Forward to the Action CLI in a monorepo checkout
 
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, createWriteStream } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -41,7 +41,7 @@ type Release = {
 
 function isRunning(): boolean {
   try {
-    execSync("pgrep -x Action", { stdio: "pipe" });
+    execFileSync("pgrep", ["-x", "Action"], { stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -52,10 +52,10 @@ function installedPath(): string | null {
   if (existsSync(INSTALL_PATH)) return INSTALL_PATH;
   // Respect LaunchServices registration outside /Applications (e.g. ~/Applications)
   try {
-    const url = execSync(
-      `mdfind "kMDItemCFBundleIdentifier == '${ACTION_BUNDLE_ID}'" | head -1`,
+    const url = execFileSync(
+      "mdfind", ["kMDItemCFBundleIdentifier == '" + ACTION_BUNDLE_ID + "'"],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
-    ).trim();
+    ).trim().split("\n")[0];
     if (url && existsSync(url)) return url;
   } catch {}
   return null;
@@ -64,8 +64,8 @@ function installedPath(): string | null {
 function installedVersion(appPath: string): string | null {
   try {
     const plist = resolve(appPath, "Contents/Info.plist");
-    const out = execSync(
-      `/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' '${plist}'`,
+    const out = execFileSync(
+      "/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", plist],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
     ).trim();
     return out || null;
@@ -99,7 +99,7 @@ function findCheckout(): string | null {
   if (process.env.ACTION_ROOT) candidates.push(process.env.ACTION_ROOT);
   candidates.push(resolve(__dirname, "../products/action"));
   try {
-    const top = execSync("git rev-parse --show-toplevel", {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
@@ -159,8 +159,8 @@ async function latestActionRelease(): Promise<Release | null> {
 function installAppFromDmg(dmgPath: string): void {
   const mountPoint = mkdtempSync(join(tmpdir(), "action-mount-"));
   try {
-    execSync(
-      `hdiutil attach -nobrowse -readonly -mountpoint '${mountPoint}' '${dmgPath}'`,
+    execFileSync(
+      "hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint, dmgPath],
       { stdio: "pipe" }
     );
     const mountedApp = resolve(mountPoint, ACTION_APP_NAME);
@@ -168,10 +168,10 @@ function installAppFromDmg(dmgPath: string): void {
       throw new Error(`${ACTION_APP_NAME} not found in mounted disk image`);
     }
     rmSync(INSTALL_PATH, { recursive: true, force: true });
-    execSync(`cp -R '${mountedApp}' '${INSTALL_PATH}'`);
+    execFileSync("cp", ["-R", mountedApp, INSTALL_PATH]);
   } finally {
     try {
-      execSync(`hdiutil detach '${mountPoint}' -quiet`, { stdio: "pipe" });
+      execFileSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" });
     } catch {}
     rmSync(mountPoint, { recursive: true, force: true });
   }

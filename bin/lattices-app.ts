@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawnSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, chmodSync, createWriteStream, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -83,7 +83,7 @@ function requireBundleNotRunningForBuild(): void {
   console.error("Refusing to rebuild Lattices.app while that bundle is running.");
   console.error("Rewriting or re-signing a live Mach-O can make macOS kill it later with Code Signature Invalid.");
   console.error(`Running PID(s): ${running.map((proc) => proc.pid).join(", ")}`);
-  console.error("Use `lattices app restart` to quit, rebuild, and relaunch, or run `lattices app quit` before `lattices app build`.");
+  console.error("Use `lats app restart` to quit, rebuild, and relaunch, or run `lats app quit` before `lats app build`.");
   process.exit(1);
 }
 
@@ -354,7 +354,7 @@ function printAppStatus(): void {
 
 function relaunchIfNeeded(shouldLaunch: boolean, extraArgs: string[] = []): void {
   if (!shouldLaunch) {
-    console.log("App updated. Launch with: lattices app");
+    console.log("App updated. Launch with: lats app");
     return;
   }
   launch(extraArgs);
@@ -373,7 +373,10 @@ function resolveSigningIdentity(): string | null {
 
 function bundleTeamIdentifier(): string | null {
   try {
-    const output = execSync(`codesign -dv '${bundlePath}' 2>&1`, { encoding: "utf8" });
+    // codesign writes display metadata to stderr, including on success.
+    const result = spawnSync("codesign", ["-dv", bundlePath], { encoding: "utf8" });
+    if (result.error || result.status !== 0) return null;
+    const output = result.stdout + result.stderr;
     const match = output.match(/TeamIdentifier=(.+)/);
     const team = match?.[1]?.trim();
     return team && team !== "not set" ? team : null;
@@ -532,10 +535,10 @@ function syncBundleResources(): void {
   execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(binaryDir, "CompanionInstaller")], { stdio: "inherit" });
   mkdirSync(resourcesDir, { recursive: true });
   if (existsSync(iconPath)) {
-    execSync(`cp '${iconPath}' '${resolve(resourcesDir, "AppIcon.icns")}'`);
+    execFileSync("cp", [iconPath, resolve(resourcesDir, "AppIcon.icns")]);
   }
   if (existsSync(tapSoundPath)) {
-    execSync(`cp '${tapSoundPath}' '${resolve(resourcesDir, "tap.wav")}'`);
+    execFileSync("cp", [tapSoundPath, resolve(resourcesDir, "tap.wav")]);
   }
   if (existsSync(deckBuilderResourcesPath)) {
     const bundledDeckBuilderPath = resolve(resourcesDir, "DeckBuilder");
@@ -559,7 +562,7 @@ function syncBundleResources(): void {
   if (existsSync(assistantDoc)) {
     const docsDir = resolve(resourcesDir, "docs");
     mkdirSync(docsDir, { recursive: true });
-    execSync(`cp '${assistantDoc}' '${resolve(docsDir, "assistant-knowledge.md")}'`);
+    execFileSync("cp", [assistantDoc, resolve(docsDir, "assistant-knowledge.md")]);
   }
 }
 
@@ -584,7 +587,7 @@ function buildFromSource(): boolean {
   if (!existsSync(builtPath)) return false;
 
   mkdirSync(binaryDir, { recursive: true });
-  execSync(`cp '${builtPath}' '${binaryPath}'`);
+  execFileSync("cp", [builtPath, binaryPath]);
   // Source builds are local/dev — stamp channel so Settings shows DEV, not the
   // release fallback when LatticesBuildChannel is missing from Info.plist.
   writeInfoPlist({ channel: "dev" });
@@ -606,7 +609,7 @@ function buildFromSource(): boolean {
     console.log("Warning: code signing failed — permissions may not persist across rebuilds.");
   }
   // Update bundle timestamp so Finder shows the correct modified date
-  try { execSync(`touch '${bundlePath}'`, { stdio: "pipe" }); } catch {}
+  try { execFileSync("touch", [bundlePath], { stdio: "pipe" }); } catch {}
   console.log("Build complete.");
   return true;
 }
@@ -642,16 +645,16 @@ async function downloadToFile(url: string, destination: string): Promise<void> {
 function installBundleFromDmg(dmgPath: string): void {
   const mountPoint = mkdtempSync(join(tmpdir(), "lattices-mount-"));
   try {
-    execSync(`hdiutil attach -nobrowse -readonly -mountpoint '${mountPoint}' '${dmgPath}'`, { stdio: "pipe" });
+    execFileSync("hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint, dmgPath], { stdio: "pipe" });
     const mountedBundle = resolve(mountPoint, "Lattices.app");
     if (!existsSync(mountedBundle)) {
       throw new Error("Lattices.app not found in mounted disk image");
     }
     rmSync(bundlePath, { recursive: true, force: true });
-    execSync(`cp -R '${mountedBundle}' '${bundlePath}'`);
+    execFileSync("cp", ["-R", mountedBundle, bundlePath]);
   } finally {
     try {
-      execSync(`hdiutil detach '${mountPoint}' -quiet`, { stdio: "pipe" });
+      execFileSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" });
     } catch {}
     rmSync(mountPoint, { recursive: true, force: true });
   }
@@ -791,7 +794,7 @@ function runFreshHelper(args: string[]): void {
 async function upgradePackage(force: boolean): Promise<void> {
   if (isSourceCheckout()) {
     console.log(`This lattices runs from a source checkout (${cliRoot}).`);
-    console.log("Update it with: git pull && lattices app restart");
+    console.log("Update it with: git pull && lats app restart");
     return;
   }
 
@@ -819,7 +822,7 @@ async function upgradePackage(force: boolean): Promise<void> {
 
   if (!existsSync(selfScriptPath)) {
     console.log(`lattices updated, but the install moved away from ${cliRoot}.`);
-    console.log("Run `lattices app install` to re-register startup and relaunch.");
+    console.log("Run `lats app install` to re-register startup and relaunch.");
     return;
   }
 
@@ -883,7 +886,7 @@ if (cmd === "build") {
   } else if (loginAction === "status") {
     printAppStatus();
   } else {
-    console.log("Usage: lattices app login [enable|disable|status]");
+    console.log("Usage: lats app login [enable|disable|status]");
   }
 } else if (cmd === "status") {
   printAppStatus();

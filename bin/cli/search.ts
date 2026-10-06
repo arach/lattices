@@ -65,7 +65,7 @@ export async function searchCommand(
   rawArgs: string[] = []
 ): Promise<void> {
   if (!query) {
-    console.log("Usage: lattices search <query> [--quick | --terminal | --all | --deep | --sources=... | --after=... | --before=... | --json | --wid]");
+    console.log("Usage: lats search <query> [--quick | --terminal | --all | --deep | --sources=... | --after=... | --before=... | --json | --wid]");
     return;
   }
 
@@ -116,7 +116,7 @@ export async function searchCommand(
 
 export async function placeCommand(query?: string, tilePosition?: string): Promise<void> {
   if (!query) {
-    console.log("Usage: lattices place <query> [position]");
+    console.log("Usage: lats place <query> [position]");
     return;
   }
 

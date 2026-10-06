@@ -1,8 +1,8 @@
-// `lattices window move` / `lattices window place` — CLI front-ends for the
+// `lats window move` / `lats window place` — CLI front-ends for the
 // daemon's canonical window movement APIs (window.move / window.place).
 //
 // The CLI exposes slots: named positions and grid placements. Fractional typed
-// placements stay available through the raw API (`lattices call window.place`).
+// placements stay available through the raw API (`lats call window.place`).
 
 /** Named placement slots, mirroring the daemon's TilePosition catalog. */
 export const NAMED_PLACEMENTS = [
@@ -53,7 +53,7 @@ export function placementSlotsHelp(): string {
           ${NAMED_PLACEMENTS.slice(22, 30).join(", ")},
           ${NAMED_PLACEMENTS.slice(30).join(", ")}
   Grid    grid:CxR:c,r (0-based)   CxR:c,r (1-based)   grid:CxR:c0,r0-c1,r1 (span)   grid:N.K (N×N cell K)
-  Fractional placements stay available via: lattices call window.place '{"wid":123,"placement":{"kind":"fractions","x":0.5,"y":0,"w":0.5,"h":1}}'`;
+  Fractional placements stay available via: lats call window.place '{"wid":123,"placement":{"kind":"fractions","x":0.5,"y":0,"w":0.5,"h":1}}'`;
 }
 
 export type WindowMoveArgs = {
@@ -100,7 +100,7 @@ function parseFlags(args: string[]): { flags: Map<string, string | true>; positi
  * error — it must never fall back to the frontmost window.
  */
 function parseWid(raw: string | undefined): number {
-  if (raw === undefined) throw new Error("A window id is required. Find one with: lattices map");
+  if (raw === undefined) throw new Error("A window id is required. Find one with: lats map");
   if (!/^\d+$/u.test(raw)) throw new Error(`Invalid window id: ${raw} (expected a positive integer wid)`);
   const wid = Number(raw);
   if (wid <= 0 || !Number.isSafeInteger(wid)) {
@@ -178,8 +178,8 @@ export function parseWindowPlaceArgs(args: string[]): WindowMoveArgs {
 
 export function windowMoveUsage(): string {
   return `Usage:
-  lattices window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]
-  lattices window place <wid> <slot> [--display <n>] [--dry-run] [--json]
+  lats window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]
+  lats window place <wid> <slot> [--display <n>] [--dry-run] [--json]
 
 Move a specific window (CGWindowID) to another display and/or placement slot.
 --display alone preserves the window's normalized size/position on the target
@@ -187,7 +187,7 @@ display. Adding a placement snaps it into that slot instead.
 
 ${placementSlotsHelp()}
 
-Find wids with: lattices map  ·  lattices windows --json  ·  lattices search <q> --wid`;
+Find wids with: lats map  ·  lats windows --json  ·  lats search <q> --wid`;
 }
 
 type FrameJSON = { x?: number; y?: number; w?: number; h?: number };
@@ -222,11 +222,11 @@ export function describeMoveReceipt(receipt: any): string {
   } else {
     lines.push(`Move did not verify${app}${wid}${displayName}: wanted ${formatFrame(target)}, saw ${formatFrame(after)}`);
   }
-  if (receipt?.receiptId) lines.push(`  receipt ${receipt.receiptId} · undo with: lattices call action.undo '{}'`);
+  if (receipt?.receiptId) lines.push(`  receipt ${receipt.receiptId} · undo with: lats call action.undo '{}'`);
   return lines.join("\n");
 }
 
-type DaemonCallFn = (method: string, params?: Record<string, unknown> | null) => Promise<unknown>;
+type DaemonCallFn = (method: string, params?: Record<string, unknown> | null, timeoutMs?: number) => Promise<unknown>;
 
 /** Execute already-parsed move/place args against the daemon. */
 export async function runWindowMovement(
@@ -238,7 +238,9 @@ export async function runWindowMovement(
   if (parsed.placement !== undefined) params.placement = parsed.placement;
   if (parsed.display !== undefined) params.display = parsed.display;
   if (parsed.dryRun) params.dryRun = true;
-  const receipt = await daemonCall(method === "move" ? "window.move" : "window.place", params);
+  // A relocation can carry from an inactive source desktop, cross displays,
+  // then carry to the destination. Wait for verification (and recovery).
+  const receipt = await daemonCall(method === "move" ? "window.move" : "window.place", params, 60_000);
   if (parsed.json) {
     console.log(JSON.stringify(receipt, null, 2));
     return;

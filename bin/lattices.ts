@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -332,7 +332,7 @@ function groupCommand(id?: string): void {
 
 function tabCommand(groupId?: string, tabName?: string): void {
   if (!groupId) {
-    console.log("Usage: lattices tab <group-id> <tab-name|index>");
+    console.log("Usage: lats tab <group-id> <tab-name|index>");
     return;
   }
 
@@ -597,7 +597,7 @@ async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
   const type = detectProjectType(dir);
 
   if (!sub) {
-    // bare `lattices dev` — run dev server
+    // bare `lats dev` — run dev server
     if (!type) {
       console.log("No recognized project in current directory.");
       return;
@@ -649,7 +649,7 @@ async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
       const pkg = JSON.parse(readFileSync(resolve(dir, "package.json"), "utf8"));
       if (pkg.scripts?.build) {
         console.log(`Running: ${runCmd} build`);
-        execSync(`${runCmd} build`, { cwd: dir, stdio: "inherit" });
+        execFileSync(pm, pm === "npm" ? ["run", "build"] : ["build"], { cwd: dir, stdio: "inherit" });
       } else {
         console.log("No build script found in package.json.");
       }
@@ -681,7 +681,7 @@ async function devCommand(sub?: string, ...flags: string[]): Promise<void> {
   }
 
   console.log(`Unknown dev subcommand: ${sub}`);
-  console.log("Usage: lattices dev [build|restart|type]");
+  console.log("Usage: lats dev [build|restart|type]");
 }
 
 function defaultPanes(dir: string): PaneConfig[] {
@@ -875,7 +875,7 @@ async function daemonStatusCommand(): Promise<void> {
     daemonCall("daemon.status") as Promise<any>
   );
   if (!status) {
-    console.log("\x1b[90m○\x1b[0m Daemon not running (start with: lattices app)");
+    console.log("\x1b[90m○\x1b[0m Daemon not running (start with: lats app)");
     return;
   }
   const uptime = Math.round(status.uptime);
@@ -917,7 +917,7 @@ async function windowsCommand(jsonFlag: boolean): Promise<void> {
 /** The old tag command: now puts the window in the ⌘⌥ layer. */
 async function windowAssignCommand(wid?: string, layer?: string): Promise<void> {
   if (!wid || !layer) {
-    console.log("Usage: lattices layer add wid:N --to <layer>");
+    console.log("Usage: lats layer add wid:N --to <layer>");
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
@@ -928,7 +928,7 @@ async function windowAssignCommand(wid?: string, layer?: string): Promise<void> 
 
 async function focusCommand(session?: string): Promise<void> {
   if (!session) {
-    console.log("Usage: lattices focus <session-name>");
+    console.log("Usage: lats focus <session-name>");
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
@@ -962,7 +962,7 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
     }
 
     if (sessions.length < 2) {
-      console.log("Need two named sessions. Usage: lattices dev placement-smoke <session-a> <session-b>");
+      console.log("Need two named sessions. Usage: lats dev placement-smoke <session-a> <session-b>");
       console.log("Tip: launch two small lattices fixture projects first, then rerun this command.");
       return;
     }
@@ -1116,22 +1116,22 @@ async function computerCommand(subcommand?: string, ...rawArgs: string[]): Promi
   const method = aliases[sub];
 
   if (!method) {
-    console.log(`lattices computer — run bounded computer-use actions
+    console.log(`lats computer — run bounded computer-use actions
 
 Usage:
-  lattices computer prepare [--json] [--text "hello"]
-  lattices computer focus-window [--json] [--wid id] [--app name]
-  lattices computer launch-app Scout [--json]
-  lattices computer type-window --app Scout --text "hello" [--x-ratio .5 --y-ratio .86] [--execute]
-  lattices computer click --app Scout --x-ratio .5 --y-ratio .86 --treatment execute
-  lattices computer click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
-  lattices cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
-  lattices computer magic-scout "draft text" --execute
-  lattices computer scout [message] [--treatment present|execute] [--send]
-  lattices computer cursor [--json] [--style marker] [--shape arrow] [--size tiny] [--trail thread]
-  lattices computer type-text --text "hello" [--json] [--enter]
-  lattices computer demo-terminal [--json] [--dry-run]
-  lattices computer demo-terminal --text "hello" [--wid id] [--tty tty] [--iterm-session-id id] [--app iTerm2]
+  lats computer prepare [--json] [--text "hello"]
+  lats computer focus-window [--json] [--wid id] [--app name]
+  lats computer launch-app Scout [--json]
+  lats computer type-window --app Scout --text "hello" [--x-ratio .5 --y-ratio .86] [--execute]
+  lats computer click --app Scout --x-ratio .5 --y-ratio .86 --treatment execute
+  lats computer click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+  lats cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+  lats computer magic-scout "draft text" --execute
+  lats computer scout [message] [--treatment present|execute] [--send]
+  lats computer cursor [--json] [--style marker] [--shape arrow] [--size tiny] [--trail thread]
+  lats computer type-text --text "hello" [--json] [--enter]
+  lats computer demo-terminal [--json] [--dry-run]
+  lats computer demo-terminal --text "hello" [--wid id] [--tty tty] [--iterm-session-id id] [--app iTerm2]
 
 Common flags:
   --treatment observe|stage|present|execute
@@ -1370,7 +1370,7 @@ const VOICE_SUBCOMMANDS = new Set([
 ]);
 
 function voiceUsage(): void {
-  console.log("Usage: lattices voice <subcommand> [--json]\n");
+  console.log("Usage: lats voice <subcommand> [--json]\n");
   console.log("Speaking (Voice helper):");
   console.log('  say <text>        Speak text [--voice <id>] [--provider <id>] [--rate <n>]');
   console.log("  stop              Stop speaking and clear the queue");
@@ -1386,9 +1386,9 @@ function voiceUsage(): void {
   console.log("  intents           List all available intents");
   console.log("  status            Listening state and Voice helper status");
   console.log("\nExamples:");
-  console.log('  lattices voice say "Build finished"');
-  console.log('  lattices voice simulate "tile this left"');
-  console.log('  lattices voice simulate "focus chrome" --dry-run');
+  console.log('  lats voice say "Build finished"');
+  console.log('  lats voice simulate "tile this left"');
+  console.log('  lats voice simulate "focus chrome" --dry-run');
 }
 
 function takeFlag(args: string[], name: string): string | undefined {
@@ -1428,7 +1428,7 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
   };
 
   if ((subcommand === "simulate" || subcommand === "sim") && !args.filter(a => a !== "--dry-run").join(" ")) {
-    console.log("Usage: lattices voice simulate <text>");
+    console.log("Usage: lats voice simulate <text>");
     return;
   }
 
@@ -1461,10 +1461,10 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
       const rate = takeFlag(args, "--rate");
       const text = args.join(" ").trim();
       if (!text) {
-        console.log('Usage: lattices voice say <text> [--voice <id>] [--provider <id>] [--rate <n>]');
+        console.log('Usage: lats voice say <text> [--voice <id>] [--provider <id>] [--rate <n>]');
         return;
       }
-      const params: Record<string, unknown> = { text, source: { kind: "cli", label: "lattices voice say" } };
+      const params: Record<string, unknown> = { text, source: { kind: "cli", label: "lats voice say" } };
       if (voice) params.voice = voice;
       if (provider) params.provider = provider;
       if (rate) params.rate = Number(rate);
@@ -1483,7 +1483,7 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
     case "seek": {
       const seconds = Number(args[0]);
       if (!Number.isFinite(seconds)) {
-        console.log("Usage: lattices voice seek <seconds>");
+        console.log("Usage: lats voice seek <seconds>");
         return;
       }
       const result = await daemonCall("voice.seek", { seconds }, HELPER_TIMEOUT);
@@ -1504,7 +1504,7 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
       const provider = takeFlag(args, "--provider");
       const voice = args.join(" ").trim();
       if (!voice) {
-        console.log("Usage: lattices voice select <voice> [--provider <id>]");
+        console.log("Usage: lats voice select <voice> [--provider <id>]");
         return;
       }
       const params: Record<string, unknown> = { voice };
@@ -1567,14 +1567,14 @@ async function voiceCommand(subcommand?: string, ...rest: string[]): Promise<voi
 
 async function assistantCommand(subcommand?: string, ...rest: string[]): Promise<void> {
   if (subcommand !== "plan") {
-    console.log("Usage: lattices assistant plan <text> [--json]");
+    console.log("Usage: lats assistant plan <text> [--json]");
     return;
   }
 
   const jsonOut = rest.includes("--json");
   const text = rest.filter((arg) => arg !== "--json").join(" ").trim();
   if (!text) {
-    console.log("Usage: lattices assistant plan <text> [--json]");
+    console.log("Usage: lats assistant plan <text> [--json]");
     return;
   }
 
@@ -1595,16 +1595,17 @@ async function assistantCommand(subcommand?: string, ...rest: string[]): Promise
 
 async function callCommand(method?: string, ...rest: string[]): Promise<void> {
   if (!method) {
-    console.log("Usage: lattices call <method> [params-json]");
+    console.log("Usage: lats call <method> [params-json]");
     console.log("\nExamples:");
-    console.log("  lattices call daemon.status");
-    console.log("  lattices call api.schema");
-    console.log('  lattices call window.place \'{"session":"vox","placement":"left"}\'');
+    console.log("  lats call daemon.status");
+    console.log("  lats call api.schema");
+    console.log('  lats call window.place \'{"session":"vox","placement":"left"}\'');
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
     const params = rest[0] ? JSON.parse(rest[0]) : null;
-    const result = await daemonCall(method, params, 15000);
+    const relocationMethods = new Set(["window.move", "window.place", "actions.execute", "actions.undo"]);
+    const result = await daemonCall(method, params, relocationMethods.has(method) ? 60_000 : 15_000);
     console.log(JSON.stringify(result, null, 2));
   });
 }
@@ -1736,18 +1737,18 @@ function ensureIconActorAsset(idSeed: string, displayName: string, iconPath: str
 
 function actorUsage(): void {
   console.log(`Usage:
-  lattices actor app <app-name> [message] [--state=idle] [--x=520 --y=340] [--show-label]
-  lattices actor switcher [app-name ...] [--x=420 --y=220 --gap=270] [--show-label]
-  lattices actor hud <actor-id> <url> [--hud-width=360 --hud-height=240]
-  lattices actor show|hide|toggle|status
+  lats actor app <app-name> [message] [--state=idle] [--x=520 --y=340] [--show-label]
+  lats actor switcher [app-name ...] [--x=420 --y=220 --gap=270] [--show-label]
+  lats actor hud <actor-id> <url> [--hud-width=360 --hud-height=240]
+  lats actor show|hide|toggle|status
 
 Examples:
-  lattices actor app Codex "Building the release"
-  lattices actor app Talkie "Hover for latest state" --hud-url=http://localhost:5173
-  lattices actor hud switch-talkie http://localhost:5173
-  lattices actor switcher Codex Talkie
-  lattices actor toggle
-  lattices actor switcher "Google Chrome" Codex Talkie --show-label --scale=0.8
+  lats actor app Codex "Building the release"
+  lats actor app Talkie "Hover for latest state" --hud-url=http://localhost:5173
+  lats actor hud switch-talkie http://localhost:5173
+  lats actor switcher Codex Talkie
+  lats actor toggle
+  lats actor switcher "Google Chrome" Codex Talkie --show-label --scale=0.8
 `);
 }
 
@@ -2034,19 +2035,19 @@ interface HUDRegistry {
 
 function hudUsage(): void {
   console.log(`Usage:
-  lattices hud register [manifest] [--publish]   Register .lattices/hud/manifest.json
-  lattices hud publish [manifest-or-id]          Publish one HUD actor now
-  lattices hud sync                              Publish all registered HUD actors
-  lattices hud list                              List registered HUDs
-  lattices hud discover [root] [--register]      Find HUD manifests under a folder
+  lats hud register [manifest] [--publish]   Register .lattices/hud/manifest.json
+  lats hud publish [manifest-or-id]          Publish one HUD actor now
+  lats hud sync                              Publish all registered HUD actors
+  lats hud list                              List registered HUDs
+  lats hud discover [root] [--register]      Find HUD manifests under a folder
 
 Manifest:
   .lattices/hud/manifest.json
 
 Examples:
-  lattices hud register .lattices/hud/manifest.json --publish
-  lattices hud publish talkie --x=520 --y=340
-  lattices hud sync
+  lats hud register .lattices/hud/manifest.json --publish
+  lats hud publish talkie --x=520 --y=340
+  lats hud sync
 `);
 }
 
@@ -2327,7 +2328,7 @@ function hudListCommand(rest: string[]): void {
     return;
   }
   if (!registry.entries.length) {
-    console.log("No registered HUDs. Run lattices hud register .lattices/hud/manifest.json");
+    console.log("No registered HUDs. Run lats hud register .lattices/hud/manifest.json");
     return;
   }
   console.log("Registered HUDs:\n");
@@ -2570,7 +2571,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
   if (sub === "search") {
     const query = rest.join(" ");
     if (!query) {
-      console.log("Usage: lattices scan search <query>");
+      console.log("Usage: lats scan search <query>");
       return;
     }
     await withDaemon(async ({ daemonCall }) => {
@@ -2641,7 +2642,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
   if (sub === "history") {
     const wid = parseInt(rest[0], 10);
     if (isNaN(wid)) {
-      console.log("Usage: lattices scan history <wid>");
+      console.log("Usage: lats scan history <wid>");
       return;
     }
     await withDaemon(async ({ daemonCall }) => {
@@ -2667,16 +2668,16 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
   }
 
   // Unknown subcommand
-  console.log(`lattices scan — Screen text recognition
+  console.log(`lats scan — Screen text recognition
 
 Usage:
-  lattices scan               Show text from all visible windows
-  lattices scan --full        Full text dump
-  lattices scan --json        JSON output
-  lattices scan search <q>    Full-text search across scanned windows
-  lattices scan recent [n]    Show recent scans chronologically (default 20)
-  lattices scan deep          Trigger a deep Vision OCR scan
-  lattices scan history <wid> Show scan timeline for a window
+  lats scan               Show text from all visible windows
+  lats scan --full        Full text dump
+  lats scan --json        JSON output
+  lats scan search <q>    Full-text search across scanned windows
+  lats scan recent [n]    Show recent scans chronologically (default 20)
+  lats scan deep          Trigger a deep Vision OCR scan
+  lats scan history <wid> Show scan timeline for a window
 `);
 }
 
@@ -2918,7 +2919,7 @@ function gridTileBounds(position: string, screen: ScreenBounds): number[] | null
 }
 
 /**
- * Legacy `lattices tile <position>`: prefer the canonical daemon placement
+ * Legacy `lats tile <position>`: prefer the canonical daemon placement
  * (window.place, frontmost target). Only when the daemon is down fall back to
  * the AppleScript path — and say so, since that path is frontmost-app,
  * primary-display only.
@@ -2991,9 +2992,9 @@ function createOrAttach(): void {
 
 function attach(name: string): void {
   if (isInsideTmux()) {
-    execSync(`tmux switch-client -t "${name}"`, { stdio: "inherit" });
+    execFileSync("tmux", ["switch-client", "-t", name], { stdio: "inherit" });
   } else {
-    execSync(`tmux attach -t "${name}"`, { stdio: "inherit" });
+    execFileSync("tmux", ["attach", "-t", name], { stdio: "inherit" });
   }
 }
 
@@ -3165,15 +3166,15 @@ switch (command) {
       await tileFrontmostCommand(args[1]);
     } else {
       console.log("Usage:");
-      console.log("  lattices tile <position>");
-      console.log("  lattices tile family [app-name] [region]");
-      console.log("  lattices tile all [app-name] [region]\n");
+      console.log("  lats tile <position>");
+      console.log("  lats tile family [app-name] [region]");
+      console.log("  lats tile all [app-name] [region]\n");
       console.log("Examples:");
-      console.log("  lattices tile left");
-      console.log("  lattices tile family");
-      console.log("  lattices tile family right");
-      console.log("  lattices tile family iTerm2");
-      console.log("  lattices tile all Google Chrome left\n");
+      console.log("  lats tile left");
+      console.log("  lats tile family");
+      console.log("  lats tile family right");
+      console.log("  lats tile family iTerm2");
+      console.log("  lats tile all Google Chrome left\n");
       console.log("Positions: left, right, top, bottom, top-left, top-right,");
       console.log("           bottom-left, bottom-right, maximize, center,");
       console.log("           left-third, center-third, right-third");
@@ -3214,9 +3215,9 @@ switch (command) {
     } else {
       const { windowMoveUsage } = await import("./cli/window.ts");
       console.log("Usage:");
-      console.log("  lattices window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]");
-      console.log("  lattices window place <wid> <slot> [--display <n>] [--dry-run] [--json]");
-      console.log("  lattices window assign <wid> <layer>      Same as: lattices layer add wid:N --to <layer>");
+      console.log("  lats window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]");
+      console.log("  lats window place <wid> <slot> [--display <n>] [--dry-run] [--json]");
+      console.log("  lats window assign <wid> <layer>      Same as: lats layer add wid:N --to <layer>");
       console.log("");
       console.log(windowMoveUsage());
     }
@@ -3291,7 +3292,7 @@ switch (command) {
     if (args[1] === "status") {
       await daemonStatusCommand();
     } else {
-      console.log("Usage: lattices daemon status");
+      console.log("Usage: lats daemon status");
     }
     break;
   case "dev":
@@ -3352,5 +3353,5 @@ switch (command) {
     break;
   default:
     console.log(`Unknown command: ${command}`);
-    console.log("Run `lattices help` for the full command reference.");
+    console.log("Run `lats help` for the full command reference.");
 }
