@@ -29,7 +29,8 @@ enum ActionBlinkInput {
         holdMs: Int,
         accessibilityFirst: Bool,
         anyDisplay: Bool,
-        pointerEventLogPath: String?
+        pointerEventLogPath: String?,
+        handBack: Bool = true
     ) throws -> String {
         if !anyDisplay {
             guard ActionAgentLayerDisplay.contains(point) else {
@@ -69,11 +70,66 @@ enum ActionBlinkInput {
         CGWarpMouseCursorPosition(saved)
         CGAssociateMouseAndMouseCursorPosition(1)
 
-        let refocused = handBackFocus(to: previous, after: target)
+        // The operator clicking through the viewer keeps the focus the click gave, so
+        // their typing follows it; an agent's click hands it straight back.
+        let refocused = handBack && handBackFocus(to: previous, after: target)
         var detail = "\(Int(point.x)),\(Int(point.y)) via=pointer pointer=\(Int(saved.x)),\(Int(saved.y))"
         if refocused { detail += " refocused=\(previous?.bundleIdentifier ?? "pid \(previous?.processIdentifier ?? 0)")" }
         if gesture.recorded { detail += " pointerEvent=\(gesture.correlationId)" }
         return detail
+    }
+
+    // MARK: Drag and scroll
+
+    /// A drag held entirely on the layer: the pointer leaves the operator's screens for
+    /// the length of the gesture (kept short by default) and comes straight back. Unlike a
+    /// click it has no accessibility equivalent, and events posted straight to the app
+    /// don't reach web content, so the mouse-down activates the app until focus is
+    /// handed back.
+    static func drag(from start: CGPoint, to end: CGPoint, durationMs: Int, anyDisplay: Bool, pointerEventLogPath: String?, handBack: Bool = true) throws -> String {
+        try requireOnLayer([start, end], command: "blink-drag", anyDisplay: anyDisplay)
+        let previous = frontmostPID().flatMap(NSRunningApplication.init(processIdentifier:))
+        let target = ownerOfWindow(at: start)
+        let saved = try borrowPointer {
+            try ActionNativeAutomation.drag(from: start, to: end, durationMs: durationMs, pointerEventLogPath: pointerEventLogPath)
+        }
+        var detail = "\(Int(start.x)),\(Int(start.y))→\(Int(end.x)),\(Int(end.y)) via=pointer pointer=\(Int(saved.x)),\(Int(saved.y))"
+        if handBack, handBackFocus(to: previous, after: target) {
+            detail += " refocused=\(previous?.bundleIdentifier ?? "pid \(previous?.processIdentifier ?? 0)")"
+        }
+        return detail
+    }
+
+    /// Scroll wheel events go to the window under the pointer and activate nothing, so a
+    /// scroll needs the pointer on the layer only for the instant the events post.
+    static func scroll(at point: CGPoint, deltaX: Double, deltaY: Double, durationMs: Int, anyDisplay: Bool) throws -> String {
+        try requireOnLayer([point], command: "blink-scroll", anyDisplay: anyDisplay)
+        let saved = try borrowPointer {
+            try ActionNativeAutomation.scroll(at: point, deltaX: deltaX, deltaY: deltaY, durationMs: durationMs)
+        }
+        return "\(Int(point.x)),\(Int(point.y)) dx=\(Int(deltaX)) dy=\(Int(deltaY)) via=pointer pointer=\(Int(saved.x)),\(Int(saved.y))"
+    }
+
+    private static func requireOnLayer(_ points: [CGPoint], command: String, anyDisplay: Bool) throws {
+        guard !anyDisplay else { return }
+        for point in points where !ActionAgentLayerDisplay.contains(point) {
+            throw ActionHostError.accessibilityActionFailed(
+                "\(command) refused: \(Int(point.x)),\(Int(point.y)) is not on an agent layer (open one, or pass --any-display)"
+            )
+        }
+    }
+
+    /// Decouples the physical mouse, runs `body`, warps the pointer back and re-couples.
+    /// Returns where the pointer was.
+    private static func borrowPointer(_ body: () throws -> Void) throws -> CGPoint {
+        let saved = CGEvent(source: nil)?.location ?? .zero
+        CGAssociateMouseAndMouseCursorPosition(0)
+        defer {
+            CGWarpMouseCursorPosition(saved)
+            CGAssociateMouseAndMouseCursorPosition(1)
+        }
+        try body()
+        return saved
     }
 
     /// Roles whose AXPress is the click. Containers that also advertise AXPress (groups,
@@ -153,8 +209,23 @@ enum ActionBlinkInput {
         anyDisplay: Bool
     ) throws -> String {
         try requireLayerWindow(app, anyDisplay: anyDisplay)
-        if accessibilityFirst, let role = insertText(text, into: app) {
-            return "\(targetLabel(for: app)) \(text.count) chars via=ax role=\(role)"
+        // "url\n" is text plus a submit. An accessibility write can't press Return, and a
+        // single-line field drops the newline, so insert the text and press Return after.
+        var body = text
+        var submits = 0
+        while body.hasSuffix("\n") {
+            body.removeLast()
+            submits += 1
+        }
+        if accessibilityFirst, !body.isEmpty, !body.contains("\n"), let role = insertText(body, into: app) {
+            if submits > 0, !confirmFocusedField(of: app, action: kAXConfirmAction) {
+                try borrowFocus(of: app, anyDisplay: anyDisplay) {
+                    for _ in 0..<submits {
+                        try postKeyPressToApp(app: app, key: "return", modifiers: [], holdMicroseconds: 8_000)
+                    }
+                }
+            }
+            return "\(targetLabel(for: app)) \(text.count) chars via=ax role=\(role)\(submits > 0 ? " +return" : "")"
         }
         var landed = false
         try borrowFocus(of: app, anyDisplay: anyDisplay) {
@@ -181,9 +252,14 @@ enum ActionBlinkInput {
         guard AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success,
               settable.boolValue,
               let before = stringAttribute(element, kAXValueAttribute),
-              AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success,
-              // A web view applies the edit in its content process, a beat later.
-              waitForValue(of: element, toContain: text, changedFrom: before, timeoutMs: 300) else { return nil }
+              AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString) == .success else { return nil }
+        // A web view applies the edit in its content process, a beat later.
+        if waitForValue(of: element, toContain: text, changedFrom: before, timeoutMs: 300) {
+            return stringAttribute(element, kAXRoleAttribute)
+        }
+        // The field took the write but reshaped it (trimmed, autocompleted, formatted).
+        // Typing it again on top would double it, so a changed value counts as landed.
+        guard let after = stringAttribute(element, kAXValueAttribute), after != before else { return nil }
         return stringAttribute(element, kAXRoleAttribute)
     }
 
@@ -213,11 +289,87 @@ enum ActionBlinkInput {
     }
 
     static func press(_ key: String, modifiers: [String], into app: NSRunningApplication, anyDisplay: Bool) throws -> String {
+        let combo = modifiers.isEmpty ? key : "\(modifiers.joined(separator: "+"))+\(key)"
+        // Most chords are a menu's key equivalent (⌘N, ⌘L, ⌘T). Pressing that item
+        // through accessibility runs the same command without bringing the app forward.
+        try requireLayerWindow(app, anyDisplay: anyDisplay)
+        if let item = pressMenuEquivalent(key, modifiers: modifiers, in: app) {
+            return "\(targetLabel(for: app)) \(combo) via=ax menu=\"\(item)\""
+        }
+        // Return and Escape in a text field are its confirm and cancel actions.
+        if modifiers.isEmpty, let action = ["return": kAXConfirmAction, "escape": kAXCancelAction][key],
+           confirmFocusedField(of: app, action: action) {
+            return "\(targetLabel(for: app)) \(combo) via=ax \(action)"
+        }
         try borrowFocus(of: app, anyDisplay: anyDisplay) {
             try postKeyPressToApp(app: app, key: key, modifiers: modifiers, holdMicroseconds: 8_000)
         }
-        let combo = modifiers.isEmpty ? key : "\(modifiers.joined(separator: "+"))+\(key)"
-        return "\(targetLabel(for: app)) \(combo)"
+        return "\(targetLabel(for: app)) \(combo) via=keys"
+    }
+
+    /// Performs AXConfirm or AXCancel on the app's focused text element, if it offers it.
+    private static func confirmFocusedField(of app: NSRunningApplication, action: String) -> Bool {
+        // In a text area Return is a newline, not a submit.
+        guard let field = focusedTextElement(of: app),
+              stringAttribute(field, kAXRoleAttribute) != kAXTextAreaRole,
+              actionNames(field).contains(action) else { return false }
+        return AXUIElementPerformAction(field, action as CFString) == .success
+    }
+
+    /// Finds the enabled menu item whose key equivalent is this chord and presses it.
+    /// Only chords with a modifier besides Shift are menu equivalents worth looking for;
+    /// a bare key belongs to the focused element.
+    private static func pressMenuEquivalent(_ key: String, modifiers: [String], in app: NSRunningApplication) -> String? {
+        guard key.count == 1, modifiers.contains(where: { $0 != "shift" }) else { return nil }
+        // AXMenuItemCmdModifiers: Shift 1, Option 2, Control 4, and 8 when Command is absent.
+        var mask = 0
+        if modifiers.contains("shift") { mask |= 1 }
+        if modifiers.contains("opt") || modifiers.contains("option") { mask |= 2 }
+        if modifiers.contains("ctrl") || modifiers.contains("control") { mask |= 4 }
+        if !modifiers.contains("cmd") && !modifiers.contains("command") { mask |= 8 }
+        let char = key.uppercased()
+
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        var bar: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, kAXMenuBarAttribute as CFString, &bar) == .success,
+              let bar, CFGetTypeID(bar) == AXUIElementGetTypeID() else { return nil }
+
+        func children(_ element: AXUIElement) -> [AXUIElement] {
+            var value: CFTypeRef?
+            AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
+            return (value as? [AXUIElement]) ?? []
+        }
+        func number(_ element: AXUIElement, _ name: String) -> Int? {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+            return (value as? NSNumber)?.intValue
+        }
+        func find(in menu: AXUIElement, depth: Int) -> AXUIElement? {
+            for item in children(menu) {
+                if stringAttribute(item, kAXMenuItemCmdCharAttribute)?.uppercased() == char,
+                   (number(item, kAXMenuItemCmdModifiersAttribute) ?? 0) == mask,
+                   (number(item, kAXEnabledAttribute) ?? 1) != 0 {
+                    return item
+                }
+                if depth < 2 {
+                    for submenu in children(item) {
+                        if let found = find(in: submenu, depth: depth + 1) { return found }
+                    }
+                }
+            }
+            return nil
+        }
+        // The app menu (index 0) holds Quit and Hide; never reach for those by chord.
+        for barItem in children(bar as! AXUIElement).dropFirst() {
+            for menu in children(barItem) {
+                if let item = find(in: menu, depth: 0),
+                   AXUIElementPerformAction(item, kAXPressAction as CFString) == .success {
+                    return stringAttribute(item, kAXTitleAttribute) ?? char
+                }
+            }
+        }
+        return nil
     }
 
     /// Makes `app` frontmost, runs `body`, waits for the app to take the events, and puts
@@ -245,7 +397,11 @@ enum ActionBlinkInput {
         if let focused = focusedWindow(), onLayer(focused) { return }
         var windows: CFTypeRef?
         AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &windows)
-        guard let layerWindow = ((windows as? [AXUIElement]) ?? []).first(where: onLayer) else {
+        let all = (windows as? [AXUIElement]) ?? []
+        // No windows anywhere: a key such as ⌘N can only reach the app itself, and the
+        // window it opens is adopted by the layer.
+        if all.isEmpty, !layers.isEmpty { return }
+        guard let layerWindow = all.first(where: onLayer) else {
             throw ActionHostError.accessibilityActionFailed(
                 "blink refused: \(targetLabel(for: app)) has no window on an agent layer (open one, or pass --any-display)"
             )
@@ -363,13 +519,33 @@ enum ActionAgentLayerDisplay {
     /// Posted by the host after each blink act, so the layer's viewer can mark the spot.
     static let actNotification = Notification.Name("com.arach.action.agent-layer.act")
 
-    /// Tell a running layer where an act landed: the click point, or the focused field's
-    /// frame for typing and keys. Global top-left coordinates; the layer ignores spots
-    /// off its display.
-    static func announceAct(at point: CGPoint? = nil, focusedIn app: NSRunningApplication? = nil) {
+    /// How far ahead of a pointer act the viewer's pointer sets off, so it lands as the
+    /// act does rather than after it.
+    static let aimLeadMilliseconds: UInt32 = 260
+
+    /// Tell a running layer where a pointer act is about to land, and give its pointer a
+    /// head start. Costs nothing when no layer is up.
+    static func announceAim(at point: CGPoint) {
+        guard contains(point) else { return }
+        post(["kind": "aim", "x": point.x, "y": point.y])
+        usleep(aimLeadMilliseconds * 1_000)
+    }
+
+    /// Tell a running layer where an act landed: the point of a click, drag (with where it
+    /// started) or scroll (with its wheel delta), or the focused field's frame for typing
+    /// and keys. Global top-left coordinates; the layer ignores spots off its display.
+    static func announceAct(
+        _ kind: String = "click",
+        at point: CGPoint? = nil,
+        from start: CGPoint? = nil,
+        deltaY: Double? = nil,
+        focusedIn app: NSRunningApplication? = nil
+    ) {
         var info: [String: Any] = [:]
         if let point {
-            info = ["x": point.x, "y": point.y]
+            info = ["kind": kind, "x": point.x, "y": point.y]
+            if let start { info["fromX"] = start.x; info["fromY"] = start.y }
+            if let deltaY { info["dy"] = deltaY }
         } else if let app {
             let element = AXUIElementCreateApplication(app.processIdentifier)
             var focused: CFTypeRef?
@@ -384,9 +560,13 @@ enum ActionAgentLayerDisplay {
                   let positionRef, let sizeRef,
                   AXValueGetValue(positionRef as! AXValue, .cgPoint, &origin),
                   AXValueGetValue(sizeRef as! AXValue, .cgSize, &size) else { return }
-            info = ["fx": origin.x, "fy": origin.y, "fw": size.width, "fh": size.height]
+            info = ["kind": "field", "fx": origin.x, "fy": origin.y, "fw": size.width, "fh": size.height]
         }
         guard !info.isEmpty else { return }
+        post(info)
+    }
+
+    private static func post(_ info: [String: Any]) {
         DistributedNotificationCenter.default().postNotificationName(
             actNotification, object: nil, userInfo: info, deliverImmediately: true
         )

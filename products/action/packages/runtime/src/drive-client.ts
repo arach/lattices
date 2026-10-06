@@ -304,7 +304,7 @@ export function inferAxTier(input: {
   const kind = input.actionKind?.toLowerCase() ?? "";
   const targetMode = input.targetMode?.toLowerCase();
 
-  if (input.blink && (kind === "click" || kind === "type" || kind === "press-key")) {
+  if (input.blink && ["click", "type", "press-key", "drag", "scroll"].includes(kind)) {
     return "blink";
   }
 

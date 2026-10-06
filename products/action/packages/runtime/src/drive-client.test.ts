@@ -24,7 +24,9 @@ describe("drive client", () => {
     assert.equal(inferAxTier({ actionKind: "click", channel: "blink", targetMode: "coordinate", blink: true }), "blink");
     assert.equal(inferAxTier({ actionKind: "type", blink: true }), "blink");
     assert.equal(inferAxTier({ actionKind: "press-key", blink: true }), "blink");
-    // Only click/type/press-key blink; a drag stays attention even with a layer up.
-    assert.equal(inferAxTier({ actionKind: "drag", blink: true }), "attention");
+    // A drag or scroll held on the layer blinks; anywhere else a drag needs attention.
+    assert.equal(inferAxTier({ actionKind: "drag", blink: true }), "blink");
+    assert.equal(inferAxTier({ actionKind: "scroll", blink: true }), "blink");
+    assert.equal(inferAxTier({ actionKind: "drag" }), "attention");
   });
 });

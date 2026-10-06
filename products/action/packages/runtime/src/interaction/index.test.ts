@@ -95,6 +95,12 @@ describe("agent layer routing", () => {
     ]);
   });
 
+  test("press-key reads a chord string the way an agent writes it", async () => {
+    const { calls, context } = harness({ pid: 42, bounds: layer.bounds });
+    await executeInteractionAction(act("press-key", { key: "cmd+l" }), undefined, context);
+    assert.deepEqual(calls, [["blink-key", "--key", "l", "--modifiers", "cmd", "--pid", "42"]]);
+  });
+
   test("a layer with no known app leaves keyboard acts alone", async () => {
     const { calls, context } = harness({ bounds: layer.bounds });
     assert.equal(blinkRouteFor(act("type", { text: "x" }), undefined, context), undefined);
@@ -102,9 +108,19 @@ describe("agent layer routing", () => {
     assert.equal(calls[0]?.[0], "type-text");
   });
 
-  test("drag and scroll never blink", () => {
-    const { context } = harness(layer);
-    assert.equal(blinkRouteFor(act("drag", { from: { x: 5100, y: 1 }, to: { x: 5200, y: 1 } }), undefined, context), undefined);
-    assert.equal(blinkRouteFor(act("scroll", { point: { x: 5100, y: 1 }, deltaY: 3 }), undefined, context), undefined);
+  test("a drag held on the layer blinks; one leaving it, or carrying a file, doesn't", async () => {
+    const { calls, context } = harness(layer);
+    const onLayer = act("drag", { from: { x: 5100, y: 10 }, to: { x: 5200, y: 10 } });
+    assert.equal(blinkRouteFor(act("drag", { from: { x: 5100, y: 1 }, to: { x: 100, y: 1 } }), undefined, context), undefined);
+    assert.equal(blinkRouteFor(act("drag", { from: { x: 5100, y: 1 }, to: { x: 5200, y: 1 }, filePath: "/tmp/a" }), undefined, context), undefined);
+    await executeInteractionAction(onLayer, undefined, context);
+    assert.deepEqual(calls, [["blink-drag", "--from-x", "5100", "--from-y", "10", "--to-x", "5200", "--to-y", "10"]]);
+  });
+
+  test("a scroll on the layer blinks", async () => {
+    const { calls, context } = harness(layer);
+    assert.equal(blinkRouteFor(act("scroll", { point: { x: 100, y: 1 }, deltaY: 3 }), undefined, context), undefined);
+    await executeInteractionAction(act("scroll", { point: { x: 5100, y: 1 }, deltaY: -400 }), undefined, context);
+    assert.deepEqual(calls, [["blink-scroll", "--x", "5100", "--y", "1", "--delta-x", "0", "--delta-y", "-400"]]);
   });
 });

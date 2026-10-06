@@ -518,6 +518,11 @@ export interface AgentLayerWindow {
   title: string | null;
   /** Frame before the window moved onto the layer. Restored at teardown. */
   original: Bounds;
+  /**
+   * Opened after the layer went up (launched for it, ⌘N, a pop-up). Never on the
+   * operator's screen, so teardown closes it rather than restoring it.
+   */
+  born?: boolean;
 }
 
 /**
@@ -912,6 +917,7 @@ export interface CaptureEngine {
   captureFullScreenshot(path: string): Promise<RuntimeArtifact>;
   consumeStageControls(): Promise<string[]>;
   resolveTarget(query: TargetQuery): Promise<ResolvedTarget>;
-  performAction(action: RuntimeAction, target?: ResolvedTarget): Promise<void>;
+  /** Resolves to how the act landed (the host detail, e.g. "via=ax"), when the engine knows. */
+  performAction(action: RuntimeAction, target?: ResolvedTarget): Promise<string | undefined | void>;
   replayArtifact(path: string): Promise<void>;
 }

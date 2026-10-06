@@ -36,7 +36,25 @@ export interface AgentLayerOpenInput {
   windowId?: number;
   /** Move only windows whose title contains this, case-insensitively. */
   windowTitle?: string;
+  /**
+   * Open this in the subject app without activating it, once its windows are on the
+   * layer. A bare host reads as https. Needs bundleId or pid.
+   */
+  url?: string;
+  /**
+   * Don't ask the app for a window when it has none: the caller makes one itself, right
+   * on the layer (a browser through DevTools). Windows that appear are still adopted.
+   */
+  windowless?: boolean;
   owner?: AgentLayerOwner;
+}
+
+export interface AgentLayerMark {
+  kind: "aim" | "click" | "drag" | "scroll" | "field";
+  point?: { x: number; y: number };
+  from?: { x: number; y: number };
+  frame?: { x: number; y: number; width: number; height: number };
+  dy?: number;
 }
 
 export interface AgentLayerSnapshotInput {
@@ -92,7 +110,9 @@ export function parseAgentLayerOpen(input: {
   pip?: unknown;
   windowId?: unknown;
   windowTitle?: unknown;
+  url?: unknown;
   owner?: unknown;
+  windowless?: unknown;
 }): AgentLayerOpenInput {
   const bundleId = typeof input.bundleId === "string" && input.bundleId.trim() ? input.bundleId.trim() : undefined;
   const pid = optionalPositiveInt(input.pid, "pid");
@@ -107,6 +127,14 @@ export function parseAgentLayerOpen(input: {
   const pip = input.pip === undefined || input.pip === null ? undefined : input.pip !== false && input.pip !== "off" && input.pip !== "false";
   const windowId = optionalPositiveInt(input.windowId, "windowId");
   const windowTitle = typeof input.windowTitle === "string" && input.windowTitle.trim() ? input.windowTitle.trim() : undefined;
+  const url = typeof input.url === "string" && input.url.trim() ? input.url.trim() : undefined;
+  if (url && !bundleId && pid === undefined) {
+    throw new Error('url needs the app to open it in: pass bundleId too, e.g. "com.apple.Safari"');
+  }
+  if (url && (windowId !== undefined || windowTitle)) {
+    // The app picks the window a URL lands in, which may be one the operator still has.
+    throw new Error("url opens in the app's front window, so it can't be combined with windowId or windowTitle");
+  }
   const owner: AgentLayerOwner = input.owner === "detached" ? "detached" : DEFAULT_OWNER;
   return {
     ...(bundleId ? { bundleId } : {}),
@@ -115,6 +143,8 @@ export function parseAgentLayerOpen(input: {
     ...(pip !== undefined ? { pip } : {}),
     ...(windowId !== undefined ? { windowId } : {}),
     ...(windowTitle ? { windowTitle } : {}),
+    ...(url ? { url } : {}),
+    ...(input.windowless === true ? { windowless: true } : {}),
     owner,
   };
 }
@@ -252,6 +282,12 @@ export class AgentLayerDirector {
     if (request.windowTitle) {
       args.push("--window-title", request.windowTitle);
     }
+    if (request.url) {
+      args.push("--url", request.url);
+    }
+    if (request.windowless) {
+      args.push("--windowless", "1");
+    }
 
     const { stdout } = await this.runHost(args);
     const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
@@ -371,6 +407,21 @@ export class AgentLayerDirector {
 
   async stopRecording(): Promise<{ ok: boolean; path?: string }> {
     return this.control("record-stop", {}, RECORD_WAIT_MS);
+  }
+
+  /**
+   * Show an act on the viewer, for acts the layer's host did not run (DevTools input
+   * into a browser on the layer): the pointer gliding to it, a press, a trail, a field
+   * lighting up. Global top-left points.
+   */
+  async mark(act: AgentLayerMark): Promise<void> {
+    await this.control("mark", {
+      kind: act.kind,
+      ...(act.point ? { x: act.point.x, y: act.point.y } : {}),
+      ...(act.from ? { fromX: act.from.x, fromY: act.from.y } : {}),
+      ...(act.frame ? { fx: act.frame.x, fy: act.frame.y, fw: act.frame.width, fh: act.frame.height } : {}),
+      ...(act.dy !== undefined ? { dy: act.dy } : {}),
+    });
   }
 
   /** Leaves a request next to the state file, signals the layer, and waits for its reply. */

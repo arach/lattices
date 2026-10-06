@@ -9,6 +9,8 @@ import { promisify } from "node:util";
 
 import { DriverIdentityContext } from "./driver-identity.js";
 import { DriveCursorPresenter, parseDriveCursorStyle } from "./drive-cursor-presenter.js";
+import { type LayerView } from "./layer-primitives.js";
+import { LayerDriver, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -34,6 +36,9 @@ import type {
 } from "@action/protocol";
 import {
   analyzeScreenshotVision,
+  ensureLayerBrowser,
+  spacesBinding,
+  openBrowserWindow,
   CompanionClient,
   DriveAgentClient,
   inferAxTier,
@@ -118,6 +123,10 @@ const nativeHostPath = resolve(
 const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath });
 const stageDirector = new StageDirector(nativeHostPath);
 const agentLayerDirector = new AgentLayerDirector(nativeHostPath);
+/** What the last layer snapshot showed, so primitives can read points in its pixels. */
+let layerView: LayerView | undefined;
+/** The drive the layer runs as: every act on it is a step of this one lease. */
+let layerLease: { leaseId: string; owned: boolean } | undefined;
 const driverIdentity = new DriverIdentityContext();
 const cursorPresenter = new DriveCursorPresenter({
   start: async ({ lease, label, point }) => startAgentCursor({ nativeHostPath, lease, label, point }),
@@ -427,6 +436,8 @@ async function ensureDriveLeaseForAct(input: {
   axTier: AxActionTier;
   actionKind: string;
   description: string;
+  /** False for a blink act on the agent layer: nothing of it shows on the operator's screen. */
+  presentCursor?: boolean;
 }): Promise<DriveLease> {
   let lease = await driveClient.touch({
     leaseId: input.leaseId,
@@ -467,7 +478,11 @@ async function ensureDriveLeaseForAct(input: {
     axTier: input.axTier,
     actionKind: input.actionKind,
   }]);
-  await cursorPresenter.ensure(lease);
+  if (input.presentCursor === false) {
+    await cursorPresenter.suspend(lease.leaseId);
+  } else {
+    await cursorPresenter.ensure(lease);
+  }
   return lease;
 }
 
@@ -1026,23 +1041,34 @@ const tools: Tool[] = [
   tool(
     "action.layer.open",
     "Open Agent Layer",
-    "Move an app's windows onto a private virtual display off in a corner of the arrangement, with a small picture-in-picture viewer on the user's screen. While the layer is up, coordinate clicks on it, type, and press-key run as blink acts: save the cursor and frontmost app, act, restore. One layer at a time; opening again closes the previous one first.",
+    "Move an app's windows onto a private virtual display off in a corner of the arrangement, with a small picture-in-picture viewer on the user's screen. While the layer is up, coordinate clicks on it, type, and press-key run as blink acts: save the cursor and frontmost app, act, restore. One layer at a time; opening again closes the previous one first. "
+      + "The app need not be running or have a window: a bundleId that isn't running is launched in the background, an app with no windows gets a new one, "
+      + "and windows the app opens later (cmd+n, pop-ups) move onto the layer by themselves. Pass url to start on a page, e.g. { bundleId: \"com.apple.Safari\", url: \"news.ycombinator.com\" }. "
+      + "The layer is one drive: it begins a lease named for the task (or the app and page), every act on the layer runs under it, and action.layer.close releases it. The reply carries its leaseId.",
     objectSchema({
-      bundleId: textProperty("App whose windows move onto the layer."),
+      bundleId: textProperty("App whose windows move onto the layer. Launched in the background if it isn't running."),
+      url: textProperty("A URL, bare host or file path to open in the app once it is on the layer, without bringing it forward. Needs bundleId or pid."),
       pid: numberProperty("Process id instead of bundleId."),
       width: numberProperty("Layer display width in points. Pass with height."),
       height: numberProperty("Layer display height in points. Pass with width."),
       pip: booleanProperty("Show the picture-in-picture viewer. Defaults to on."),
       windowId: numberProperty("Move only this window (kCGWindowNumber). Use to borrow one window of an app the user is also using, such as a browser."),
       windowTitle: textProperty("Move only windows whose title contains this text."),
+      browser: booleanProperty("Open Action's own Chrome on the layer instead of an app. Clicks, typing, scrolls and go reach its pages through DevTools, so nothing of the user's moves, and action.layer.js can read the page. Shares its profile and port with the browser_* tools."),
+      profile: textProperty("Action Chrome profile to open with browser: true. Defaults to agent-browser."),
+      task: textProperty("What the agent is doing on the layer: the drive's name in runs and the supervision HUD. Defaults to the app and page."),
+      leaseId: textProperty("Run the layer under this existing drive lease instead of beginning one."),
     }),
     { readOnlyHint: false, idempotentHint: false },
   ),
   tool(
     "action.layer.close",
     "Close Agent Layer",
-    "Take the agent layer down. Moved windows return to their original frames and the virtual display is removed.",
-    objectSchema(),
+    "Take the agent layer down. Moved windows return to their original frames and the virtual display is removed. Releases the drive the layer began, with outcome and summary.",
+    objectSchema({
+      outcome: textProperty("How the layer's drive ended: done (default), failed or cancelled."),
+      summary: textProperty("One line on what was done, kept with the drive."),
+    }),
     { readOnlyHint: false, idempotentHint: true },
   ),
   tool(
@@ -1074,6 +1100,113 @@ const tools: Tool[] = [
     { readOnlyHint: false, idempotentHint: false },
   ),
   tool(
+    "action.layer.click",
+    "Click on Agent Layer",
+    "Click a point on the agent layer, or a control by its accessibility label. Points are pixels in the last action.layer.snapshot image, so look, then click what you saw. "
+      + "In a browser on the layer (action.layer.open { browser: true }) the click goes into the page through DevTools and nothing of the user's moves. Elsewhere it lands as a blink: pressable controls take an accessibility press, anything else gets a pointer click that leaves the user's screens and comes straight back. "
+      + "Returns how it landed and a fresh snapshot to check the result.",
+    objectSchema({
+      x: numberProperty("Pixels in the last action.layer.snapshot image (what you looked at), or points on the layer display with space: \"layer\"."),
+      y: numberProperty("Paired with x."),
+      label: textProperty("Click the control with this label instead of a point: its text, aria-label or placeholder in a browser page, its accessibility title, description or value in an app."),
+      selector: textProperty("In a browser on the layer: click the first visible element matching this CSS selector."),
+      holdMs: numberProperty("Press and hold this long. Some controls, such as SwiftUI toggles, need it."),
+      space: enumProperty(["snapshot", "layer"], "How to read x and y. Defaults to snapshot."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional: one is taken for you."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.type",
+    "Type on Agent Layer",
+    "Type text into the focused field of the layer's app. A trailing \\n submits (Return). Inserted through accessibility where the field allows it, so focus never moves.",
+    objectSchema({
+      text: textProperty("Text to type. End with \\n to submit."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["text"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.press",
+    "Press Key on Agent Layer",
+    "Press a key or shortcut in the layer's app: \"return\", \"escape\", \"cmd+l\", \"cmd+shift+t\", \"⌘N\". Shortcuts that are menu items run through the menu by accessibility; the rest borrow focus for a few milliseconds.",
+    objectSchema({
+      key: textProperty("Key or chord."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["key"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.drag",
+    "Drag on Agent Layer",
+    "Drag from one point to another on the agent layer: sliders, window edges, list items, selections. Points as in action.layer.click. The pointer is on the layer only for the length of the drag.",
+    objectSchema({
+      from: objectProperty("Start point: { x, y } or [x, y]."),
+      to: objectProperty("End point: { x, y } or [x, y]."),
+      durationMs: numberProperty("How long the drag takes. Defaults to 200."),
+      space: enumProperty(["snapshot", "layer"], "How to read the points. Defaults to snapshot."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["from", "to"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.scroll",
+    "Scroll on Agent Layer",
+    "Scroll the view under a point on the agent layer. dy and dx are wheel pixels: positive dy is a wheel turned up, which most apps show as moving toward the top. Scroll once and look rather than reasoning from the sign.",
+    objectSchema({
+      x: numberProperty("Pixels in the last action.layer.snapshot image (what you looked at), or points on the layer display with space: \"layer\"."),
+      y: numberProperty("Paired with x."),
+      dy: numberProperty("Vertical wheel pixels. Try -400 to move down a screenful."),
+      dx: numberProperty("Horizontal wheel pixels."),
+      space: enumProperty(["snapshot", "layer"], "How to read x and y. Defaults to snapshot."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["x", "y"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.go",
+    "Go to URL on Agent Layer",
+    "Load a URL in the layer's app: a full URL, a bare host (read as https) or a file path. In a browser on the layer it navigates the visible tab and waits for the page to start rendering; elsewhere the app opens the URL in the background.",
+    objectSchema({
+      url: textProperty("URL, bare host or file path."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["url"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.js",
+    "Run JavaScript on Agent Layer",
+    "Evaluate JavaScript in the visible page of a browser on the layer and return its value (promises are awaited). For reading the page or for what the other acts can't express; prefer click, type and go for interaction. Needs a browser opened with action.layer.open { browser: true }.",
+    objectSchema({
+      code: textProperty("An expression, e.g. \"document.title\" or \"[...document.querySelectorAll('h2')].map(h => h.innerText)\"."),
+      look: booleanProperty("Snapshot the layer after it runs. Defaults to off."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["code"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.run",
+    "Run Steps on Agent Layer",
+    "Run a list of acts on the layer as one call, then look once. Each step names one verb with a short form: "
+      + "{ go: \"news.ycombinator.com\" }, { click: \"More\" } (a label), { click: [420, 310] } (snapshot pixels), { type: \"hello\\n\" }, { press: \"cmd+l\" }, "
+      + "{ scroll: -400 } (mid-view) or { scroll: { at: [x, y], dy: -400 } }, { drag: [[x, y], [x, y]] }, { wait: 500 }, { wait: \"settled\" }, { wait: \"Sign in\" } (until the text shows), "
+      + "{ js: \"document.title\" }, { note: \"Opening the thread\" }, { look: true }. "
+      + "Or pass file: a .json list of steps, or a .ts/.js module whose default export is async (layer) => { await layer.go(\"example.com\"); await layer.click(\"More information\") }, with one method per verb taking the same short forms. "
+      + "Stops at the first step that fails and says which.",
+    objectSchema({
+      steps: { type: "array", items: { type: "object" }, description: "Steps in order, each { verb: value }." },
+      file: textProperty("Absolute path to a .json steps file or a .ts/.js script, instead of steps."),
+      look: booleanProperty("Snapshot the layer at the end and return it. Defaults to on."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
     "action.layer.status",
     "Agent Layer Status",
     "Read whether an agent layer is up: its display id, global bounds, PiP state, and the windows on it with their original frames.",
@@ -1089,6 +1222,8 @@ const tools: Tool[] = [
         "RuntimeAction object. kind is one of click, type, press-key, drag, scroll, focus-window, open-app. "
         + "Any other kind declared in ActionKind has no handler in the macOS runtime and is rejected rather than silently skipped. "
         + "focus-window and open-app need input.bundleId — an app name is not accepted; focus-window also takes an optional input.title to pick a window. "
+        + "open-app takes input.url to open a page or file in that app, and input.background: true to open it without bringing it forward (automatic for the agent layer's app). "
+        + "press-key takes a chord in input.key, written however you like: \"return\", \"cmd+l\", \"cmd+shift+t\", \"⌘⇧T\"; input.modifiers also works. It presses keys only — use a type act for text. "
         + "click accepts input.holdMs for press-and-hold (requires a point); some controls, including SwiftUI Toggle, do not actuate on a plain click and need a hold. "
         + "scroll takes a point plus input.deltaX/deltaY and an optional input.durationMs. Deltas are raw scroll wheel values, "
         + "not a screen direction: which way the content moves is up to the target app, so scroll once and observe rather than reasoning from the sign.",
@@ -1180,6 +1315,134 @@ async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, dir
     result: completed.result as JsonObject | undefined,
     error: completed.error,
   };
+}
+
+function rememberLayerView(snapshot: { ok: boolean; crop?: LayerView["crop"]; width?: number; height?: number }): void {
+  if (snapshot.ok && snapshot.crop && snapshot.width && snapshot.height) {
+    layerView = { crop: snapshot.crop, width: snapshot.width, height: snapshot.height };
+  }
+}
+
+/**
+ * One primitive: read the agent's points against what it last saw, run the act as a
+ * blink through action.act.execute, then look again so the reply shows the result.
+ */
+/** "Safari · en.wikipedia.org" from com.apple.Safari and the page it opened on. */
+export function layerTaskName(input: { bundleId?: string; url?: string; title?: string | null }): string {
+  const app = input.bundleId?.split(".").pop() ?? input.title ?? "Agent layer";
+  let page: string | undefined;
+  if (input.url) {
+    try {
+      page = new URL(/^[a-z][a-z0-9+.-]*:/i.test(input.url) ? input.url : `https://${input.url}`).host || undefined;
+    } catch {
+      page = undefined;
+    }
+  }
+  return page ? `${app} · ${page}` : app;
+}
+
+/**
+ * The layer's drive: the caller's lease when it passes one, else a background lease
+ * begun for the layer and released with it. Acts on the layer all run under it, so a
+ * session reads as one drive rather than a row per scroll.
+ */
+async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
+  const previous = layerLease;
+  layerLease = undefined;
+  if (previous?.owned) {
+    await handlers["action.drive.release"]({ leaseId: previous.leaseId, outcome: "done" }).catch(() => undefined);
+  }
+  const given = optionalString(args.leaseId);
+  if (given) {
+    layerLease = { leaseId: given, owned: false };
+    return given;
+  }
+  const identity = driverIdentity.get();
+  const begun = await driveClient.begin({
+    agent: identity.agent,
+    task: optionalString(args.task) ?? layerTaskName({
+      bundleId: optionalString(args.bundleId),
+      url: optionalString(args.url),
+    }),
+    mode: "background",
+    // The viewer is the supervision here: its notes and pointer sit on the layer, not
+    // on the operator's screen.
+    showSupervisionLabel: false,
+  });
+  if (begun.status !== "granted") {
+    return undefined;
+  }
+  await persistDriveSession(begun.lease, [{
+    type: "drive.lease_began",
+    at: begun.lease.startedAt,
+    leaseId: begun.lease.leaseId,
+    agent: begun.lease.agent,
+    task: begun.lease.task,
+    mode: begun.lease.mode,
+    sessionId: begun.lease.sessionId,
+  }]);
+  await cursorPresenter.suspend(begun.lease.leaseId);
+  layerLease = { leaseId: begun.lease.leaseId, owned: true };
+  return begun.lease.leaseId;
+}
+
+const layerDriver = new LayerDriver({
+  status: () => agentLayerDirector.status(),
+  view: () => layerView,
+  async guard() {
+    const refusal = await agentLayerDirector.actRefusal();
+    if (refusal) {
+      throw new Error(refusal);
+    }
+  },
+  async blink(action) {
+    const executed = await handlers["action.act.execute"]({
+      action: action as unknown as JsonObject,
+      ...(layerLease ? { leaseId: layerLease.leaseId } : {}),
+    }) as { result?: { host?: string }; drive?: { leaseId?: string } };
+    return { host: executed.result?.host, leaseId: executed.drive?.leaseId };
+  },
+  async touch(kind) {
+    await heartbeatDrive({ leaseId: layerLease?.leaseId, axTier: "semantic", actionKind: `layer.${kind}` }).catch(() => undefined);
+  },
+  mark: (act) => agentLayerDirector.mark(act).catch(() => undefined),
+  async look() {
+    const snapshot = await agentLayerDirector.snapshot({});
+    rememberLayerView(snapshot);
+    return snapshot;
+  },
+  async note(text) {
+    await publishDriveNote(text, layerLease?.leaseId).catch(() => undefined);
+  },
+});
+
+/**
+ * One act on the layer through the driver, then a look so the reply shows the result.
+ * A leaseId passed to the call runs the act under that drive instead of the layer's.
+ */
+async function layerAct(verb: LayerVerb, args: JsonObject): Promise<JsonObject> {
+  const { look, leaseId, ...rest } = args;
+  const lease = layerLease;
+  const given = optionalString(leaseId);
+  if (given) {
+    layerLease = { leaseId: given, owned: false };
+  }
+  let result: Record<string, unknown>;
+  try {
+    result = await layerDriver.step({ verb, args: rest });
+  } finally {
+    if (given) {
+      layerLease = lease;
+    }
+  }
+  const reply: Record<string, unknown> = { ok: true, [verb]: result, leaseId: given ?? lease?.leaseId };
+  if (look !== false) {
+    // Long enough for a click's redraw or a page to start loading; the snapshot says
+    // how long the layer has been still, so a caller can tell a settled frame.
+    await new Promise((done) => setTimeout(done, 350));
+    reply.snapshot = await layerDriver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
+  }
+  return reply as JsonObject;
 }
 
 const handlers: Record<string, ToolHandler> = {
@@ -1642,6 +1905,13 @@ const handlers: Record<string, ToolHandler> = {
 
     const agentLayer = await agentLayerDirector.routing();
     const blinkRoute = engine.blinkRoute(action, target, agentLayer);
+    // Work that never touches the operator's screen: a blink act on the layer, or an app
+    // opened in the background (which the layer adopts). No cursor, cues or countdown.
+    const onLayerApp = agentLayer?.bundleId !== undefined && action.input?.bundleId === agentLayer.bundleId;
+    const offScreen = Boolean(blinkRoute)
+      || (action.kind === "open-app" && (action.input?.background === true || onLayerApp))
+      // An accessibility press or value on the layer's app moves nothing on screen.
+      || ((action.kind === "click" || action.kind === "type") && onLayerApp && action.input?.label !== undefined);
     const channel = blinkRoute ? "blink" : target?.mode === "coordinate" ? "hid" : "native";
     const axTier = inferAxTier({
       actionKind: action.kind,
@@ -1654,9 +1924,10 @@ const handlers: Record<string, ToolHandler> = {
       axTier,
       actionKind: action.kind,
       description: action.description,
+      presentCursor: !offScreen,
     });
 
-    const takesPointer = requiresPointerFocusWarning({ action, target, axTier, channel });
+    const takesPointer = !offScreen && requiresPointerFocusWarning({ action, target, axTier, channel });
     let pointerFocusWarningShown = false;
     if (
       takesPointer
@@ -1699,20 +1970,21 @@ const handlers: Record<string, ToolHandler> = {
     // performAction throws for anything it could not carry out — including an action kind the
     // runtime has no handler for — and the tool dispatcher turns a throw into an isError reply.
     // Reaching this line is therefore the success signal; the literal below is not an assumption.
-    // A blink act lands on the hidden layer display; its coordinates are not on the
-    // user's screen, so the synthetic cursor stays put instead of travelling off-screen.
-    const stagedPoint = blinkRoute ? undefined : actPoint(action, target);
-    const stagedHighlight = blinkRoute ? undefined : actHighlight(target);
-    await stageCursor({
-      lease,
-      point: stagedPoint,
-      highlight: stagedHighlight,
-      label: (action.description || action.kind).slice(0, 40),
-      wait: true,
-    });
+    // Off-screen work shows in the layer's viewer, not on the operator's screen: the
+    // overlay was suspended above, so there is no cursor to stage.
+    if (!offScreen) {
+      await stageCursor({
+        lease,
+        point: actPoint(action, target),
+        highlight: actHighlight(target),
+        label: (action.description || action.kind).slice(0, 40),
+        wait: true,
+      });
+    }
 
+    let hostDetail: string | undefined;
     try {
-      await engine.performAction(action, target, { agentLayer });
+      hostDetail = await engine.performAction(action, target, { agentLayer });
     } catch (error) {
       if (pointerFocusWarningShown) {
         try {
@@ -1728,7 +2000,9 @@ const handlers: Record<string, ToolHandler> = {
       }
       throw error;
     }
-    await presentActCue({ lease, action, target });
+    if (!offScreen) {
+      await presentActCue({ lease, action, target });
+    }
 
     return {
       ok: true,
@@ -1738,6 +2012,9 @@ const handlers: Record<string, ToolHandler> = {
         status: "succeeded",
         channel,
         detail: action.description,
+        // How it landed: via=ax touched nothing of the operator's; via=keys or
+        // via=pointer borrowed focus or the pointer for a moment.
+        ...(hostDetail ? { host: hostDetail } : {}),
         axTier,
       },
       action,
@@ -1981,7 +2258,28 @@ const handlers: Record<string, ToolHandler> = {
       full: optionalBoolean(args.full),
       out: optionalString(args.out),
     });
+    rememberLayerView(snapshot);
     return { ok: true, snapshot };
+  },
+
+  "action.layer.click": (args) => layerAct("click", args),
+  "action.layer.type": (args) => layerAct("type", args),
+  "action.layer.press": (args) => layerAct("press", args),
+  "action.layer.drag": (args) => layerAct("drag", args),
+  "action.layer.scroll": (args) => layerAct("scroll", args),
+  "action.layer.go": (args) => layerAct("go", args),
+  "action.layer.js": (args) => layerAct("js", { ...args, look: args.look ?? false }),
+
+  async "action.layer.run"(args) {
+    const file = optionalString(args.file);
+    const result = file
+      ? await layerDriver.runFile(file)
+      : await layerDriver.run(parseLayerSteps(args.steps));
+    const reply: Record<string, unknown> = { ...result, leaseId: layerLease?.leaseId };
+    if (args.look !== false && (await agentLayerDirector.status()).active) {
+      reply.snapshot = await layerDriver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
+    }
+    return reply as JsonObject;
   },
 
   async "action.layer.record"(args) {
@@ -1999,9 +2297,17 @@ const handlers: Record<string, ToolHandler> = {
     return { ok: true, layer: await agentLayerDirector.showViewer() };
   },
   async "action.layer.open"(args) {
+    // Action's Chrome: DevTools takes the acts, so nothing on the user's screens moves.
+    const browser = args.browser === true || optionalString(args.profile)
+      ? await ensureLayerBrowser(optionalString(args.profile))
+      : undefined;
     const status = await agentLayerDirector.open({
-      bundleId: optionalString(args.bundleId),
-      pid: optionalNumber(args.pid),
+      bundleId: browser ? undefined : optionalString(args.bundleId),
+      pid: browser?.pid ?? optionalNumber(args.pid),
+      // A browser navigates through DevTools once it is on the layer, never through
+      // Launch Services, which could hand the URL to the user's own Chrome.
+      url: browser ? undefined : optionalString(args.url),
+      windowless: browser !== undefined,
       width: optionalNumber(args.width),
       height: optionalNumber(args.height),
       pip: optionalBoolean(args.pip),
@@ -2011,12 +2317,59 @@ const handlers: Record<string, ToolHandler> = {
       // back if the server dies before action.layer.close runs.
       owner: "caller",
     });
-    return { ok: true, layer: status };
+    for (const leaseId of cursorPresenter.presentingLeaseIDs()) {
+      await cursorPresenter.suspend(leaseId);
+    }
+    if (browser && status.layer && status.layer.windows.length === 0) {
+      await openBrowserWindow(browser.port, status.layer.bounds);
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const next = await agentLayerDirector.status();
+        if ((next.layer?.windows.length ?? 0) > 0) break;
+        await new Promise((done) => setTimeout(done, 100));
+      }
+    }
+    const leaseId = await beginLayerLease(browser
+      ? { ...args, bundleId: browser.bundleId }
+      : args);
+    // An app assigned to one Desktop keeps its windows there, so the layer shows nothing.
+    const subject = browser?.bundleId ?? optionalString(args.bundleId);
+    const pinned = subject ? await spacesBinding(subject) : undefined;
+    const warning = pinned
+      ? `${subject} is assigned to one Desktop (Dock > Options > Assign To), so macOS keeps its windows there and the layer shows none of them. Set Assign To: None${browser ? ", or install Chrome for Testing: bunx @puppeteer/browsers install chrome@stable --path ~/Library/Application\\ Support/Action/browsers" : ""}.`
+      : undefined;
+    if (browser && optionalString(args.url)) {
+      const went = await layerDriver.step({ verb: "go", args: { url: optionalString(args.url) } });
+      return { ok: true, leaseId, browser, go: went, ...(warning ? { warning } : {}), layer: await agentLayerDirector.status() };
+    }
+    if (browser) {
+      return { ok: true, leaseId, browser, ...(warning ? { warning } : {}), layer: status };
+    }
+    if (warning) {
+      return { ok: true, leaseId, warning, layer: status };
+    }
+    if (status.active && status.layer && status.layer.windows.length === 0) {
+      return {
+        ok: true,
+        leaseId,
+        layer: status,
+        hint: "The layer is up but holds no windows yet. Windows the app opens from here move over by themselves: press-key \"cmd+n\", or open-app with input.url.",
+      };
+    }
+    return { ok: true, leaseId, layer: status };
   },
 
-  async "action.layer.close"() {
+  async "action.layer.close"(args) {
     const status = await agentLayerDirector.close();
-    return { ok: !status.active, layer: status };
+    const lease = layerLease;
+    layerLease = undefined;
+    if (lease?.owned) {
+      await handlers["action.drive.release"]({
+        leaseId: lease.leaseId,
+        outcome: optionalString(args.outcome) ?? "done",
+        ...(optionalString(args.summary) ? { summary: optionalString(args.summary) } : {}),
+      }).catch(() => undefined);
+    }
+    return { ok: !status.active, ...(lease ? { leaseId: lease.leaseId } : {}), layer: status };
   },
 
   async "action.layer.status"() {
