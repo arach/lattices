@@ -56,8 +56,10 @@ enum WindowSpaceCarry {
             }
         }
         defer {
-            if WindowTiler.getCurrentSpace() != startSpace {
-                _ = WindowTiler.switchToSpace(spaceId: startSpace)
+            if WindowTiler.getDisplaySpaces().first(where: { $0.displayId == display.displayId })?.currentSpaceId != startSpace {
+                if !WindowTiler.switchToSpace(spaceId: startSpace) {
+                    diag.warn("WindowSpaceCarry: could not restore display \(display.displayIndex) view to Space \(startSpace)")
+                }
             }
         }
         guard waitUntil(timeout: 1.0, { isOnScreen(wid) }), let home = bounds(wid) else {
@@ -70,10 +72,18 @@ enum WindowSpaceCarry {
         }
         defer { closeMissionControl(windowManager) }
         var thumb = home
+        let openedAt = Date()
+        var stableSince = Date()
         let settled = waitUntil(timeout: 1.5) {
-            guard let now = bounds(wid), now != home else { return false }
-            defer { thumb = now }
-            return now == thumb
+            guard let now = bounds(wid) else { return false }
+            if now != thumb {
+                thumb = now
+                stableSince = Date()
+            }
+            // A small lone window can keep its original bounds in Mission
+            // Control. Stable geometry, not a mandatory size change, is the
+            // condition for a settled thumbnail.
+            return Date().timeIntervalSince(openedAt) >= 0.35 && Date().timeIntervalSince(stableSince) >= 0.15
         }
         guard settled else { return .failed("no Mission Control thumbnail for window \(wid)") }
         guard let bar = spacesBar(windowManager, containing: CGPoint(x: home.midX, y: home.midY)) else {
@@ -139,9 +149,10 @@ enum WindowSpaceCarry {
         let desktops = Set(WindowTiler.getDisplaySpaces().flatMap { $0.spaces.map(\.id) })
         if let fullScreen = after.first(where: { !desktops.contains($0) }) {
             closeMissionControl(windowManager)
-            leaveFullScreen(wid: wid, pid: pid, space: fullScreen)
-            diag.warn("WindowSpaceCarry: wid=\(wid) dropped between desktops and went full screen; undone")
-            return .failed("the drop missed Space \(target) and made a full-screen Space; undone")
+            let recovered = leaveFullScreen(wid: wid, pid: pid, space: fullScreen)
+            let recovery = recovered ? "left full screen" : "could not leave full screen"
+            diag.warn("WindowSpaceCarry: wid=\(wid) dropped between desktops; \(recovery)")
+            return .failed("the drop missed Space \(target) and made a full-screen Space; \(recovery)")
         }
         diag.warn("WindowSpaceCarry: wid=\(wid) stayed on \(after)")
         return .failed("the drop didn't take (window still on \(after))")
@@ -203,8 +214,8 @@ enum WindowSpaceCarry {
 
     // MARK: - Pieces
 
-    private static func leaveFullScreen(wid: UInt32, pid: pid_t, space: Int) {
-        guard WindowTiler.switchToSpace(spaceId: space) else { return }
+    private static func leaveFullScreen(wid: UInt32, pid: pid_t, space: Int) -> Bool {
+        guard WindowTiler.switchToSpace(spaceId: space) else { return false }
         usleep(300_000)
         let app = AXUIElementCreateApplication(pid)
         var value: CFTypeRef?
@@ -213,9 +224,9 @@ enum WindowSpaceCarry {
               let window = windows.first(where: { window in
                   var id: CGWindowID = 0
                   return _AXUIElementGetWindow(window, &id) == .success && id == wid
-              }) else { return }
+              }) else { return false }
         AXUIElementSetAttributeValue(window, "AXFullScreen" as CFString, kCFBooleanFalse)
-        _ = waitUntil(timeout: 2.0) { !WindowTiler.getSpacesForWindow(wid).contains(space) }
+        return waitUntil(timeout: 2.0) { !WindowTiler.getSpacesForWindow(wid).contains(space) }
     }
 
     private static func bounds(_ wid: UInt32) -> CGRect? {

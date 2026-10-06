@@ -111,192 +111,219 @@ final class ActionRuntime {
         return receipt
     }
 
-    /// Geometry moves for `window.move`: a display target with an optional
-    /// placement slot. Space moves stay in the `window.move` endpoint handler.
-    ///
-    /// With a placement the move routes through the canonical `window.place`
-    /// execution path. Without one, the window's normalized x/y/w/h within its
-    /// source display's visible frame is preserved onto the target display's
-    /// visible frame and clamped to fit.
+    /// The UI, API, and placement actions share one serialized relocation.
+    /// Display and absolute Space ID identify a single destination together.
     func executeWindowMove(params: JSON?, source: String = "daemon") throws -> JSON {
-        let displayIndex = params?["display"]?.intValue
-        let placementJSON = params?["placement"] ?? params?["position"]
+        let receipt = try executeWindowRelocation(params: params, source: source)
+        history.record(receipt)
+        return receipt
+    }
 
-        if let placementJSON {
-            guard PlacementSpec(json: placementJSON) != nil else {
-                throw RouterError.custom("Unknown placement: \(placementJSON.stringValue ?? "<object>")")
-            }
-            return try executeWindowPlace(params: params, source: source, compatibilityMethod: "window.move")
+    // Mission Control owns one global drag session, so concurrent requests must
+    // not interleave staging, transfer, and rollback operations.
+    private static let relocationLock = NSRecursiveLock()
+
+    private func executeWindowRelocation(
+        params: JSON?,
+        source: String,
+        context: ActionInvocationContext? = nil,
+        resolvedTarget: ResolvedWindowTarget? = nil
+    ) throws -> JSON {
+        let dryRun = params?["dryRun"]?.boolValue == true
+        if !dryRun && Thread.isMainThread {
+            throw RouterError.custom("Window relocation must run off the main thread")
         }
-
-        guard let displayIndex else {
+        if !dryRun { Self.relocationLock.lock() }
+        defer { if !dryRun { Self.relocationLock.unlock() } }
+        let displayIndex = params?["display"]?.intValue
+        let requestedSpaceId = params?["spaceId"]?.intValue
+        let placementJSON = params?["placement"] ?? params?["position"]
+        let placement = PlacementSpec(json: placementJSON)
+        if placementJSON != nil && placement == nil {
+            throw RouterError.custom("Unknown placement: \(placementJSON?.stringValue ?? "<object>")")
+        }
+        guard displayIndex != nil || requestedSpaceId != nil || placement != nil else {
             throw RouterError.missingParam("display, placement, or spaceId")
         }
-
-        let dryRun = params?["dryRun"]?.boolValue == true
         var trace: [String] = []
         var events: [JSON] = []
-
-        let resolved = try resolveMoveTarget(params: params, trace: &trace, events: &events)
-        guard let entry = resolved.entry, let wid = resolved.wid, let pid = resolved.pid else {
-            throw RouterError.custom("window.move requires a resolvable on-screen window; no window found for the target")
+        let resolved = try resolvedTarget ?? resolveMoveTarget(params: params, trace: &trace, events: &events)
+        guard let wid = resolved.wid, let pid = resolved.pid else {
+            throw RouterError.custom("window.move requires a resolvable window")
         }
-
-        guard let targetScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
-            throw RouterError.notFound("display \(displayIndex)")
+        let environment = relocationEnvironment(wid: wid, pid: pid)
+        let before = environment.snapshot()
+        guard let beforeFrame = before.frame, before.spaceIds.count == 1,
+              let sourceSpaceId = before.spaceIds.first else {
+            throw RouterError.custom("Window \(wid) must belong to one ordinary desktop and have observable geometry")
         }
-
-        let beforeFrame = Self.cgWindowFrameTopLeft(wid: wid) ?? CGRect(
-            x: CGFloat(entry.frame.x),
-            y: CGFloat(entry.frame.y),
-            width: CGFloat(entry.frame.w),
-            height: CGFloat(entry.frame.h)
-        )
-
-        let geometry = onMain { () -> (source: NSScreen, fractions: (x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat)?, targetFrame: CGRect?) in
-            let sourceScreen = WindowTiler.screenForWindowFrame(entry.frame)
+        let displays = WindowTiler.getDisplaySpaces()
+        guard let sourceDisplay = displays.first(where: { $0.spaces.contains(where: { $0.id == sourceSpaceId }) }),
+              sourceDisplay.displayId == before.displayId else {
+            throw RouterError.custom("Window \(wid) has inconsistent display and desktop membership")
+        }
+        let targetDisplay: DisplaySpaces
+        if let displayIndex {
+            guard let display = displays.first(where: { $0.displayIndex == displayIndex }) else {
+                throw RouterError.notFound("display \(displayIndex)")
+            }
+            targetDisplay = display
+        } else if let requestedSpaceId {
+            guard let display = displays.first(where: { $0.spaces.contains(where: { $0.id == requestedSpaceId }) }) else {
+                throw RouterError.notFound("desktop \(requestedSpaceId)")
+            }
+            targetDisplay = display
+        } else {
+            targetDisplay = sourceDisplay
+        }
+        // A placement without a display keeps the window on its own desktop.
+        let spaceId = requestedSpaceId ?? (displayIndex == nil ? sourceSpaceId : targetDisplay.currentSpaceId)
+        guard targetDisplay.spaces.contains(where: { $0.id == spaceId }) else {
+            throw RouterError.custom("Desktop \(spaceId) does not belong to display \(targetDisplay.displayIndex), or is a full-screen Space")
+        }
+        guard let sourceScreen = onMain({ DisplayGeometryMapper.screen(for: sourceDisplay, in: NSScreen.screens) }),
+              let targetScreen = onMain({ DisplayGeometryMapper.screen(for: targetDisplay, in: NSScreen.screens) }) else {
+            throw RouterError.custom("Could not resolve source and destination displays")
+        }
+        let geometry = onMain { () -> ((x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat)?, CGRect?) in
             let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
             let sourceVisible = DisplayGeometryMapper.topLeftFrame(sourceScreen.visibleFrame, primaryHeight: primaryHeight)
-            guard let fractions = DisplayGeometryMapper.normalizedFractions(of: beforeFrame, in: sourceVisible) else {
-                return (sourceScreen, nil, nil)
-            }
-            return (sourceScreen, fractions, WindowTiler.tileFrame(fractions: fractions, on: targetScreen))
+            let fractions = DisplayGeometryMapper.normalizedFractions(of: beforeFrame, in: sourceVisible)
+            if let placement { return (fractions, WindowTiler.tileFrame(for: placement, on: targetScreen)) }
+            // A desktop-only move preserves exact geometry on the same display.
+            if sourceDisplay.displayId == targetDisplay.displayId { return (fractions, beforeFrame) }
+            return (fractions, fractions.map { WindowTiler.tileFrame(fractions: $0, on: targetScreen) })
         }
-        guard let fractions = geometry.fractions, let targetFrame = geometry.targetFrame else {
-            throw RouterError.custom("window.move could not derive source geometry for wid \(wid)")
+        guard let targetFrame = geometry.1 else {
+            throw RouterError.custom("Could not derive destination geometry for window \(wid)")
         }
-        let sourceScreen = geometry.source
-        let verificationTolerance = Self.verificationTolerance(forApp: resolved.app)
-
-        trace.append("normalized frame x=\(fractions.x) y=\(fractions.y) w=\(fractions.w) h=\(fractions.h)")
-        events.append(event("plan.computeFrame", "remapped source frame onto \(targetScreen.localizedName)"))
-
+        let destination = WindowRelocation.Destination(displayId: targetDisplay.displayId, spaceId: spaceId, frame: targetFrame)
+        let tolerance = Self.verificationTolerance(forApp: resolved.app)
+        var outcome: WindowRelocation.Result?
         var blockedReason: String?
-        var requiredPermissions: [String] = []
-
         if dryRun {
-            trace.append("dry run; skipped execution")
-            events.append(event("execute.skipped", "dry run requested; no window mutation performed"))
+            trace.append("dry run; skipped relocation")
         } else if !AXIsProcessTrusted() {
             blockedReason = "accessibility-not-trusted"
-            requiredPermissions.append("accessibility")
-            trace.append("blocked: Accessibility permission required for deterministic window movement")
-            events.append(event("execute.blocked", "Accessibility permission required to move wid \(wid)"))
+            trace.append("blocked: Accessibility permission required")
         } else {
-            onMain {
-                WindowTiler.tileWindowById(wid: wid, pid: pid, fractions: fractions, on: targetScreen)
-            }
+            DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) display=\(sourceDisplay.displayIndex) spaces=\(before.spaceIds) → display=\(targetDisplay.displayIndex) space=\(spaceId)")
+            outcome = WindowRelocation.execute(from: before, to: destination, tolerance: tolerance, environment: environment)
+            trace.append(contentsOf: outcome!.trace)
+            for step in outcome!.trace { DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) \(step)") }
             DesktopModel.shared.markInteraction(wid: wid)
-            trace.append("executed window move to display \(displayIndex)")
-            events.append(event("execute.moveWindow", "moved wid \(wid) to display \(displayIndex)"))
         }
-
-        let afterFrame = dryRun ? nil : Self.waitForWindowFrame(
-            wid: wid,
-            targetFrame: targetFrame,
-            tolerance: verificationTolerance
-        )
-        let verified = dryRun ? false : (afterFrame.map { Self.framesClose($0, targetFrame, tolerance: verificationTolerance) } ?? false)
-        if dryRun {
-            trace.append("verification skipped for dry run")
-            events.append(event("verify.skipped", "dry run requested; no final frame verification performed"))
-        } else if verified {
-            trace.append("verified target frame")
-            events.append(event("verify.frame", "verified final frame"))
-        } else if blockedReason == nil {
-            trace.append("verification could not confirm exact target frame")
-            events.append(event("verify.frame", "final frame did not match target within tolerance"))
-        }
-
-        let status: String
-        if dryRun {
-            status = "planned"
-        } else if blockedReason != nil {
-            status = "blocked"
-        } else if verified {
-            status = "ok"
-        } else {
-            status = "failed"
-        }
-        let ok = status == "ok" || status == "planned"
-
+        let after = outcome?.after ?? (dryRun ? nil : environment.snapshot())
+        let verifiedFrame = after?.frame.map { Self.framesClose($0, targetFrame, tolerance: tolerance) } ?? false
+        let verifiedDisplay = after?.displayId == targetDisplay.displayId
+        let verifiedSpace = after?.spaceIds == [spaceId]
+        let verified = outcome?.verified == true && verifiedFrame && verifiedDisplay && verifiedSpace
+        let status = dryRun ? "planned" : blockedReason != nil ? "blocked" : verified ? "ok" : "failed"
+        let actionType = placement == nil ? "window.move" : "window.place"
+        events.append(event("relocation.verify", verified ? "verified display, desktop, and frame" : "\(status): \(outcome?.failure ?? trace.last ?? "not executed")"))
         var mutation: [String: JSON] = [
-            "kind": .string("moveWindowToDisplay"),
-            "wid": .int(Int(wid)),
-            "pid": .int(Int(pid)),
-            "from": Self.frameJSON(beforeFrame),
-            "to": Self.frameJSON(targetFrame),
+            "kind": .string(placement == nil ? "moveWindowToDisplay" : "placeWindow"),
+            "wid": .int(Int(wid)), "pid": .int(Int(pid)),
+            "from": Self.frameJSON(beforeFrame), "to": Self.frameJSON(targetFrame),
+            "fromSpaceIds": .array(before.spaceIds.map { .int($0) }),
+            "toSpaceId": .int(spaceId),
         ]
-        if let afterFrame { mutation["after"] = Self.frameJSON(afterFrame) }
-
-        let receiptId = Self.makeId(prefix: "exec")
+        if let afterFrame = after?.frame { mutation["after"] = Self.frameJSON(afterFrame) }
+        if let after { mutation["afterSpaceIds"] = .array(after.spaceIds.map { .int($0) }) }
         var receipt: [String: JSON] = [
-            "ok": .bool(ok),
-            "status": .string(status),
-            "receiptId": .string(receiptId),
-            "requestId": .string(Self.makeId(prefix: "req")),
-            "source": .string(source),
-            "action": .object([
-                "id": .string(Self.makeId(prefix: "act")),
-                "type": .string("window.move"),
-            ]),
-            "target": resolved.json,
-            "targetKind": .string(resolved.kind),
-            "targetResolution": .string(resolved.resolution),
+            "ok": .bool(status == "ok" || status == "planned"), "status": .string(status),
+            "receiptId": .string(Self.makeId(prefix: "exec")),
+            "requestId": .string(context?.requestId ?? Self.makeId(prefix: "req")), "source": .string(source),
+            "action": .object(["id": .string(context?.actionId ?? Self.makeId(prefix: "act")), "type": .string(actionType)]),
+            "target": resolved.json, "targetKind": .string(resolved.kind), "targetResolution": .string(resolved.resolution),
+            "wid": .int(Int(wid)), "pid": .int(Int(pid)), "spaceId": .int(spaceId),
+            "fromSpaceIds": .array(before.spaceIds.map { .int($0) }),
+            "afterSpaceIds": .array((after?.spaceIds ?? []).map { .int($0) }),
             "dryRun": .bool(dryRun),
-            "sourceDisplay": onMain { displayJSON(sourceScreen, requestedIndex: nil) },
-            "display": onMain { displayJSON(targetScreen, requestedIndex: displayIndex) },
-            "fractions": .object([
-                "x": .double(Double(fractions.x)),
-                "y": .double(Double(fractions.y)),
-                "w": .double(Double(fractions.w)),
-                "h": .double(Double(fractions.h)),
-            ]),
-            "verificationTolerance": .double(Double(verificationTolerance)),
+            "sourceDisplay": onMain { displayJSON(sourceScreen, requestedIndex: sourceDisplay.displayIndex) },
+            "display": onMain { displayJSON(targetScreen, requestedIndex: targetDisplay.displayIndex) },
+            "verificationTolerance": .double(Double(tolerance)),
             "plan": .object([
-                "actionType": .string("window.move"),
-                "target": resolved.json,
-                "steps": .array([
-                    .string("resolve target"),
-                    .string("resolve displays"),
-                    .string("remap normalized frame"),
-                    .string("move window"),
-                    .string("verify frame"),
-                ]),
+                "actionType": .string(actionType), "target": resolved.json,
+                "steps": .array(["resolve display and desktop", "stage inactive source if needed", "transfer geometry", "move to destination desktop", "verify display, desktop, and frame"].map { .string($0) }),
                 "mutations": .array([.object(mutation)]),
             ]),
             "mutations": .array([.object(mutation)]),
-            "verified": .bool(verified),
-            "trace": .array(trace.map { .string($0) }),
-            "events": .array(events),
+            "verified": .bool(verified), "verifiedFrame": .bool(verifiedFrame),
+            "verifiedDisplay": .bool(verifiedDisplay), "verifiedSpace": .bool(verifiedSpace),
+            "moved": .bool(verified && before != after), "method": .string("relocation"),
+            "trace": .array(trace.map { .string($0) }), "events": .array(events),
             "timestamp": .double(Date().timeIntervalSince1970),
+            "rollback": .object(["attempted": .bool(outcome?.rollbackAttempted == true), "verified": .bool(outcome?.rollbackVerified == true)]),
+            "undoable": .bool(verified),
         ]
-
-        receipt["wid"] = .int(Int(wid))
-        receipt["pid"] = .int(Int(pid))
+        if let fractions = geometry.0 {
+            receipt["fractions"] = .object(["x": .double(Double(fractions.x)), "y": .double(Double(fractions.y)), "w": .double(Double(fractions.w)), "h": .double(Double(fractions.h))])
+        }
+        if let placement {
+            receipt["placement"] = placement.jsonValue
+            if context == nil { receipt["compatibilityMethod"] = .string("window.move") }
+        }
+        if let method = context?.compatibilityMethod { receipt["compatibilityMethod"] = .string(method) }
         if let app = resolved.app { receipt["app"] = .string(app) }
         if let title = resolved.title { receipt["title"] = .string(title) }
         if let session = resolved.session { receipt["session"] = .string(session) }
+        if let failure = outcome?.failure { receipt["failureReason"] = .string(failure) }
         if let blockedReason {
             receipt["blockedReason"] = .string(blockedReason)
+            receipt["requiredPermissions"] = .array([.string("accessibility")])
         }
-        if !requiredPermissions.isEmpty {
-            receipt["requiredPermissions"] = .array(requiredPermissions.map { .string($0) })
+        if verified {
+            receipt["undo"] = .object(["strategy": .string("restore-frame-and-space"), "requiresCurrentFrameMatch": .bool(true), "requiresCurrentSpaceMatch": .bool(true), "frameSource": .string("mutations.from")])
         }
+        return .object(receipt)
+    }
 
-        let undoable = status == "ok" && !dryRun && afterFrame != nil
-        receipt["undoable"] = .bool(undoable)
-        if undoable {
-            receipt["undo"] = .object([
-                "strategy": .string("restore-frame"),
-                "requiresCurrentFrameMatch": .bool(true),
-                "frameSource": .string("mutations.from"),
-            ])
+    private func relocationEnvironment(wid: UInt32, pid: Int32) -> WindowRelocation.Environment {
+        let snapshot = { [self] () -> WindowRelocation.Snapshot in
+            let frame = Self.cgWindowFrameTopLeft(wid: wid)
+            let spaces = WindowTiler.getSpacesForWindow(wid).sorted()
+            let displays = WindowTiler.getDisplaySpaces()
+            let displayId: String? = onMain {
+                guard let frame else { return nil }
+                let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+                let candidates = displays.compactMap { display -> (String, CGFloat)? in
+                    guard let screen = DisplayGeometryMapper.screen(for: display, in: NSScreen.screens) else { return nil }
+                    let bounds = DisplayGeometryMapper.topLeftFrame(screen.frame, primaryHeight: primaryHeight)
+                    let intersection = bounds.intersection(frame)
+                    guard !intersection.isNull, intersection.width > 0, intersection.height > 0 else { return nil }
+                    return (display.displayId, intersection.width * intersection.height)
+                }
+                return candidates.max(by: { $0.1 < $1.1 })?.0
+            }
+            return WindowRelocation.Snapshot(frame: frame, displayId: displayId, spaceIds: spaces)
         }
-
-        let result = JSON.object(receipt)
-        history.record(result)
-        return result
+        return WindowRelocation.Environment(
+            displays: {
+                WindowTiler.getDisplaySpaces().map { .init(id: $0.displayId, index: $0.displayIndex, currentSpaceId: $0.currentSpaceId, spaceIds: $0.spaces.map(\.id)) }
+            },
+            snapshot: snapshot,
+            moveSpace: { [self] space in
+                let from = WindowTiler.getSpacesForWindow(wid)
+                if from == [space] { return nil }
+                let result = onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
+                if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
+                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space) { return reason }
+                return nil
+            },
+            moveFrame: { [self] frame in
+                onMain { WindowTiler.batchMoveAndRaiseWindows([(wid: wid, pid: pid, frame: frame)], activation: .none) }
+            },
+            wait: { predicate in
+                let deadline = Date().addingTimeInterval(1.2)
+                var observed = snapshot()
+                while !predicate(observed), Date() < deadline {
+                    usleep(50_000)
+                    observed = snapshot()
+                }
+                return observed
+            }
+        )
     }
 
     private func executeBatch(root: [String: JSON], actions: [JSON]) throws -> JSON {
@@ -367,6 +394,10 @@ final class ActionRuntime {
         var events: [JSON] = []
 
         let resolved = try resolveWindowTarget(params: params, trace: &trace, events: &events)
+        if resolved.wid != nil, resolved.pid != nil,
+           displayIndex != nil || params?["spaceId"]?.intValue != nil {
+            return try executeWindowRelocation(params: params, source: context.source, context: context, resolvedTarget: resolved)
+        }
         let screen: NSScreen
         if let displayIndex {
             guard let requestedScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
@@ -592,6 +623,9 @@ final class ActionRuntime {
 
     private func executeUndo(receipts: [JSON], params: JSON?) throws -> JSON {
         let dryRun = params?["dryRun"]?.boolValue == true
+        if !dryRun && Thread.isMainThread { throw RouterError.custom("Window undo must run off the main thread") }
+        if !dryRun { Self.relocationLock.lock() }
+        defer { if !dryRun { Self.relocationLock.unlock() } }
         let force = params?["force"]?.boolValue == true
         let source = params?["source"]?.stringValue ?? "daemon"
         let requestId = params?["requestId"]?.stringValue ?? Self.makeId(prefix: "req")
@@ -626,6 +660,10 @@ final class ActionRuntime {
         for move in moves {
             let currentFrame = Self.cgWindowFrameTopLeft(wid: move.wid)
             if !force {
+                if let expectedSpaces = move.expectedCurrentSpaceIds,
+                   WindowTiler.getSpacesForWindow(move.wid).sorted() != expectedSpaces.sorted() {
+                    conflicts.append(undoConflictJSON(move: move, currentFrame: currentFrame, reason: "current-space-mismatch"))
+                }
                 if let currentFrame, let expected = move.expectedCurrentFrame {
                     if !Self.framesClose(currentFrame, expected, tolerance: move.tolerance) {
                         conflicts.append(undoConflictJSON(move: move, currentFrame: currentFrame))
@@ -650,29 +688,36 @@ final class ActionRuntime {
             trace.append("dry run; skipped restore")
             events.append(event("undo.skipped", "dry run requested; no window mutation performed"))
         } else {
-            let restoreMoves = moves.map { move in
-                (wid: move.wid, pid: move.pid, frame: move.restoreFrame)
-            }
-            onMain {
-                WindowTiler.batchMoveAndRaiseWindows(restoreMoves)
-            }
-            trace.append("executed restore")
-            events.append(event("undo.restore", "restored \(restoreMoves.count) window\(restoreMoves.count == 1 ? "" : "s")"))
-
             plannedMoves = plannedMoves.map { planned in
                 var updated = planned
-                updated.afterFrame = Self.waitForWindowFrame(
-                    wid: planned.move.wid,
-                    targetFrame: planned.move.restoreFrame,
-                    tolerance: planned.move.tolerance
-                )
+                let move = planned.move
+                if let restoreSpace = move.restoreSpaceId {
+                    let environment = relocationEnvironment(wid: move.wid, pid: move.pid)
+                    guard let display = environment.displays().first(where: { $0.spaceIds.contains(restoreSpace) }) else {
+                        trace.append("undo failed: original desktop \(restoreSpace) is unavailable")
+                        updated.relocationVerified = false
+                        return updated
+                    }
+                    let destination = WindowRelocation.Destination(displayId: display.id, spaceId: restoreSpace, frame: move.restoreFrame)
+                    let outcome = WindowRelocation.execute(from: environment.snapshot(), to: destination, tolerance: move.tolerance, environment: environment)
+                    updated.afterFrame = outcome.after.frame
+                    updated.afterSpaceIds = outcome.after.spaceIds
+                    updated.relocationVerified = outcome.verified
+                    trace.append(contentsOf: outcome.trace.map { "undo wid=\(move.wid): \($0)" })
+                } else {
+                    // Receipts created before desktop-aware relocation only
+                    // contain a frame, so retain their original undo contract.
+                    onMain { WindowTiler.batchMoveAndRaiseWindows([(wid: move.wid, pid: move.pid, frame: move.restoreFrame)]) }
+                    updated.afterFrame = Self.waitForWindowFrame(wid: move.wid, targetFrame: move.restoreFrame, tolerance: move.tolerance)
+                }
                 return updated
             }
+            events.append(event("undo.restore", "attempted \(moves.count) window restore mutations"))
             DesktopModel.shared.markInteraction(wids: moves.map(\.wid))
         }
 
         let verified = !dryRun && blockedReason == nil && plannedMoves.allSatisfy { planned in
-            guard let after = planned.afterFrame else { return false }
+            guard let after = planned.afterFrame, planned.relocationVerified != false else { return false }
             return Self.framesClose(after, planned.move.restoreFrame, tolerance: planned.move.tolerance)
         }
 
@@ -847,7 +892,7 @@ final class ActionRuntime {
             }
         }
 
-        for key in ["placement", "position", "display", "dryRun", "wid", "session", "app", "title"] {
+        for key in ["placement", "position", "display", "spaceId", "dryRun", "wid", "session", "app", "title"] {
             copy(key, from: root)
             copy(key, from: action)
         }
@@ -969,6 +1014,8 @@ final class ActionRuntime {
                 session: session,
                 restoreFrame: restoreFrame,
                 expectedCurrentFrame: expectedCurrent,
+                restoreSpaceId: mutation["fromSpaceIds"]?.arrayValue.flatMap { $0.count == 1 ? $0.first?.intValue : nil },
+                expectedCurrentSpaceIds: mutation["afterSpaceIds"]?.arrayValue.map { $0.compactMap(\.intValue) },
                 tolerance: tolerance
             )
         }
@@ -1004,19 +1051,26 @@ final class ActionRuntime {
         if let session = move.session { obj["session"] = .string(session) }
         if let expected = move.expectedCurrentFrame { obj["expectedCurrent"] = Self.frameJSON(expected) }
         if let after = planned.afterFrame { obj["after"] = Self.frameJSON(after) }
+        if let space = move.restoreSpaceId { obj["toSpaceId"] = .int(space) }
+        if let spaces = planned.afterSpaceIds { obj["afterSpaceIds"] = .array(spaces.map { .int($0) }) }
+        if let verified = planned.relocationVerified { obj["verified"] = .bool(verified) }
         return .object(obj)
     }
 
-    private func undoConflictJSON(move: UndoMove, currentFrame: CGRect?) -> JSON {
+    private func undoConflictJSON(move: UndoMove, currentFrame: CGRect?, reason: String? = nil) -> JSON {
         var obj: [String: JSON] = [
             "receiptId": .string(move.receiptId),
             "wid": .int(Int(move.wid)),
-            "reason": .string(currentFrame == nil ? "window-frame-unavailable" : "current-frame-mismatch"),
+            "reason": .string(reason ?? (currentFrame == nil ? "window-frame-unavailable" : "current-frame-mismatch")),
             "target": Self.frameJSON(move.restoreFrame),
             "tolerance": .double(Double(move.tolerance)),
         ]
         if let currentFrame { obj["current"] = Self.frameJSON(currentFrame) }
         if let expected = move.expectedCurrentFrame { obj["expectedCurrent"] = Self.frameJSON(expected) }
+        if let spaces = move.expectedCurrentSpaceIds {
+            obj["expectedSpaceIds"] = .array(spaces.map { .int($0) })
+            obj["currentSpaceIds"] = .array(WindowTiler.getSpacesForWindow(move.wid).map { .int($0) })
+        }
         return .object(obj)
     }
 
@@ -1199,6 +1253,8 @@ private struct UndoMove {
     let session: String?
     let restoreFrame: CGRect
     let expectedCurrentFrame: CGRect?
+    let restoreSpaceId: Int?
+    let expectedCurrentSpaceIds: [Int]?
     let tolerance: CGFloat
 }
 
@@ -1206,6 +1262,8 @@ private struct PlannedUndoMove {
     let move: UndoMove
     let currentFrame: CGRect?
     var afterFrame: CGRect?
+    var afterSpaceIds: [Int]? = nil
+    var relocationVerified: Bool? = nil
 }
 
 private struct ResolvedWindowTarget {

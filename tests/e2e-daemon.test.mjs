@@ -254,15 +254,31 @@ test("window.move rejects a call with no operation", async () => {
   );
 });
 
-test("window.move rejects spaceId combined with display or placement", async () => {
-  await assert.rejects(
-    daemonCall("window.move", { wid: 999999999, spaceId: 1, display: 0 }),
-    /spaceId cannot be combined/,
-  );
-  await assert.rejects(
-    daemonCall("window.move", { wid: 999999999, spaceId: 1, placement: "left" }),
-    /spaceId cannot be combined/,
-  );
+test("window.move plans one explicit display and desktop destination without moving", async () => {
+  const windows = await daemonCall("windows.list");
+  const candidate = windows.find((window) => window.isOnScreen && window.spaceIds?.length === 1);
+  const displays = await daemonCall("spaces.list");
+  const destination = displays.find((display) => display.spaces?.length > 0);
+  if (!candidate || !destination) return;
+  const spaceId = destination.spaces[0].id;
+  const before = { frame: candidate.frame, spaces: candidate.spaceIds };
+  const receipt = await daemonCall("window.move", {
+    wid: candidate.wid, display: destination.displayIndex, spaceId, dryRun: true,
+  });
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.status, "planned");
+  assert.equal(receipt.verified, false);
+  assert.equal(receipt.spaceId, spaceId);
+  const after = (await daemonCall("windows.list")).find((window) => window.wid === candidate.wid);
+  assert.deepEqual(after.frame, before.frame, "planning must not mutate geometry");
+  assert.deepEqual(after.spaceIds, before.spaces, "planning must not mutate Space membership");
+
+  const otherDisplay = displays.find((display) => display.displayIndex !== destination.displayIndex);
+  if (otherDisplay) {
+    await assert.rejects(daemonCall("window.move", {
+      wid: candidate.wid, display: otherDisplay.displayIndex, spaceId, dryRun: true,
+    }), /space|display/i, "a mismatched display and Space must be rejected");
+  }
 });
 
 test("window.move rejects an unknown placement synchronously", async () => {
