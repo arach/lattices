@@ -57,7 +57,15 @@ public func actionRecognizeText(in imagePath: String) throws -> ActionOCRResult 
     let imageHeight = Double(cgImage.height)
 
     let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
+    // Interactive OCR must reply within the host command deadline. On macOS 27,
+    // accurate recognition can stall compiling its ANE model (even with CPU-only
+    // compute selected). The fast recognizer avoids that path; keep accurate
+    // recognition on earlier systems. Fast mode can miss small or stylized text.
+    if #available(macOS 27, *) {
+        request.recognitionLevel = .fast
+    } else {
+        request.recognitionLevel = .accurate
+    }
     request.usesLanguageCorrection = true
 
     let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])

@@ -718,6 +718,7 @@ export class MacOSCommandEngine implements CaptureEngine {
     const surfaceId = query.surfaceId ?? this.focusedSurfaceId;
     return {
       id: query.semanticId ?? query.text ?? "target",
+      point: query.point ? { ...query.point } : undefined,
       mode: query.point ? "coordinate" : "semantic",
       confidence: query.point ? 1 : 0,
       label: query.semanticId ?? query.text ?? "Resolved Target",
