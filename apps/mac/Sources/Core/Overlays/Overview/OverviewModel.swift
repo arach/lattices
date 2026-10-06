@@ -267,7 +267,7 @@ final class OverviewModel: ObservableObject {
             homes: stage.homes(),
             tucked: stage.tuckedByLayer(),
             extras: extras,
-            ocrText: OcrModel.shared.results.mapValues(\.fullText)
+            ocrText: ScreenText.shared.results.mapValues(\.fullText)
         ), alive: windows)
     }
 
@@ -325,9 +325,29 @@ final class OverviewModel: ObservableObject {
     func chooseLayer(_ id: String?) {
         var next = scope
         next.layerId = id
+        next.layerIds = id.map { [$0] } ?? []
+        next.scopedWindowIds = nil
         next.display = nil
         next.spaceId = nil
         scope = next
+        if ownsSharedSelection { LayerIndexState.shared.select(id.map { [$0] } ?? []) }
+    }
+
+    func chooseIndex(_ ids: [String], rows: [LayerIndexState.Row]) {
+        var next = scope
+        next.layerIds = ids
+        next.layerId = ids.count == 1 && layers.contains(where: { $0.id == ids[0] }) ? ids[0] : nil
+        next.scopedWindowIds = ids.isEmpty ? nil : Array(Set(rows.filter { ids.contains($0.id) }.flatMap(\.windows)))
+        if next.layerIds != scope.layerIds { next.display = nil; next.spaceId = nil }
+        scope = next
+    }
+
+    var layerIndexRows: [LayerIndexState.Row] { ownsSharedSelection ? LayerIndexState.shared.rows : indexFixtureRows }
+
+    var indexFixtureRows: [LayerIndexState.Row] {
+        let assigned = Set(inputs.layers.flatMap { $0.windows.map(\.wid) })
+        return inputs.layers.map { LayerIndexState.Row(id: $0.id, label: $0.label, windows: $0.windows.map(\.wid)) }
+            + [.init(id: "__unassigned__", label: "Unassigned", windows: inputs.windows.filter { !assigned.contains($0.wid) }.map(\.wid))]
     }
 
     /// Scope two: one Desktop of the chosen list, nil (or the same Desktop

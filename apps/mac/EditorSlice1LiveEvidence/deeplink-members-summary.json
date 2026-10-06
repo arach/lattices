@@ -1,0 +1,42 @@
+[
+  {
+    "id": "lattices",
+    "entries": 4,
+    "windowCount": 2
+  },
+  {
+    "id": "fab",
+    "entries": 4,
+    "windowCount": 3
+  },
+  {
+    "id": "talkie",
+    "entries": 4,
+    "windowCount": 2
+  },
+  {
+    "id": "scout",
+    "entries": 4,
+    "windowCount": 0
+  },
+  {
+    "id": "usetalkie",
+    "entries": 2,
+    "windowCount": 0
+  },
+  {
+    "id": "hudson",
+    "entries": 2,
+    "windowCount": 0
+  },
+  {
+    "id": "arc",
+    "entries": 2,
+    "windowCount": 0
+  },
+  {
+    "id": "agentlist",
+    "entries": 2,
+    "windowCount": 0
+  }
+]

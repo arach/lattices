@@ -1,0 +1,65 @@
+Analysis of sampling Lattices (pid 51891) every 1 millisecond
+Process:         Lattices [51891]
+Path:            /Users/USER/*/Lattices.app/Contents/MacOS/Lattices
+Load Address:    0x1040a8000
+Identifier:      dev.lattices.app.dev
+Version:         0.12.4 (0.12.4)
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  launchd [1]
+Target Type:     live task
+
+Date/Time:       2026-10-03 00:46:35.615 -0400
+Launch Time:     2026-10-03 00:45:05.719 -0400
+OS Version:      macOS 27.0 (26A428)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         61.7M
+Physical footprint (peak):  93.1M
+Idle exit:                  untracked
+----
+
+Call graph:
+    401 Thread_66030067   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 401 start  (in dyld) + 6688  [0x19db7fe80]
+    +   401 Lattices_main  (in Lattices) + 64  [0x1044289d8]  App.swift:0
+    +     401 static App.main()  (in SwiftUI) + 224  [0x1d6cbe8b8]
+    +       401 runApp<A>(_:)  (in SwiftUI) + 108  [0x1d69e3c68]
+    +         401 specialized runApp(_:)  (in SwiftUI) + 140  [0x1d65d0c84]
+    +           401 NSApplicationMain  (in AppKit) + 880  [0x1a2597c4c]
+    +             401 -[NSApplication run]  (in AppKit) + 396  [0x1a25bf90c]
+    +               401 -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]  (in AppKit) + 292  [0x1a2e4426c]
+    +                 401 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]  (in AppKit) + 780  [0x1a2e44748]
+    +                   401 _DPSNextEvent  (in AppKit) + 580  [0x1a25cc4fc]
+    +                     401 _DPSBlockUntilNextEventMatchingListInMode  (in AppKit) + 292  [0x1a290f29c]
+    +                       401 _BlockUntilNextEventMatchingListInMode  (in HIToolbox) + 48  [0x1ab5ce380]
+    +                         401 ReceiveNextEventCommon  (in HIToolbox) + 492  [0x1ab44b91c]
+    +                           401 RunCurrentEventLoopInMode  (in HIToolbox) + 320  [0x1ab448590]
+    +                             401 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19e0ef82c]
+    +                               401 __CFRunLoopRun  (in CoreFoundation) + 816  [0x19e0151d0]
+    +                                 401 __CFRunLoopDoBlocks  (in CoreFoundation) + 396  [0x19e0163f0]
+    +                                   401 __CFRUNLOOP_IS_CALLING_OUT_TO_A_BLOCK__  (in CoreFoundation) + 28  [0x19e0164b0]
+    +                                     401 thunk for @escaping @callee_guaranteed @Sendable () -> ()  (in Foundation) + 36  [0x1a0098784]
+    +                                       401 partial apply for closure #1 in NSRunLoop.schedule(options:_:)  (in Foundation) + 28  [0x1a0098754]
+    +                                         401 closure #1 in Publishers.ReceiveOn.Inner.receive(_:)  (in Combine) + 260  [0x1b4d37d44]
+    +                                           401 protocol witness for Subscriber.receive(_:) in conformance Subscribers.Sink<A, B>  (in Combine) + 24  [0x1b4d025c4]
+    +                                             401 Subscribers.Sink.receive(_:)  (in Combine) + 92  [0x1b4d01fc8]
+    +                                               401 partial apply for closure #3 in KeyboardRemapController.installObserversIfNeeded()  (in Lattices) + 16  [0x1046a30cc]  /<compiler-generated>:0
+    +                                                 401 closure #1 in KeyboardRemapController.installObserversIfNeeded()  (in Lattices) + 60  [0x10469ede0]
+    +                                                   401 KeyboardRemapController.refresh()  (in Lattices) + 432  [0x10469e040]  KeyboardRemapController.swift:170
+    +                                                     401 CapsLockHIDTransportController.enable()  (in Lattices) + 60  [0x1046a0e94]  KeyboardRemapController.swift:561
+    +                                                       401 specialized CapsLockHIDTransportController.runHIDUtil(arguments:)  (in Lattices) + 376  [0x1046a1a90]  KeyboardRemapController.swift:643
+    +                                                         401 -[NSConcreteTask waitUntilExit]  (in Foundation) + 332  [0x19f793584]
+    +                                                           401 _CFRunLoopRunSpecificWithOptions  (in CoreFoundation) + 536  [0x19e0ef82c]
+    +                                                             393 __CFRunLoopRun  (in CoreFoundation) + 1172  [0x19e015334]
+    +                                                             ! 393 __CFRunLoopServiceMachPort  (in CoreFoundation) + 160  [0x19e016aec]
+    +                                                             !   393 mach_msg  (in libsystem_kernel.dylib) + 24  [0x19df10fac]
+    +                                                             !     393 mach_msg_overwrite  (in libsystem_kernel.dylib) + 480  [0x19df19a28]
+    +                                                             !       393 mach_msg2_internal  (in libsystem_kernel.dylib) + 76  [0x19df238e0]
+    +                                                             !         393 mach_msg2_trap  (in libsystem_kernel.dylib) + 8  [0x19df10c20]
+    +                                                             7 __CFRunLoopRun  (in CoreFoundation) + 1852  [0x19e0155dc]
+
+Process snapshot: pid 51918, parent 51891, elapsed 02:12:
+/usr/bin/hidutil property --get UserKeyMapping
+No subprocess was killed and no keyboard configuration was changed by the agent.

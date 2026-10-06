@@ -361,7 +361,9 @@ struct OverviewMap: View {
     private func tileView(_ tile: Tile) -> some View {
         let wid = tile.row.wid
         let selected = model.selection.contains(wid)
-        let fill: Color = selected ? Color.white.opacity(0.2) : (tile.live ? Color(white: 0.17) : Color.white.opacity(0.025))
+        let scoped = !(model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? []).isEmpty
+        let member = scoped && tile.row.inScope
+        let fill: Color = member ? Palette.running.opacity(0.16) : scoped ? Color.clear : selected ? Color.white.opacity(0.2) : (tile.live ? Color(white: 0.17) : Color.white.opacity(0.025))
         let ink: Color = selected ? Palette.text : (tile.live ? Palette.textDim : Palette.textMuted)
         let showsApp = tile.rect.width > 36 && tile.rect.height > 15
         let showsTitle = !tile.row.title.isEmpty && tile.rect.width > 60 && tile.rect.height > 32
@@ -369,16 +371,16 @@ struct OverviewMap: View {
             RoundedRectangle(cornerRadius: 3).fill(fill)
             RoundedRectangle(cornerRadius: 3)
                 .strokeBorder(
-                    selected ? Palette.text : Color.white.opacity(tile.live ? 0.28 : 0.3),
+                    member ? Palette.running.opacity(0.65) : scoped ? Color.clear : selected ? Palette.text : Color.white.opacity(tile.live ? 0.28 : 0.3),
                     style: StrokeStyle(lineWidth: selected ? 1.5 : OverviewChrome.stroke, dash: tile.live ? [] : [4, 3])
                 )
             if showsApp {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(tile.row.app)
+                    Text(scoped && !tile.row.inScope ? tile.row.title : tile.row.app)
                         .font(Typo.monoBold(10))
                         .foregroundColor(ink)
                         .lineLimit(1)
-                    if showsTitle {
+                    if showsTitle && (!scoped || tile.row.inScope) {
                         Text(tile.row.title)
                             .font(Typo.mono(9))
                             .foregroundColor(selected ? Palette.text : Palette.textMuted)
@@ -391,7 +393,7 @@ struct OverviewMap: View {
             }
         }
         .frame(width: tile.rect.width, height: tile.rect.height)
-        .opacity(tile.row.inScope ? 1 : 0.4)
+        .opacity(tile.row.inScope ? 1 : (scoped ? 0.18 : 0.4))
         .contentShape(Rectangle())
         .onTapGesture { OverviewDeskRow.pick(wid, model: model) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.focus(wid) })
@@ -773,7 +775,10 @@ struct OverviewArrangeBox: View {
 
     @ViewBuilder
     private var layerLine: some View {
-        if let id = model.scope.layerId, let layer = model.layers.first(where: { $0.id == id }) {
+        if let ids = model.scope.layerIds, ids.count > 1 {
+            Text(model.layers.filter { ids.contains($0.id) }.map(\.label).joined(separator: " + ") + " · \(ids.count) layers")
+                .font(Typo.mono(9)).foregroundColor(Palette.textDim).lineLimit(1)
+        } else if let id = model.scope.layerId, let layer = model.layers.first(where: { $0.id == id }) {
             HStack(spacing: 6) {
                 Image(systemName: "square.3.layers.3d")
                     .font(.system(size: 10))

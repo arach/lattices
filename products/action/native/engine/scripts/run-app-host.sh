@@ -36,7 +36,7 @@ run_via_open() {
   local open_flags=(-n)
   # Pointer input must reach the current foreground target. Activating this
   # short-lived helper first makes the target consume the click for activation.
-  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "click-point" ]]; then
+  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "click-point" || "$COMMAND" == "agent-layer" || "$COMMAND" == blink-* ]]; then
     open_flags+=(-g)
   fi
   open "${open_flags[@]}" "$APP_DIR" --args "$@" --reply-file "$reply_file" >/dev/null

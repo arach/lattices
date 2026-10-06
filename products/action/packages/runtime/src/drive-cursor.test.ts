@@ -55,6 +55,11 @@ describe("agent cursor lifecycle", () => {
     }), true);
     assert.equal(requiresPointerFocusWarning({
       action: { ...action, target: { point: { x: 10, y: 20 } } },
+      axTier: "blink",
+      channel: "blink",
+    }), false);
+    assert.equal(requiresPointerFocusWarning({
+      action: { ...action, target: { point: { x: 10, y: 20 } } },
       axTier: "semantic",
       channel: "native",
     }), true);

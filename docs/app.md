@@ -385,6 +385,20 @@ without closing or changing Hyper+G, copies the PNG to the clipboard, and saves
 the same image as a Runs artifact. The command-line equivalent is
 `lats capture display [index] --clipboard --delay 3`.
 
+### Agent screenshots
+
+When a screenshot is requested through the daemon socket (`lattices capture
+window|display`, or any `capture.screenshot*` call), Lattices draws a coral
+hairline around what was captured for about a second. A tag names the agent,
+where it called from (this Mac, or `ssh <ip>`) and its project. The cue appears
+after the shot and is excluded from screen capture, so it never shows up in an
+image. Screenshots Lattices takes for itself don't trigger it.
+
+Each one is also appended to `~/.lattices/audit/captures.jsonl` with the caller,
+target and artifact path. Read it with `lattices capture log [--limit N] [--json]`.
+The CLI detects Claude Code, Codex, opencode and Cursor from their environment.
+Set `LATTICES_AGENT` to name any other agent.
+
 ### Docs
 
 Embedded quick reference with glossary, "how it works" steps, and

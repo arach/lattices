@@ -5,8 +5,13 @@ order: 3.5
 ---
 
 The menu bar app reads text from visible windows using Apple's Vision
-framework and stores results in a local SQLite database with FTS5
-full-text search. Agents can use this to "see" what's on screen.
+framework and keeps the latest results in memory, so `windows.search`,
+the command palette and Omni search match windows by what they show.
+Agents can use this to "see" what's on screen.
+
+Bundle builds also store every scan in a local SQLite database with FTS5
+full-text search. `ocr.search`, `ocr.history` and `ocr.recent` read that
+history; the free build doesn't have them.
 
 ## Enabling OCR
 

@@ -20,7 +20,13 @@ import type {
   TargetApp,
   TargetQuery,
 } from "@action/protocol";
-import { executeInteractionAction } from "./interaction/index.js";
+import {
+  blinkRouteFor,
+  executeInteractionAction,
+  type AgentLayerRouting,
+  type BlinkRoute,
+  type InteractionExecutionContext,
+} from "./interaction/index.js";
 import {
   publishPointerEventLog,
   startPointerEventLog,
@@ -726,8 +732,29 @@ export class MacOSCommandEngine implements CaptureEngine {
     };
   }
 
-  async performAction(action: RuntimeAction, target?: ResolvedTarget): Promise<void> {
-    await executeInteractionAction(action, target, {
+  /**
+   * Pass `agentLayer` when an agent layer is up: coordinate clicks on it and keyboard acts
+   * then run as blink acts (see `blinkRouteFor`).
+   */
+  async performAction(
+    action: RuntimeAction,
+    target?: ResolvedTarget,
+    options: { agentLayer?: AgentLayerRouting } = {},
+  ): Promise<void> {
+    await executeInteractionAction(action, target, this.interactionContext(options.agentLayer));
+  }
+
+  /** The blink command `performAction` would use for this act, if any. Drives tier inference. */
+  blinkRoute(
+    action: RuntimeAction,
+    target: ResolvedTarget | undefined,
+    agentLayer: AgentLayerRouting | undefined,
+  ): BlinkRoute | undefined {
+    return blinkRouteFor(action, target, this.interactionContext(agentLayer));
+  }
+
+  private interactionContext(agentLayer: AgentLayerRouting | undefined): InteractionExecutionContext {
+    return {
       runHost: this.runHost.bind(this),
       resolveCalculatorButton: (query) => calculatorButtonName(query),
       resolveBundleId: (surfaceId) => {
@@ -737,7 +764,8 @@ export class MacOSCommandEngine implements CaptureEngine {
         }
         return this.surfaces.get(resolvedSurfaceId)?.bundleId;
       },
-    });
+      ...(agentLayer ? { agentLayer } : {}),
+    };
   }
 
   async replayArtifact(path: string): Promise<void> {

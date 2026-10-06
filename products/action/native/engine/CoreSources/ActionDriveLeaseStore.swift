@@ -673,6 +673,8 @@ private enum ActionDrivePresencePublisher {
             return "Changing focus in the target app"
         case "app-api":
             return "Using the app automation interface"
+        case "blink":
+            return "Acting on the agent layer"
         case "attention":
             return "Using foreground keyboard or pointer control"
         default:

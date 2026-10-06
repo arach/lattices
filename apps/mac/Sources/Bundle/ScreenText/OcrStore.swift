@@ -1,20 +1,6 @@
 import Foundation
 import SQLite3
 
-// MARK: - Search Result
-
-struct OcrSearchResult {
-    let id: Int64
-    let wid: UInt32
-    let app: String
-    let title: String
-    let frame: WindowFrame
-    let fullText: String
-    let snippet: String
-    let timestamp: Date
-    let source: TextSource
-}
-
 // MARK: - SQLite OCR Store
 
 final class OcrStore {

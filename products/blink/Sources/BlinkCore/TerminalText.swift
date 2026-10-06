@@ -25,6 +25,9 @@ public enum TerminalText {
         lines = lines.compactMap(unframe)
         lines = lines.map(replaceLeadingMarker)
         lines = trimBlankEdges(lines)
+        lines = dropTrailingPrompts(lines)
+        lines = lines.map(stripPrivateUse)
+        lines = trimBlankEdges(lines)
         lines = dedent(lines)
         lines = fenceBoxDrawing(lines)
         lines = unwrap(lines)
@@ -92,6 +95,47 @@ public enum TerminalText {
             return indent + String(repeating: " ", count: marker.count) + rest.dropFirst(marker.count)
         }
         return line
+    }
+
+    /// A select-all copy ends on the shell prompt. Prompts drawn with a Nerd
+    /// Font carry Private Use Area glyphs no other font has: a row with two,
+    /// or one and a prompt ending (`❯`, a glyph, a powerline `▓▒░`), is one. Drop such rows from the end, then the
+    /// stray glyphs anywhere else.
+    static func dropTrailingPrompts(_ lines: [String]) -> [String] {
+        var lines = lines
+        while let last = lines.last, last.isEmpty || isPrompt(last) {
+            lines.removeLast()
+        }
+        return lines
+    }
+
+    private static let promptEnds: Set<Character> = ["❯", "➜", "λ", "$", "%", "#", ">", "→", "»", "░", "▒", "▓"]
+
+    static func isPrompt(_ line: String) -> Bool {
+        let glyphs = line.unicodeScalars.filter(isPrivateUse).count
+        guard glyphs > 0, let end = line.last(where: { $0 != " " }) else { return false }
+        return glyphs >= 2 || promptEnds.contains(end) || end.unicodeScalars.allSatisfy(isPrivateUse)
+    }
+
+    static func stripPrivateUse(_ line: String) -> String {
+        guard line.unicodeScalars.contains(where: isPrivateUse) else { return line }
+        // Each glyph goes with one space after it, so "a \u{E0A0} b" reads "a b".
+        var scalars = String.UnicodeScalarView()
+        var dropSpace = false
+        for scalar in line.unicodeScalars {
+            if isPrivateUse(scalar) { dropSpace = true; continue }
+            if dropSpace, scalar == " " { dropSpace = false; continue }
+            dropSpace = false
+            scalars.append(scalar)
+        }
+        return stripTrailingWhitespace(String(scalars))
+    }
+
+    static func isPrivateUse(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0xE000...0xF8FF, 0xF0000...0xFFFFD, 0x100000...0x10FFFD: return true
+        default: return false
+        }
     }
 
     static func trimBlankEdges(_ lines: [String]) -> [String] {

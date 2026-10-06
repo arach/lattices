@@ -17,9 +17,35 @@ struct OverviewView: View {
     var live = true
     @FocusState private var searchFocused: Bool
     @FocusState private var canvasFocused: Bool
+    @ObservedObject private var index = LayerIndexState.shared
+    private let indexTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     @State private var barWidth: CGFloat = 0
 
     var body: some View {
+        HStack(spacing: 0) {
+            OverviewLayerIndex(rows: indexRows, selected: selectedLayers, readAt: index.readAt, live: live) { id, additive in
+                if live { index.choose(id, additive: additive); applyIndex() }
+                else {
+                    let ids = id.map { additive ? (selectedLayers.contains($0) ? selectedLayers.filter { $0 != id } : selectedLayers + [$0]) : [$0] } ?? []
+                    model.chooseIndex(ids, rows: indexRows)
+                }
+            }
+            deskBody
+        }
+        .onReceive(indexTimer) { _ in
+            guard live else { return }
+            _ = try? index.snapshot()
+            applyIndex()
+        }
+        .onReceive(index.$selected) { _ in if live { DispatchQueue.main.async { applyIndex() } } }
+        .onAppear { if live { _ = try? index.snapshot(); applyIndex() } }
+    }
+
+    private var indexRows: [LayerIndexState.Row] { live ? index.rows : model.indexFixtureRows }
+    private var selectedLayers: [String] { live ? index.selected : model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? [] }
+    private func applyIndex() { model.chooseIndex(index.selected, rows: index.rows) }
+
+    private var deskBody: some View {
         VStack(spacing: 0) {
             scopeBar
             Divider().overlay(Palette.border)
@@ -103,32 +129,9 @@ struct OverviewView: View {
     /// a layer. The list toggle sits at the end.
     private var scopeBar: some View {
         HStack(spacing: 6) {
+            scopeLabel
+            Spacer(minLength: 8)
             if barWidth >= 1000 {
-                Text("SCOPE")
-                    .font(Typo.monoBold(8))
-                    .foregroundColor(Palette.textMuted)
-                    .fixedSize()
-                    .padding(.trailing, 2)
-            }
-            ScrollViewReader { proxy in
-                // Room above and below the chips, so the scroller's clip
-                // never lands on a chip's edge or its focus ring.
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 5) {
-                        ForEach(model.layers, id: \.id) { layer in layerChip(layer) }
-                    }
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 3)
-                }
-                .scrollEdgeEffectHidden(true, for: .all)
-                .onAppear { if let id = model.scope.layerId { proxy.scrollTo(id) } }
-                .onChange(of: model.scope.layerId) { id in
-                    guard let id else { return }
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
-                }
-            }
-            separator
-            if barWidth >= 1300 {
                 HStack(spacing: 5) {
                     ForEach(FilterPreset.allCases.filter { $0 != .all }, id: \.self) { preset in kindChip(preset) }
                 }
@@ -137,7 +140,7 @@ struct OverviewView: View {
                 kindMenu
             }
             searchField
-                .frame(width: barWidth >= 1300 ? 170 : 130)
+                .frame(width: barWidth >= 1000 ? 170 : 130)
             listToggle
         }
         .padding(.horizontal, 14)
@@ -151,27 +154,20 @@ struct OverviewView: View {
         Rectangle().fill(OverviewChrome.edgeLit).frame(width: OverviewChrome.stroke, height: 18).padding(.horizontal, 4)
     }
 
-    /// Picks the layer's list; again, every window.
-    private func layerChip(_ layer: LayerOverview) -> some View {
-        let selected = model.scope.layerId == layer.id
-        return Button {
-            model.chooseLayer(selected ? nil : layer.id)
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "square.3.layers.3d")
-                    .font(.system(size: 10))
-                Text(layer.label)
-                if layer.isActive {
-                    Circle().fill(Palette.running.opacity(0.9)).frame(width: 4, height: 4)
-                }
+    private var scopeLabel: some View {
+        let selected = indexRows.filter { selectedLayers.contains($0.id) }
+        let title = selectedLayers.isEmpty ? "All windows" : selected.map(\.label).joined(separator: " + ")
+        let count = Set((selectedLayers.isEmpty ? indexRows : selected).flatMap(\.windows)).count
+        return HStack(spacing: 6) {
+            Text(title + (selectedLayers.isEmpty ? " · \(count) on \(model.projection.displays.count) displays" : " · \(count) open"))
+                .font(Typo.body(12)).foregroundColor(Palette.textDim).lineLimit(1)
+            if !selectedLayers.isEmpty {
+                Button {
+                    if live { index.select([]); applyIndex() } else { model.chooseIndex([], rows: indexRows) }
+                } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                .buttonStyle(.plain).help("All windows")
             }
-            .fixedSize()
         }
-        .buttonStyle(.overview(selected: selected))
-        .id(layer.id)
-        .help(selected ? "Every window again" : "\(layer.label)'s windows" + (layer.slot.map { " · ⌘⌥\($0)" } ?? "") + (layer.isActive ? " · the active layer" : ""))
-        .accessibilityLabel(layer.label + (layer.isActive ? ", active layer" : ""))
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func kindChip(_ preset: FilterPreset) -> some View {
@@ -525,14 +521,15 @@ struct OverviewWorkingList: View {
 
     /// "Lattices", or "All windows".
     static func name(_ model: OverviewModel) -> String {
-        guard let id = model.scope.layerId else { return "All windows" }
-        return model.layers.first { $0.id == id }?.label ?? id
+        let ids = model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? []
+        guard !ids.isEmpty else { return "All windows" }
+        return ids.map { id in model.layerIndexRows.first { $0.id == id }?.label ?? id }.joined(separator: " + ")
     }
 
     /// What the list holds now: entries and windows, in the subset if any.
     static func count(_ model: OverviewModel) -> Int {
-        if model.scope.layerId != nil { return model.workingMembership?.count ?? 0 }
-        return model.workingRows.count
+        if let ids = model.scope.scopedWindowIds { return Set(ids).count }
+        return Set(model.layerIndexRows.flatMap(\.windows)).count
     }
 
     var body: some View {

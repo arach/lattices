@@ -45,9 +45,11 @@ Modeled on `@arach/lattices`' pipeline. All scripts live in `tools/release/`.
 #    -> creates/updates tag blink-v<version> on arach/lattices with
 #       Blink.dmg + blink-macos-arm64
 
-# 3. publish npm from the signed GitHub CLI asset
+# 3. publish npm from the signed GitHub CLI asset (one Actions run; the
+#    workflow is dispatch-only, so pushing the tag alone does nothing)
 git tag -a blink-npm-v2.0.1 -m "@arach/blink 2.0.1"
 git push origin blink-npm-v2.0.1
+gh workflow run release-blink-npm.yml --ref blink-npm-v2.0.1 -f publish=true
 ```
 
 ### Individual steps
@@ -72,14 +74,18 @@ Lattices repository:
 
 - `.github/workflows/release-blink-macos.yml` builds and publishes the
   `blink-v*` GitHub release.
-- `.github/workflows/release-blink-npm.yml` publishes on `blink-npm-v*`. It
+- `.github/workflows/release-blink-npm.yml` runs on manual dispatch only
+  (CI is manual to protect the Actions budget). Dispatch it on the
+  `blink-npm-v*` tag with `publish=true`; without it, it is a dry run. It
   downloads the signed CLI from the matching `blink-v*` release, verifies its
   version and code signature, then publishes with provenance without rebuilding.
 
 Configure npm trusted publishing for `@arach/blink` and
 `release-blink-npm.yml` in `arach/lattices`, or add an `NPM_TOKEN` secret to the
 GitHub `release` environment. The token path is a fallback; browser login is
-not part of the release procedure.
+not part of the release procedure. A publish that fails with
+`404 Not Found - PUT …@arach%2fblink` means neither is in place: the
+registry answers unauthorized publishes with 404.
 
 ## Known limitations
 

@@ -117,6 +117,10 @@ struct AssistantProvider: Identifiable, Equatable {
 
 final class WorkspaceAssistantSession: ObservableObject {
     static let shared = WorkspaceAssistantSession()
+    static func makeEditorSession() -> WorkspaceAssistantSession { WorkspaceAssistantSession(editorOnly: true) }
+    private let editorOnly: Bool
+    @Published private(set) var editorError: String?
+    @Published private(set) var editorSuggestions: [[String: String]] = []
 
     @Published private(set) var messages: [WorkspaceAssistantMessage] = [
         WorkspaceAssistantMessage(
@@ -242,7 +246,14 @@ final class WorkspaceAssistantSession: ObservableObject {
     private var voiceInputCancellable: AnyCancellable?
     #endif
 
-    private init() {
+    private init(editorOnly: Bool = false) {
+        self.editorOnly = editorOnly
+        if editorOnly {
+            // No local-command handlers, voice observers, settings/auth writes
+            // or persistent Scout binding for the Editor's isolated conversation.
+            messages = []
+            return
+        }
         scoutBindingRef = UserDefaults.standard.string(forKey: Self.scoutBindingRefDefaultsKey)
         let savedProvider = UserDefaults.standard.string(forKey: Self.selectedProviderDefaultsKey)
         if let savedProvider {
@@ -455,11 +466,46 @@ final class WorkspaceAssistantSession: ObservableObject {
         send(text)
     }
 
+    /// Editor-only entry point. Tool-free transport is an enforced capability,
+    /// not a system-prompt request to an otherwise unrestricted agent.
+    func send(_ text: String, editorContext: String, layerId: String) {
+        guard editorOnly, !isSending else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        messages.append(WorkspaceAssistantMessage(role: .user, text: trimmed, timestamp: Date()))
+        editorError = nil; editorSuggestions = []; isSending = true
+        let history = messages.suffix(12).map { "\($0.role): \($0.text)" }.joined(separator: "\n")
+        let prompt = "Layer ID: \(layerId)\nRead-only context:\n\(editorContext)\nConversation:\n\(history)"
+        streamingTask = Task { [weak self] in
+            do {
+                let raw = try await EditorAssistantTransport.complete(prompt)
+                var answer = raw
+                var suggestions: [[String: String]] = []
+                let cleaned = raw.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "")
+                if let object = try? JSONSerialization.jsonObject(with: Data(cleaned.utf8)) as? [String: Any],
+                   let text = object["text"] as? String {
+                    answer = text
+                    suggestions = (object["suggestions"] as? [[String: String]] ?? []).filter {
+                        ["gather", "open"].contains($0["kind"] ?? "") && $0["layerId"] == layerId && !($0["label"] ?? "").isEmpty
+                    }
+                }
+                await MainActor.run { [weak self] in
+                    self?.messages.append(WorkspaceAssistantMessage(role: .assistant, text: answer, timestamp: Date()))
+                    self?.editorSuggestions = suggestions
+                    self?.isSending = false
+                }
+            } catch {
+                await MainActor.run { [weak self] in self?.editorError = error.localizedDescription; self?.isSending = false }
+            }
+        }
+    }
+
     func send(_ text: String) {
         send(text, attachments: [])
     }
 
     func send(_ text: String, attachments: [WorkspaceAssistantAttachment]) {
+        guard !editorOnly else { return } // Fail closed: never route editor text to local commands or unrestricted tools.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if isSending {
@@ -1533,7 +1579,7 @@ final class WorkspaceAssistantSession: ObservableObject {
             }
 
             if isSettingsMutationIntent(lower), let enabled = parseBooleanMutation(from: lower) {
-                OcrModel.shared.setEnabled(enabled)
+                ScreenText.shared.setEnabled(enabled)
                 return "\(enabled ? "Enabled" : "Disabled") screen text recognition."
             }
             return nil

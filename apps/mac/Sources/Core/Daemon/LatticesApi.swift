@@ -417,6 +417,8 @@ final class LatticesApi {
             Field(name: "windowCount", type: "int", required: true, description: "Tracked window count"),
             Field(name: "tmuxSessionCount", type: "int", required: true, description: "Active tmux session count"),
             Field(name: "permissions", type: "object", required: true, description: "Accessibility and screen-recording grant state"),
+            Field(name: "tier", type: "string", required: true, description: "Build tier: free or bundle"),
+            Field(name: "bundleModules", type: "array", required: true, description: "Bundle features registered in this build"),
             Field(name: "frontmostWid", type: "int", required: false, description: "Frontmost placeable window id"),
         ]))
 
@@ -603,7 +605,7 @@ final class LatticesApi {
                 }
                 let includeOcr = params?["ocr"]?.boolValue ?? true
                 let limit = params?["limit"]?.intValue ?? 50
-                let ocrResults = OcrModel.shared.results
+                let ocrResults = ScreenText.shared.results
 
                 var matches: [JSON] = []
                 for entry in DesktopModel.shared.allWindows() {
@@ -641,6 +643,32 @@ final class LatticesApi {
                     }
                 }
                 return .array(matches)
+            }
+        ))
+
+        // MARK: - Screen Text
+
+        api.register(Endpoint(
+            method: "ocr.snapshot",
+            description: "Get the latest OCR scan results for all on-screen windows",
+            access: .read,
+            params: [],
+            returns: .array(model: "OcrResult"),
+            handler: { _ in
+                let results = OcrModel.shared.results
+                return .array(results.values.map { Encoders.ocrResult($0) })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "ocr.scan",
+            description: "Trigger an immediate OCR scan",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                OcrModel.shared.scan()
+                return .object(["ok": .bool(true)])
             }
         ))
 
@@ -765,7 +793,7 @@ final class LatticesApi {
                 // ── Tier 1: Window index (title, app, session) ──
 
                 if includeWindowIndex {
-                    let ocrResults = includeOcr ? OcrModel.shared.results : [:]
+                    let ocrResults = includeOcr ? ScreenText.shared.results : [:]
                     let checkTitles = sources.contains("titles")
                     let checkApps = sources.contains("apps")
                     let checkSessions = sources.contains("sessions")
@@ -1021,45 +1049,6 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "deck.manifest",
-            description: "Get the shared companion deck manifest exposed by the macOS app",
-            access: .read,
-            params: [],
-            returns: .custom("DeckKit manifest for the Lattices companion surface"),
-            handler: { _ in
-                try Self.encodeDeckValue(LatticesDeckHost.shared.manifestSync())
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "deck.snapshot",
-            description: "Get the current companion deck runtime snapshot",
-            access: .read,
-            params: [],
-            returns: .custom("DeckKit runtime snapshot with voice, layout, switcher, and history state"),
-            handler: { _ in
-                try Self.encodeDeckValue(LatticesDeckHost.shared.runtimeSnapshotSync())
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "deck.perform",
-            description: "Perform a companion deck action and return the updated runtime snapshot",
-            access: .mutate,
-            params: [
-                Param(name: "pageID", type: "string", required: false, description: "Deck page ID"),
-                Param(name: "actionID", type: "string", required: true, description: "Deck action identifier"),
-                Param(name: "payload", type: "object", required: false, description: "Deck action payload"),
-            ],
-            returns: .custom("DeckKit action result"),
-            handler: { params in
-                let request = try Self.decodeDeckActionRequest(from: params)
-                let result = try LatticesDeckHost.shared.performSync(request)
-                return try Self.encodeDeckValue(result)
-            }
-        ))
-
-        api.register(Endpoint(
             method: "overlay.publish",
             description: "Publish a transient visual layer on the invisible screen overlay canvas",
             access: .mutate,
@@ -1279,6 +1268,8 @@ final class LatticesApi {
                     "windowCount": .int(DesktopModel.shared.windows.count),
                     "tmuxSessionCount": .int(TmuxModel.shared.sessions.count),
                     "permissions": PermissionChecker.shared.snapshotJSON(),
+                    "tier": .string(LatticesTier.current.rawValue),
+                    "bundleModules": .array(BundleModules.ids.map { .string($0) }),
                 ]
                 if let front = DesktopModel.shared.frontmostWindow() {
                     obj["frontmostWid"] = .int(Int(front.wid))
@@ -1430,100 +1421,6 @@ final class LatticesApi {
                     lines: params?["lines"]?.intValue ?? 80,
                     includeEscapes: params?["escape"]?.boolValue ?? false
                 )
-            }
-        ))
-
-        // ── Endpoints: OCR ─────────────────────────────────────
-
-        api.register(Endpoint(
-            method: "ocr.snapshot",
-            description: "Get the latest OCR scan results for all on-screen windows",
-            access: .read,
-            params: [],
-            returns: .array(model: "OcrResult"),
-            handler: { _ in
-                let results = OcrModel.shared.results
-                return .array(results.values.map { Encoders.ocrResult($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "ocr.search",
-            description: "Search OCR text across all windows (queries persistent SQLite FTS5 index by default)",
-            access: .read,
-            params: [
-                Param(name: "query", type: "string", required: true, description: "Search text (FTS5 query syntax)"),
-                Param(name: "app", type: "string", required: false, description: "Filter by app name"),
-                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
-                Param(name: "live", type: "bool", required: false, description: "Search in-memory snapshot instead of history (default false)"),
-            ],
-            returns: .array(model: "OcrSearchResult"),
-            handler: { params in
-                guard let query = params?["query"]?.stringValue else {
-                    throw RouterError.missingParam("query")
-                }
-                let app = params?["app"]?.stringValue
-                let limit = params?["limit"]?.intValue ?? 50
-                let live = params?["live"]?.boolValue ?? false
-
-                if live {
-                    // In-memory snapshot search (original behavior)
-                    var results = Array(OcrModel.shared.results.values)
-                    let q = query.lowercased()
-                    results = results.filter { $0.fullText.lowercased().contains(q) }
-                    if let app { results = results.filter { $0.app == app } }
-                    return .array(results.prefix(limit).map { Encoders.ocrResult($0) })
-                }
-
-                // Persistent FTS5 search
-                let results = OcrStore.shared.search(query: query, app: app, limit: limit)
-                return .array(results.map { Encoders.ocrSearchResult($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "ocr.history",
-            description: "Get OCR content timeline for a specific window",
-            access: .read,
-            params: [
-                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
-                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
-            ],
-            returns: .array(model: "OcrSearchResult"),
-            handler: { params in
-                guard let wid = params?["wid"]?.uint32Value else {
-                    throw RouterError.missingParam("wid")
-                }
-                let limit = params?["limit"]?.intValue ?? 50
-                let results = OcrStore.shared.history(wid: wid, limit: limit)
-                return .array(results.map { Encoders.ocrSearchResult($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "ocr.recent",
-            description: "Get recent OCR entries across all windows (chronological, from persistent store)",
-            access: .read,
-            params: [
-                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
-            ],
-            returns: .array(model: "OcrSearchResult"),
-            handler: { params in
-                let limit = params?["limit"]?.intValue ?? 50
-                let results = OcrStore.shared.recent(limit: limit)
-                return .array(results.map { Encoders.ocrSearchResult($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "ocr.scan",
-            description: "Trigger an immediate OCR scan",
-            access: .mutate,
-            params: [],
-            returns: .ok,
-            handler: { _ in
-                OcrModel.shared.scan()
-                return .object(["ok": .bool(true)])
             }
         ))
 
@@ -3770,6 +3667,8 @@ final class LatticesApi {
             }
         ))
 
+        BundleModules.registerEndpoints(api)
+
         api.register(Endpoint(
             method: "api.schema",
             description: "Get the full API schema including all methods and models",
@@ -4171,27 +4070,6 @@ private extension LatticesApi {
             throw RouterError.missingParam(key)
         }
         return value
-    }
-
-    static func decodeDeckActionRequest(from json: JSON?) throws -> DeckActionRequest {
-        guard let json else {
-            throw RouterError.missingParam("actionID")
-        }
-        guard case .object(var object) = json else {
-            throw RouterError.custom("Invalid deck action request: params must be an object")
-        }
-        object["payload"] = object["payload"] ?? .object([:])
-        let data = try JSONEncoder().encode(JSON.object(object))
-        do {
-            return try JSONDecoder().decode(DeckActionRequest.self, from: data)
-        } catch {
-            throw RouterError.custom("Invalid deck action request: \(error.localizedDescription)")
-        }
-    }
-
-    static func encodeDeckValue<T: Encodable>(_ value: T) throws -> JSON {
-        let data = try JSONEncoder().encode(value)
-        return try JSONDecoder().decode(JSON.self, from: data)
     }
 
     static func encodeJSON<T: Encodable>(_ value: T) throws -> JSON {

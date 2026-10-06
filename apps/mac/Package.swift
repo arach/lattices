@@ -14,6 +14,14 @@ let hudsonDependency: Package.Dependency = hudsonSource == "git"
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
 
+// The bundle tier: LATTICES_BUNDLE=1 compiles Sources/Bundle and defines
+// LATTICES_BUNDLE. Without it the free build excludes that directory whole.
+let bundleEnabled = Context.environment["LATTICES_BUNDLE"] == "1"
+
+var latticesDefines: [SwiftSetting] = []
+if voiceEnabled { latticesDefines.append(.define("LATTICES_VOICE")) }
+if bundleEnabled { latticesDefines.append(.define("LATTICES_BUNDLE")) }
+
 // Vox is already a HudsonVoice transitive dep; Lattices also links VoxService
 // directly so it can host the live-session runtime in-process on boot.
 let voxSource = Context.environment["LATTICES_VOX_SOURCE"] ?? Context.environment["HUDSON_VOX_PATH"]
@@ -58,18 +66,21 @@ let package = Package(
             name: "Lattices",
             dependencies: latticesDependencies,
             path: "Sources",
+            exclude: bundleEnabled ? [] : ["Bundle"],
             resources: [
                 .copy("../Resources/tap.wav"),
                 .copy("../Resources/Pets"),
                 .copy("../Resources/DeckBuilder"),
+                .copy("../Resources/Editor"),
             ],
-            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
+            swiftSettings: latticesDefines
         ),
         .testTarget(
             name: "LatticesTests",
             dependencies: testDependencies,
             path: "Tests",
-            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
+            exclude: bundleEnabled ? [] : ["Bundle"],
+            swiftSettings: latticesDefines
         )
     ],
     // Stay in Swift 5 language mode: adopt macOS 26 / the 6.2 toolchain without

@@ -195,15 +195,6 @@ extension LatticesDeckHost {
         return (display, display.spaces[index])
     }
 
-    /// Pure relative target resolution for previous/next space (no SkyLight call).
-    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
-    static func relativeSpaceTarget(in display: DisplaySpaces, direction: Int) -> SpaceInfo? {
-        guard let currentIdx = display.spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
-        let targetIdx = currentIdx + direction
-        guard display.spaces.indices.contains(targetIdx) else { return nil }
-        return display.spaces[targetIdx]
-    }
-
     /// Map Control+Left/Right (and variants) to a previous/next space direction.
     func spaceSwitchDirection(key: String, modifiers: [String]) -> Int? {
         let normalized = key.lowercased()
@@ -789,7 +780,7 @@ private extension LatticesDeckHost {
         talkie: TalkieDeckSnapshot
     ) -> DeckCockpitState {
         LatticesCompanionCockpitCatalog.renderedState(
-            layout: Preferences.shared.companionCockpitLayout,
+            layout: CompanionCockpitStore.shared.layout,
             voice: voice,
             desktop: desktop,
             layoutState: layoutState,
@@ -1273,7 +1264,7 @@ private extension LatticesDeckHost {
             )
         }
 
-        guard let target = Self.relativeSpaceTarget(in: display, direction: direction) else {
+        guard let target = display.relativeSpace(direction: direction) else {
             return ActionOutcome(
                 summary: direction > 0 ? "Already on last space" : "Already on first space",
                 detail: nil,

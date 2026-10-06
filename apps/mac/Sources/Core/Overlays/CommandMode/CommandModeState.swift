@@ -416,7 +416,7 @@ final class CommandModeState: ObservableObject {
                             let matchesApp = win.appName?.lowercased().contains(query) ?? false
                             let matchesTitle = win.title.lowercased().contains(query)
                             let matchesLattices = win.latticesSession?.lowercased().contains(query) ?? false
-                            let matchesOcr = OcrModel.shared.results[win.id]?.fullText
+                            let matchesOcr = ScreenText.shared.results[win.id]?.fullText
                                 .lowercased().contains(query) ?? false
                             if !matchesApp && !matchesTitle && !matchesLattices && !matchesOcr { return false }
                         }
@@ -547,7 +547,7 @@ final class CommandModeState: ObservableObject {
     var ocrMatchSnippets: [UInt32: String] {
         guard isSearching, !searchQuery.isEmpty else { return [:] }
         let query = searchQuery.lowercased()
-        let ocrResults = OcrModel.shared.results
+        let ocrResults = ScreenText.shared.results
         var snippets: [UInt32: String] = [:]
         for win in flatWindowList {
             // Only show snippet if match came from OCR, not title/app

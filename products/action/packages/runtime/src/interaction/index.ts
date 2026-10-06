@@ -1,4 +1,4 @@
-import type { ResolvedTarget, RuntimeAction } from "@action/protocol";
+import type { Bounds, ResolvedTarget, RuntimeAction } from "@action/protocol";
 
 interface CalculatorButtonDescriptor {
   text?: string;
@@ -7,11 +7,27 @@ interface CalculatorButtonDescriptor {
 
 type HostRunner = (command: string, ...args: string[]) => Promise<{ stdout: string }>;
 
+/**
+ * An active agent layer, as the interaction router needs it. When present, coordinate
+ * clicks inside `bounds` and keyboard acts run as blink acts against the layer's app.
+ */
+export interface AgentLayerRouting {
+  bundleId?: string;
+  pid?: number;
+  /** Global top-left bounds of the layer display. Omitted means every point routes. */
+  bounds?: Bounds;
+}
+
 export interface InteractionExecutionContext {
   runHost: HostRunner;
   resolveCalculatorButton: (query: CalculatorButtonDescriptor) => string;
   resolveBundleId: (surfaceId: string | undefined) => string | undefined;
+  agentLayer?: AgentLayerRouting;
 }
+
+export type BlinkRoute = "blink-click" | "blink-type" | "blink-key";
+
+type RoutingContext = Pick<InteractionExecutionContext, "resolveBundleId" | "agentLayer">;
 
 function numberFromInput(input: unknown): number | undefined {
   if (typeof input === "number" && Number.isFinite(input)) {
@@ -95,10 +111,96 @@ function targetRole(action: RuntimeAction): string | undefined {
 function targetBundleId(
   action: RuntimeAction,
   target: ResolvedTarget | undefined,
-  context: InteractionExecutionContext,
+  context: RoutingContext,
 ): string | undefined {
   return stringValue(action.input?.bundleId)
     ?? context.resolveBundleId(action.target?.surfaceId ?? target?.surfaceId);
+}
+
+function holdMsFor(action: RuntimeAction): number | undefined {
+  const holdMs = numberFromInput(action.input?.holdMs) ?? numberFromInput(action.input?.pressDurationMs);
+  return holdMs !== undefined && holdMs > 0 ? holdMs : undefined;
+}
+
+function clickPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
+  return pointFromInput(action.target?.point)
+    ?? pointFromInput(action.input?.point)
+    ?? target?.point
+    ?? centerOfBounds(target?.bounds);
+}
+
+function pointInBounds(point: { x: number; y: number }, bounds: Bounds | undefined): boolean {
+  if (!bounds) {
+    return true;
+  }
+  return point.x >= bounds.x
+    && point.x < bounds.x + bounds.width
+    && point.y >= bounds.y
+    && point.y < bounds.y + bounds.height;
+}
+
+/**
+ * The app a blink-type or blink-key focuses. An explicit input.bundleId / input.pid wins;
+ * otherwise the layer's subject app. The resolved surface is not used: it falls back to
+ * whatever is frontmost on the user's screen, which is the app a blink must not type into.
+ */
+function blinkAppArgs(action: RuntimeAction, layer: AgentLayerRouting): string[] | undefined {
+  const bundleId = stringValue(action.input?.bundleId);
+  if (bundleId) {
+    return ["--bundle-id", bundleId];
+  }
+  const pid = numberFromInput(action.input?.pid);
+  if (pid !== undefined && pid > 0) {
+    return ["--pid", String(Math.round(pid))];
+  }
+  if (layer.bundleId) {
+    return ["--bundle-id", layer.bundleId];
+  }
+  if (layer.pid !== undefined && layer.pid > 0) {
+    return ["--pid", String(layer.pid)];
+  }
+  return undefined;
+}
+
+/**
+ * Which blink command, if any, `executeInteractionAction` will use for this act.
+ * Undefined means the act takes its ordinary path. Accessibility paths
+ * (press-accessibility-element, set-accessibility-value) never blink.
+ */
+export function blinkRouteFor(
+  action: RuntimeAction,
+  target: ResolvedTarget | undefined,
+  context: RoutingContext,
+): BlinkRoute | undefined {
+  const layer = context.agentLayer;
+  if (!layer) {
+    return undefined;
+  }
+
+  if (action.kind === "click") {
+    const bundleId = targetBundleId(action, target, context);
+    const label = targetLabel(action, target);
+    if (bundleId && label && holdMsFor(action) === undefined) {
+      return undefined;
+    }
+    const point = clickPoint(action, target);
+    return point && pointInBounds(point, layer.bounds) ? "blink-click" : undefined;
+  }
+
+  if (action.kind === "type") {
+    const bundleId = targetBundleId(action, target, context);
+    const label = targetLabel(action, target);
+    if (bundleId && label) {
+      return undefined;
+    }
+    return blinkAppArgs(action, layer) ? "blink-type" : undefined;
+  }
+
+  if (action.kind === "press-key") {
+    return blinkAppArgs(action, layer) ? "blink-key" : undefined;
+  }
+
+  return undefined;
 }
 
 export async function executeInteractionAction(
@@ -106,6 +208,9 @@ export async function executeInteractionAction(
   target: ResolvedTarget | undefined,
   context: InteractionExecutionContext,
 ): Promise<void> {
+  const blink = blinkRouteFor(action, target, context);
+  const layer = context.agentLayer;
+
   if (action.kind === "type") {
     const text = String(action.input?.text ?? "");
     const bundleId = targetBundleId(action, target, context);
@@ -126,7 +231,10 @@ export async function executeInteractionAction(
     }
 
     const delayMs = numberValue(action.input?.delayMs);
-    const args = ["type-text", "--text", text];
+    const appArgs = blink === "blink-type" && layer ? blinkAppArgs(action, layer) : undefined;
+    const args = appArgs
+      ? ["blink-type", "--text", text, ...appArgs]
+      : ["type-text", "--text", text];
     if (delayMs && delayMs > 0) {
       args.push("--delay-ms", String(Math.round(delayMs)));
     }
@@ -139,9 +247,13 @@ export async function executeInteractionAction(
     const modifiers = stringArray(action.input?.modifiers);
     const key = stringValue(action.input?.key) ?? keys.at(-1) ?? "";
     const normalizedModifiers = keys.length > 1 ? keys.slice(0, -1) : modifiers;
-    const args = ["press-key", "--key", key];
+    const appArgs = blink === "blink-key" && layer ? blinkAppArgs(action, layer) : undefined;
+    const args = [appArgs ? "blink-key" : "press-key", "--key", key];
     if (normalizedModifiers.length > 0) {
       args.push("--modifiers", normalizedModifiers.join(","));
+    }
+    if (appArgs) {
+      args.push(...appArgs);
     }
     await context.runHost(args[0], ...args.slice(1));
     return;
@@ -150,8 +262,8 @@ export async function executeInteractionAction(
   if (action.kind === "click") {
     // A hold is a HID gesture; the accessibility press path cannot express it, so any
     // requested holdMs forces the click through click-point.
-    const holdMs = numberFromInput(action.input?.holdMs) ?? numberFromInput(action.input?.pressDurationMs);
-    const wantsHold = holdMs !== undefined && holdMs > 0;
+    const holdMs = holdMsFor(action);
+    const wantsHold = holdMs !== undefined;
 
     const bundleId = targetBundleId(action, target, context);
     const label = targetLabel(action, target);
@@ -171,13 +283,11 @@ export async function executeInteractionAction(
       return;
     }
 
-    const point = action.target?.point
-      ?? pointFromInput(action.input?.point)
-      ?? target?.point
-      ?? centerOfBounds(target?.bounds);
+    const point = clickPoint(action, target);
     if (point) {
-      const args = ["click-point", "--x", String(point.x), "--y", String(point.y)];
-      if (wantsHold) {
+      const command = blink === "blink-click" ? "blink-click" : "click-point";
+      const args = [command, "--x", String(point.x), "--y", String(point.y)];
+      if (holdMs !== undefined) {
         args.push("--hold-ms", String(Math.round(holdMs)));
       }
       await context.runHost(args[0], ...args.slice(1));

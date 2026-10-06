@@ -183,7 +183,7 @@ final class WindowQuickMenu {
     /// the pointer (`point`, CG global) becomes the menu's.
     private func began(at point: CGPoint) {
         TilePointerController.shared.cancelApply()
-        SpatialLensController.shared.resetForSystemInputBoundary(reason: "quick menu")
+        BundleModules.resetForSystemInputBoundary(reason: "quick menu")
         target = DesktopModel.shared.liveFrontWindow(at: point, excludingPid: getpid())
     }
 

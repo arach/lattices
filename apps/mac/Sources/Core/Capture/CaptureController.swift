@@ -482,7 +482,7 @@ final class CaptureController {
 
         do {
             let image = try loadCGImage(path: resolved.path)
-            let blocks = OcrModel.shared.recognizeText(in: image)
+            let blocks = ScreenText.recognize(in: image)
             let fullText = blocks.map(\.text).joined(separator: "\n")
             let answer = localVisionAnswer(instruction: instruction, fullText: fullText)
             let verified = localVisionMatch(params: params, fullText: fullText)

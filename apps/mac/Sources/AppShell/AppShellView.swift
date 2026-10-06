@@ -11,6 +11,7 @@ enum AppPage: String, CaseIterable {
     /// Every window: replaces Studio (`screenMap`) and Windows
     /// (`desktopInventory`).
     case overview
+    case layers
     case activity
     case runs
     case assistant
@@ -22,6 +23,7 @@ enum AppPage: String, CaseIterable {
         switch self {
         case .home:             return "Home"
         case .overview:         return "Overview"
+        case .layers:           return "Layers"
         case .activity:         return "Activity"
         case .runs:             return "Runs"
         case .assistant:        return "Assistant"
@@ -35,6 +37,7 @@ enum AppPage: String, CaseIterable {
         switch self {
         case .home:             return "house"
         case .overview:         return "rectangle.3.group"
+        case .layers:           return "square.3.layers.3d"
         case .activity:         return "list.bullet.rectangle"
         case .runs:             return "record.circle"
         case .assistant:        return "bubble.left.and.bubble.right"
@@ -48,7 +51,7 @@ enum AppPage: String, CaseIterable {
     /// places you work, agent surfaces, system state — so Runs and Activity stop
     /// reading as peers of Home.
     static let navigationGroups: [(title: String, pages: [AppPage])] = [
-        ("Workspace", [.home, .overview]),
+        ("Workspace", [.home, .overview, .layers]),
         ("Agents",    [.assistant, .runs]),
         ("System",    [.activity]),
     ]
@@ -69,10 +72,11 @@ enum AppPage: String, CaseIterable {
 // MARK: - App Shell View
 
 struct AppShellView: View {
+    @ObservedObject private var layerIndex = LayerIndexState.shared
     @ObservedObject var controller: ScreenMapController
     @ObservedObject var windowController = ScreenMapWindowController.shared
     @ObservedObject private var scanner = ProjectScanner.shared
-    @ObservedObject private var ocr = OcrModel.shared
+    @ObservedObject private var ocr = ScreenText.shared
     @StateObject private var overview = OverviewModel()
 
     /// Labels are on by default. Collapsing to the icon rail stays available
@@ -133,13 +137,19 @@ struct AppShellView: View {
             } trailing: {
                 EmptyView()
             } topDrawer: {
-                titleBar
+                titleBar(compact: proxy.size.width <
+                    HudSidebarLayout.railWidth + (sidebarCompact ? 0 : CGFloat(sidebarLabelWidth)) + 650)
             } bottomDrawer: {
                 EmptyView()
             } content: {
                 contentArea
             } statusBar: {
-                statusBar
+                if windowController.activePage == .layers || windowController.activePage == .overview {
+                    layersStatusBar
+                } else {
+                    statusBar(availableWidth: proxy.size.width - HudSidebarLayout.railWidth
+                        - (sidebarCompact ? 0 : CGFloat(sidebarLabelWidth)) - HudSpacing.sm)
+                }
             }
             .onPreferenceChange(PageActionsKey.self) { pageActions = $0 }
             .ignoresSafeArea(.container, edges: .top)
@@ -235,27 +245,39 @@ struct AppShellView: View {
     /// actions that belong to that page at the trailing edge. Pages publish
     /// their own set with `.pageActions(_:)`; Search is the chrome's, because
     /// ⌘K works everywhere.
-    private var titleBar: some View {
-        HStack(spacing: 8) {
-            Text(windowController.activePage.label)
-                .font(Typo.heading(15))
-                .foregroundColor(Palette.text)
-                .lineLimit(1)
-
-            Spacer(minLength: 12)
-
-            ForEach(pageActions) { action in
-                PageActionButton(action: action)
+    private func titleBar(compact: Bool) -> some View {
+        let layers = windowController.activePage == .layers
+        let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
+        return VStack(spacing: wrap ? 5 : 0) {
+            HStack(spacing: 8) {
+                Text(windowController.activePage.label)
+                    .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
+                Spacer(minLength: 8)
+                if !wrap {
+                    ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
+                }
+                PageActionButton(action: searchAction, compact: compact)
             }
-            PageActionButton(action: searchAction)
+            if wrap {
+                HStack(spacing: 6) {
+                    ForEach(pageActions) { action in PageActionButton(action: action, compact: true) }
+                    Spacer(minLength: 0)
+                }
+            }
         }
         .padding(.horizontal, Chrome.inset)
-        .frame(height: Chrome.titleBarHeight)
-        .background(Palette.bg)
+        .frame(height: wrap ? 72 : Chrome.titleBarHeight)
+        .background {
+            if layers {
+                LinearGradient(colors: [
+                    Color(red: 26 / 255, green: 28 / 255, blue: 32 / 255),
+                    Color(red: 21 / 255, green: 23 / 255, blue: 26 / 255)
+                ], startPoint: .top, endPoint: .bottom)
+            } else { Palette.bg }
+        }
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: Chrome.hairline)
+            Rectangle().fill(layers ? Color.white.opacity(0.07) : Palette.border)
+                .frame(height: layers ? 1 : Chrome.hairline)
         }
     }
 
@@ -267,13 +289,30 @@ struct AppShellView: View {
 
     // MARK: - Status Bar
 
+    private var layersStatusBar: some View {
+        let count = Set(layerIndex.rows.flatMap(\.windows)).count
+        let summary = "\(sessionHealthText) · \(count) content windows · \(NSScreen.screens.count) displays"
+        return HStack(spacing: 12) {
+            Text(summary).lineLimit(1).truncationMode(.tail).help(summary)
+            Spacer(minLength: 0)
+            Text(lastScanText).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+        }
+        .font(Typo.mono(11)).foregroundColor(Palette.textMuted).monospacedDigit()
+        .padding(.horizontal, Chrome.inset)
+        .frame(height: Chrome.statusBarHeight)
+        .background(Palette.bg)
+    }
+
     /// Three slots with the same meaning on every page — session health, desktop
     /// shape, last scan — so the strip never changes shape under you. Anything
     /// page-specific lives next to the thing it counts. The one variable region
     /// is the error line, and it sits between the fixed slots so they hold.
-    private var statusBar: some View {
-        HStack(spacing: 18) {
-            statusSlot(width: 132) {
+    private func statusBar(availableWidth: CGFloat) -> some View {
+        // Preserve the three standard slots and their stable proportions. A
+        // fixed 632pt minimum otherwise makes the whole shell clip at 600pt.
+        let scale = min(1, max(0.1, (availableWidth - 2 * Chrome.inset) / 608))
+        return HStack(spacing: 18 * scale) {
+            statusSlot(width: 132 * scale) {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(runningSessionCount > 0 ? Palette.running : Palette.textMuted)
@@ -282,7 +321,7 @@ struct AppShellView: View {
                 }
             }
 
-            statusSlot(width: 260) {
+            statusSlot(width: 260 * scale) {
                 Text(desktopShapeText)
             }
 
@@ -300,10 +339,12 @@ struct AppShellView: View {
                 .help("Open Activity")
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 12 * scale)
 
-            statusSlot(width: 150, alignment: .trailing) {
-                Text(lastScanText)
+            if ocr.isAvailable {
+                statusSlot(width: 150 * scale, alignment: .trailing) {
+                    Text(lastScanText)
+                }
             }
         }
         .padding(.horizontal, Chrome.inset)
@@ -399,6 +440,8 @@ struct AppShellView: View {
             })
         case .overview:
             OverviewView(model: overview, controller: controller)
+        case .layers:
+            LayersPage()
         case .activity:
             ActivityPageView()
         case .runs:

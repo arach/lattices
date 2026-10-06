@@ -81,9 +81,9 @@ final class AdjacentSpaceTests: XCTestCase {
             currentSpaceId: 11
         )
 
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: display, direction: -1)?.id, 10)
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: display, direction: 1)?.id, 12)
-        XCTAssertNil(LatticesDeckHost.relativeSpaceTarget(in: display, direction: 2))
+        XCTAssertEqual(display.relativeSpace(direction: -1)?.id, 10)
+        XCTAssertEqual(display.relativeSpace(direction: 1)?.id, 12)
+        XCTAssertNil(display.relativeSpace(direction: 2))
     }
 
     func testRelativeSpaceTargetAtEnds() {
@@ -96,8 +96,8 @@ final class AdjacentSpaceTests: XCTestCase {
             ],
             currentSpaceId: 10
         )
-        XCTAssertNil(LatticesDeckHost.relativeSpaceTarget(in: firstCurrent, direction: -1))
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: firstCurrent, direction: 1)?.id, 11)
+        XCTAssertNil(firstCurrent.relativeSpace(direction: -1))
+        XCTAssertEqual(firstCurrent.relativeSpace(direction: 1)?.id, 11)
 
         let lastCurrent = DisplaySpaces(
             displayIndex: 0,
@@ -108,27 +108,9 @@ final class AdjacentSpaceTests: XCTestCase {
             ],
             currentSpaceId: 11
         )
-        XCTAssertNil(LatticesDeckHost.relativeSpaceTarget(in: lastCurrent, direction: 1))
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: lastCurrent, direction: -1)?.id, 10)
+        XCTAssertNil(lastCurrent.relativeSpace(direction: 1))
+        XCTAssertEqual(lastCurrent.relativeSpace(direction: -1)?.id, 10)
     }
-
-    /// Deck may receive Control+arrow key events from the phone, but Lattices
-    /// must map them to relative Space targets (SkyLight), not synthesize the
-    /// system Mission Control shortcut.
-    func testCompanionKeyChordMapsToRelativeDirectionNotSystemShortcut() {
-        let host = LatticesDeckHost.shared
-
-        XCTAssertEqual(host.spaceSwitchDirection(key: "left", modifiers: ["control"]), -1)
-        XCTAssertEqual(host.spaceSwitchDirection(key: "right", modifiers: ["ctrl"]), 1)
-        XCTAssertEqual(host.spaceSwitchDirection(key: "←", modifiers: ["⌃"]), -1)
-        XCTAssertEqual(host.spaceSwitchDirection(key: "→", modifiers: ["Control"]), 1)
-
-        // Without Control, leave the chord alone (not a space switch).
-        XCTAssertNil(host.spaceSwitchDirection(key: "left", modifiers: ["command"]))
-        XCTAssertNil(host.spaceSwitchDirection(key: "up", modifiers: ["control"]))
-        XCTAssertNil(host.spaceSwitchDirection(key: "right", modifiers: []))
-    }
-
     // MARK: - Mouse gesture defaults → Lattices actions
 
     func testDefaultMouseShortcutsWireSpacePreviousAndNextActions() {

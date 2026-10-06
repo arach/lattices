@@ -160,6 +160,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             ("Assistant", "⌘⇧A", #selector(menuAssistant)),
             ("Home", "", #selector(menuWorkspace)),
             ("Studio", "", #selector(menuLayout)),
+            ("Layers…", "", #selector(menuEditor)),
             ("Command Bar", "", #selector(menuSearch)),
         ]
         for (title, shortcut, action) in actions {
@@ -225,6 +226,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     @objc private func menuAssistant() { AssistantAccess.show() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
+    @objc private func menuEditor() { EditorWindowController.shared.show() }
     @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.overview) }
     @objc private func menuSearch() { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }

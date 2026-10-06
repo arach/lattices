@@ -551,6 +551,15 @@ struct DisplaySpaces {
     /// desktops plus fullscreen app Spaces. `currentSpaceId` can be a
     /// fullscreen Space, so navigation must use this list, not `spaces`.
     var orderedSpaceIds: [Int] = []
+
+    /// Pure relative target resolution for previous/next space (no SkyLight call).
+    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
+    func relativeSpace(direction: Int) -> SpaceInfo? {
+        guard let currentIdx = spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
+        let targetIdx = currentIdx + direction
+        guard spaces.indices.contains(targetIdx) else { return nil }
+        return spaces[targetIdx]
+    }
 }
 
 private enum CGS {
@@ -2189,7 +2198,10 @@ enum WindowTiler {
                     continue
                 }
 
+                let capture = EditorMutationJournal.begin(wid: wm.wid, ax: axWin)
+                if EditorMutationJournal.current != nil && capture == nil { continue }
                 applyFrameToAXWindow(axWin, wid: wm.wid, target: wm.target)
+                EditorMutationJournal.end(capture)
                 moved += 1
             }
         }
@@ -2547,7 +2559,10 @@ enum WindowTiler {
         if let cid { _ = _SLSDisableUpdate?(cid) }
 
         for move in moves {
+            let capture = EditorMutationJournal.begin(wid: move.wid, ax: move.axWindow)
+            if EditorMutationJournal.current != nil && capture == nil { continue }
             setFrameTriplet(move.axWindow, to: move.frame)
+            EditorMutationJournal.end(capture)
             AXUIElementPerformAction(move.axWindow, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(move.axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
             processed += 1

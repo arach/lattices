@@ -356,6 +356,8 @@ export type AxActionTier =
   | "semantic"
   | "target-focus"
   | "app-api"
+  /** Click/type/key into the agent layer: save cursor + frontmost app, act, restore. */
+  | "blink"
   | "attention";
 
 export interface DriveLease {
@@ -496,6 +498,56 @@ export interface StageWorldStatus extends StageWorld {
   stopFile?: string;
   raised: Array<StageSubject & { title: string }>;
   scene?: StageSceneReport;
+}
+
+/**
+ * Who an agent layer dies with. Same contract as `StageOwner`: `caller` passes this
+ * process as `--parent-pid`; `detached` leaves teardown to `layer.close`.
+ */
+export type AgentLayerOwner = "caller" | "detached";
+
+/** The app whose windows live on the agent layer. One of the two is set. */
+export interface AgentLayerSubject {
+  bundleId?: string;
+  pid?: number;
+}
+
+export interface AgentLayerWindow {
+  pid: number;
+  bundleId: string | null;
+  title: string | null;
+  /** Frame before the window moved onto the layer. Restored at teardown. */
+  original: Bounds;
+}
+
+/**
+ * State file written by the native `agent-layer` process. `bounds` is global,
+ * top-left origin, in points.
+ */
+export interface AgentLayerState {
+  pid: number;
+  displayId: number;
+  bounds: Bounds;
+  pip: boolean;
+  /** The operator paused the agent from the viewer; acts are refused until they resume. */
+  paused?: boolean;
+  /** Movie path while a take is being recorded off the layer's feed. */
+  recording?: string | null;
+  windows: AgentLayerWindow[];
+  startedAt: string;
+}
+
+export interface AgentLayerStatus {
+  active: boolean;
+  owner: AgentLayerOwner;
+  ownerPid?: number;
+  subject?: AgentLayerSubject;
+  stopFile?: string;
+  stateFile?: string;
+  /** Present while the layer is up. */
+  layer?: AgentLayerState;
+  /** Set when `close` gave up waiting and the process may still be alive. */
+  pid?: number;
 }
 
 export interface TargetApp {

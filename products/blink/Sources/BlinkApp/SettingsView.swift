@@ -332,12 +332,7 @@ struct SettingsView: View {
                     title: "Open notes in",
                     subtitle: "New notes can open ready to read or write"
                 ) {
-                    Picker("Open notes in", selection: defaultMode) {
-                        Text("Read").tag("read")
-                        Text("Edit").tag("edit")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    BrandSegmented(selection: defaultMode, options: [("Read", "read"), ("Edit", "edit")])
                     .frame(width: HudLayout.popoverWidthCompact / 2.6)
                     .accessibilityLabel("Default note mode")
                 }
@@ -401,13 +396,7 @@ struct SettingsView: View {
                     title: "Appearance",
                     subtitle: "Utilities only; notes may differ"
                 ) {
-                    Picker("Appearance", selection: appearance) {
-                        Text("Auto").tag("auto")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    BrandSegmented(selection: appearance, options: [("Auto", "auto"), ("Light", "light"), ("Dark", "dark")])
                     .frame(width: HudLayout.popoverWidthCompact / 2)
                     .accessibilityLabel("Blink appearance")
                 }
@@ -416,13 +405,7 @@ struct SettingsView: View {
                     title: "Desktop background",
                     subtitle: "A calm stage behind a set of notes"
                 ) {
-                    Picker("Desktop background", selection: backgroundLevel) {
-                        ForEach(BackgroundLevel.allCases) { level in
-                            Text(level.title).tag(level)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    BrandSegmented(selection: backgroundLevel, options: BackgroundLevel.allCases.map { ($0.title, $0) })
                     .frame(width: HudLayout.popoverWidthCompact / 2)
                     .accessibilityLabel("Desktop background strength")
                 }
@@ -444,6 +427,7 @@ struct SettingsView: View {
                     value: "\(Int(store.config.focus.dim * 100))%"
                 ) {
                     Slider(value: focusDim, in: 0...0.8, step: 0.05)
+                        .tint(settingsTheme.palette.ink)
                         .frame(width: HudLayout.popoverWidthCompact / 2)
                         .accessibilityLabel("Focus dimming")
                         .accessibilityValue("\(Int(store.config.focus.dim * 100)) percent")

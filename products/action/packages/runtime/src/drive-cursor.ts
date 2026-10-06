@@ -276,6 +276,11 @@ export function requiresPointerFocusWarning(input: {
   axTier: AxActionTier;
   channel: string;
 }): boolean {
+  // A blink act lands on the agent layer and puts the cursor and frontmost app back
+  // within the act. There is no takeover to warn about.
+  if (input.axTier === "blink") {
+    return false;
+  }
   if (input.axTier === "attention" || input.axTier === "target-focus") {
     return true;
   }

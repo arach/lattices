@@ -216,6 +216,36 @@ final class OverviewRenderTests: XCTestCase {
 
     // The content area inside the app shell: a 48 + 120 point rail, a 46
     // point title bar and a 26 point status bar around Overview.
+    func testPanelToggleUsesIndexScopeAndWindowCount() {
+        let suite = "overview.panel-count." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = OverviewModel(defaults: defaults, actions: RenderActions(), inputs: inputs())
+        let rows = model.indexFixtureRows
+        XCTAssertEqual(OverviewWorkingList.name(model), "All windows")
+        XCTAssertEqual(OverviewWorkingList.count(model), Set(rows.flatMap(\.windows)).count)
+        model.chooseIndex(["lattices"], rows: rows)
+        XCTAssertEqual(OverviewWorkingList.name(model), "Lattices")
+        XCTAssertEqual(OverviewWorkingList.count(model), rows.first { $0.id == "lattices" }?.count)
+        let ids = Array(rows.prefix(2).map(\.id))
+        model.chooseIndex(ids, rows: rows)
+        XCTAssertEqual(OverviewWorkingList.name(model), rows.prefix(2).map(\.label).joined(separator: " + "))
+        XCTAssertEqual(OverviewWorkingList.count(model), Set(rows.prefix(2).flatMap(\.windows)).count)
+    }
+
+    func testDeskIndexAll() throws { try render("desk-index-all", width: 1590, height: 688, sidebar: false) }
+    func testDeskIndexLayer() throws {
+        try render("desk-index-layer", width: 1590, height: 688, sidebar: false) { model in
+            model.chooseIndex(["lattices"], rows: model.indexFixtureRows)
+        }
+    }
+    func testDeskIndexMulti() throws {
+        try render("desk-index-multi", width: 1590, height: 688, sidebar: false) { model in
+            model.chooseIndex(Array(model.indexFixtureRows.prefix(2).map(\.id)), rows: model.indexFixtureRows)
+        }
+    }
+    func testDeskIndexNarrow() throws { try render("desk-index-narrow", width: 1110, height: 648, sidebar: false) }
+
     func testWide() throws { try render("wide", width: 1590, height: 688, sidebar: false) }
     func testWide2x() throws { try render("wide@2x", width: 1590, height: 688, sidebar: false, scale: 2) }
     func testWideShell2x() throws { try render("wide-shell@2x", width: 1590, height: 688, sidebar: false, scale: 2, top: 46.25) }

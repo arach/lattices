@@ -1,0 +1,3 @@
+23:09:22.629 › [info] BUILD TRACE | channel=dev version=0.12.3 build=0.12.3 revision=5a2156a9 builtAt=2026-10-02T03:05:39Z pid=71712 bundleID=dev.lattices.app.dev bundle=/Users/arach/Applications/dev/Lattices/Lattices.app executable=/Users/arach/Applications/dev/Lattices/Lattices.app/Contents/MacOS/Lattices
+23:09:23.961 › [info] DeepLink: opened Editor
+23:12:02.625 › [info] DeepLink: opened Editor

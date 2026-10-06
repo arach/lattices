@@ -396,6 +396,7 @@ final class LayerStage {
             guard let app = NSRunningApplication(processIdentifier: pid) else { continue }
             // hide() answers false even when the app goes on to hide, so its
             // answer can't be the cue to park the windows instead.
+            EditorMutationJournal.hiding(app)
             app.hide()
             outcome.hiddenApps.append(app.localizedName ?? "pid \(pid)")
             if !state.hiddenPids.contains(pid) { state.hiddenPids.append(pid) }
@@ -410,8 +411,12 @@ final class LayerStage {
     /// watch.
     private func scheduleVerifyLocked(_ parked: Set<UInt32>) {
         let generation = self.generation
+        let journal = EditorMutationJournal.current
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.verifyDelay) {
-            self.verify(generation, parked: parked)
+            if let journal {
+                guard !journal.sealed else { return }
+                journal.run { self.verify(generation, parked: parked) }
+            } else { self.verify(generation, parked: parked) }
         }
     }
 
@@ -432,6 +437,24 @@ final class LayerStage {
         let again = parkLocked(pulled, at: Stage.parkOrigin(of: main))
         let stayed = pulled.filter { again.stayed.contains($0.wid) }.map(\.app)
         DiagnosticLog.shared.info("LayerStage: \(pulled.count) windows came back on screen — parked \(again.parked.count) again, stayed [\(stayed.joined(separator: ", "))]")
+    }
+
+    /// Reconcile only the restored window; never clear unrelated/user state.
+    func editorRestored(window: UInt32, parkedBefore: ParkedWindow?) {
+        lock.lock()
+        defer { lock.unlock() }
+        state.parked.removeAll { $0.wid == window }
+        if let parkedBefore { state.parked.append(parkedBefore) }
+        settlingWids.remove(window)
+        persistLocked()
+    }
+
+    func editorUnhid(_ pid: Int32) {
+        lock.lock()
+        defer { lock.unlock() }
+        state.hiddenPids.removeAll { $0 == pid }
+        settlingPids.remove(pid)
+        persistLocked()
     }
 
     // MARK: - Show All
@@ -862,6 +885,9 @@ final class LayerStage {
         var stayed = Set<UInt32>()
         Self.withAXWindows(for: windows.map { (wid: $0.wid, pid: $0.pid) }) { wid, axWindow in
             guard !Self.isMinimized(axWindow) else { return }
+            let capture = EditorMutationJournal.begin(wid: wid, ax: axWindow, parked: true)
+            if EditorMutationJournal.current != nil && capture == nil { return }
+            defer { EditorMutationJournal.end(capture) }
             var point = origin
             guard let value = AXValueCreate(.cgPoint, &point),
                   AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success else { return }
@@ -937,6 +963,9 @@ final class LayerStage {
         var rescued = 0
         withAXWindows(for: targets) { wid, axWindow in
             guard let size = live[wid]?.frame.size else { return }
+            let capture = EditorMutationJournal.begin(wid: wid, ax: axWindow, parked: true)
+            if EditorMutationJournal.current != nil && capture == nil { return }
+            defer { EditorMutationJournal.end(capture) }
             var point = CGPoint(
                 x: bounds.midX - min(size.width, bounds.width) / 2,
                 y: max(bounds.minY, bounds.midY - min(size.height, bounds.height) / 2)
@@ -956,6 +985,9 @@ final class LayerStage {
         var restored = Set<UInt32>()
         withAXWindows(for: parked.map { ($0.wid, $0.pid) }) { wid, axWindow in
             guard let saved = byWid[wid] else { return }
+            let capture = EditorMutationJournal.begin(wid: wid, ax: axWindow, parked: true)
+            if EditorMutationJournal.current != nil && capture == nil { return }
+            defer { EditorMutationJournal.end(capture) }
             var point = CGPoint(x: saved.frame.x, y: saved.frame.y)
             var size = CGSize(width: saved.frame.w, height: saved.frame.h)
             guard let position = AXValueCreate(.cgPoint, &point),

@@ -16,6 +16,7 @@ import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
+import { stripMdxImports } from '../src/lib/markdown.ts'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
@@ -549,8 +550,7 @@ function stripQuotes(value) {
 }
 
 function prepareMarkdown(content) {
-  let prepared = content
-    .replace(/^import\s+.+$/gm, '')
+  let prepared = stripMdxImports(content)
     .replace(/\sclient:load/g, '')
 
   // Replace each MDX component tag with a unique HTML comment marker that
@@ -727,9 +727,9 @@ function createRenderer() {
 
 function highlightStaticCode(code, language) {
   try {
-    return highlighter.codeToHtml(code, { lang: language, theme: 'lattices-green' })
+    return highlighter.codeToHtml(code, { lang: language, theme: 'lattices-ink' })
   } catch {
-    return highlighter.codeToHtml(code, { lang: 'text', theme: 'lattices-green' })
+    return highlighter.codeToHtml(code, { lang: 'text', theme: 'lattices-ink' })
   }
 }
 
