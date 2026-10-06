@@ -1,3 +1,4 @@
+import ActionCore
 import AppKit
 import SwiftUI
 
@@ -13,7 +14,7 @@ private let actionSupervisionShadowMargin: CGFloat = 20
 // The expanded card is a fixed console: header chrome, a taller log well, and a
 // footer of session actions. Growing with each note made the window jump.
 private let actionSupervisionExpandedCard = CGSize(width: 340, height: 276)
-private let actionSupervisionMinimizedCard = CGSize(width: 278, height: 50)
+private let actionSupervisionMinimizedCard = CGSize(width: 312, height: 50)
 private let actionSupervisionNoteLimit = 6
 
 @MainActor
@@ -29,6 +30,24 @@ final class ActionSupervisionViewModel: ObservableObject {
     var onStop: (() -> Void)?
     var onToggleMinimized: (() -> Void)?
     var onClose: (() -> Void)?
+    var onFindCursor: (() -> Void)?
+}
+
+/// Header control that makes the agent cursor ripple on screen. The HUD sits
+/// in a corner and the cursor can be anywhere; this is the way back to it.
+private struct ActionSupervisionFindCursorButton: View {
+    @ObservedObject var model: ActionSupervisionViewModel
+
+    var body: some View {
+        Button {
+            model.onFindCursor?()
+        } label: {
+            Image(systemName: "scope")
+        }
+        .buttonStyle(ActionSupervisionIconButtonStyle())
+        .help("Find the agent cursor")
+        .accessibilityLabel("Find the agent cursor")
+    }
 }
 
 struct ActionSupervisionView: View {
@@ -44,6 +63,10 @@ struct ActionSupervisionView: View {
         }
         .help("Action supervision. Drag to reposition or right-click for more options.")
         .contextMenu {
+            Button("Find Cursor") {
+                model.onFindCursor?()
+            }
+
             Button(model.isMinimized ? "Show Details" : "Show Less") {
                 model.onToggleMinimized?()
             }
@@ -93,6 +116,8 @@ struct ActionSupervisionView: View {
             }
 
             Spacer(minLength: 8)
+
+            ActionSupervisionFindCursorButton(model: model)
 
             Button {
                 model.onToggleMinimized?()
@@ -206,6 +231,8 @@ struct ActionSupervisionView: View {
             }
 
             Spacer(minLength: 4)
+
+            ActionSupervisionFindCursorButton(model: model)
 
             Button {
                 model.onToggleMinimized?()
@@ -384,6 +411,10 @@ final class ActionSupervisionOverlayController: NSObject {
     private var dismissedRegistrationIDs: Set<String> = []
     private var stopRequest: StopRequest?
     private var positioningFingerprint = ""
+    private var statusItem: NSStatusItem?
+    private var statusMenu: NSMenu?
+    private var lastLauncherCheckAt: Date = .distantPast
+    private var launcherRunning = false
 
     init(replyFile: String?, debugLogPath: String?) {
         self.writer = ResponseWriter(replyFile: replyFile)
@@ -403,6 +434,9 @@ final class ActionSupervisionOverlayController: NSObject {
         }
         model.onClose = { [weak self] in
             self?.dismissOverlay(reason: "quit")
+        }
+        model.onFindCursor = { [weak self] in
+            self?.findCursor(reason: "hud")
         }
         createWindow()
         startPolling()
@@ -543,6 +577,7 @@ final class ActionSupervisionOverlayController: NSObject {
         if model.lines != notes {
             model.lines = notes
         }
+        refreshStatusItem()
         let nextPositioningFingerprint = registrations
             .compactMap(\.avoidedDisplayID)
             .sorted()
@@ -607,6 +642,100 @@ final class ActionSupervisionOverlayController: NSObject {
         window.setFrame(CGRect(origin: CGPoint(x: x, y: y), size: size), display: true)
         hasPositionedWindow = true
         persistWindowFrame()
+    }
+
+    // MARK: - Menu bar presence
+
+    /// A drive should register in the menu bar even when the launcher is not
+    /// open. The launcher already turns its own mark coral while a drive runs,
+    /// so this item only exists while no launcher is around to do that.
+    private func refreshStatusItem() {
+        let now = Date()
+        if now.timeIntervalSince(lastLauncherCheckAt) >= 2 {
+            lastLauncherCheckAt = now
+            launcherRunning = ActionSupervisionRegistry.launcherIsRunning()
+        }
+
+        if launcherRunning {
+            removeStatusItem()
+            return
+        }
+
+        if statusItem == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            item.button?.image = ActionBrandMark.statusItemImage(live: true)
+            let menu = NSMenu()
+            menu.delegate = self
+            item.menu = menu
+            statusItem = item
+            statusMenu = menu
+            logger.log("supervision-overlay: status item shown")
+        }
+        let toolTip = "Action — \(model.title)"
+        if statusItem?.button?.toolTip != toolTip {
+            statusItem?.button?.toolTip = toolTip
+        }
+    }
+
+    private func removeStatusItem() {
+        guard let statusItem else {
+            return
+        }
+        NSStatusBar.system.removeStatusItem(statusItem)
+        self.statusItem = nil
+        statusMenu = nil
+        logger.log("supervision-overlay: status item removed")
+    }
+
+    private func rebuildStatusMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let title = NSMenuItem(title: model.title, action: nil, keyEquivalent: "")
+        title.isEnabled = false
+        menu.addItem(title)
+        let count = NSMenuItem(title: model.countLabel, action: nil, keyEquivalent: "")
+        count.isEnabled = false
+        menu.addItem(count)
+        menu.addItem(.separator())
+
+        addMenuItem(to: menu, title: "Find Cursor", action: #selector(menuFindCursor))
+        let hudVisible = isWindowPresented && !isDismissed
+        addMenuItem(to: menu, title: hudVisible ? "Hide HUD" : "Show HUD", action: #selector(menuToggleHUD))
+        menu.addItem(.separator())
+
+        let stop = addMenuItem(to: menu, title: model.stopButtonTitle, action: #selector(menuStop))
+        stop.isEnabled = !model.isStopPending
+    }
+
+    @discardableResult
+    private func addMenuItem(to menu: NSMenu, title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        return item
+    }
+
+    @objc private func menuFindCursor() {
+        findCursor(reason: "menu")
+    }
+
+    @objc private func menuToggleHUD() {
+        if isWindowPresented && !isDismissed {
+            dismissOverlay(reason: "menu")
+        } else {
+            isDismissed = false
+            dismissedRegistrationIDs.removeAll()
+            refresh()
+        }
+    }
+
+    @objc private func menuStop() {
+        triggerStopAll(reason: "menu")
+    }
+
+    private func findCursor(reason: String) {
+        let count = ActionSupervisionRegistry.requestCursorLocate()
+        logger.log("supervision-overlay: find cursor count=\(count) reason=\(reason)")
     }
 
     private func displayID(for screen: NSScreen) -> UInt32? {
@@ -781,8 +910,15 @@ final class ActionSupervisionOverlayController: NSObject {
         }
         window?.orderOut(nil)
         isWindowPresented = false
+        removeStatusItem()
         ActionSupervisionRegistry.clearOverlayPID(ifOwnedBy: ProcessInfo.processInfo.processIdentifier)
         try? FileManager.default.removeItem(at: ActionSupervisionRegistry.overlayStopSignalURL)
         NSApplication.shared.terminate(nil)
+    }
+}
+
+extension ActionSupervisionOverlayController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        rebuildStatusMenu(menu)
     }
 }

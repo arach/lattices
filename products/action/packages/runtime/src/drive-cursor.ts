@@ -1,6 +1,6 @@
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 
 import type {
@@ -23,8 +23,11 @@ export interface AgentCursorHighlight {
 export interface AgentCursorState {
   x?: number;
   y?: number;
+  /** Screen space of x/y. The TS layer always writes Quartz global (top-left origin). */
+  coordinateSpace?: string;
   agent?: string;
-  label?: string;
+  /** `null` clears the badge label; `undefined` keeps the previous one. */
+  label?: string | null;
   phase?: "idle" | "click" | "type" | "key" | "countdown" | string;
   typingText?: string;
   keyLabel?: string;
@@ -86,6 +89,9 @@ export async function startAgentCursor(input: {
   const state: AgentCursorState = {
     x: input.point?.x,
     y: input.point?.y,
+    // Same contract as updateAgentCursor: a restarted overlay seeded with the
+    // last cursor point would otherwise land mirrored vertically.
+    coordinateSpace: "quartz",
     agent: input.lease.agent,
     label: input.label ?? input.lease.task,
     phase: "idle",
@@ -113,7 +119,33 @@ export async function readAgentCursorState(leaseId: string): Promise<AgentCursor
   }
 }
 
-/** Milliseconds to wait after aiming so the overlay warp finishes before the act. */
+/**
+ * Closer than this to its idle deadline, an overlay may quit between a
+ * liveness check and the next write, so it counts as gone and is restarted.
+ */
+export const AGENT_CURSOR_LIVENESS_MARGIN_MS = 1_000;
+
+/**
+ * True while an overlay is still drawing from this state. The overlay deletes
+ * its state file when it quits (idle expiry, stop marker, lease end), so a
+ * missing or lapsed state means writes would reach nothing on screen.
+ */
+export function agentCursorStateIsLive(
+  state: AgentCursorState | undefined,
+  now = Date.now(),
+): boolean {
+  if (!state) {
+    return false;
+  }
+  const deadline = Date.parse(state.expiresAt ?? "");
+  return !Number.isFinite(deadline) || deadline - now > AGENT_CURSOR_LIVENESS_MARGIN_MS;
+}
+
+export async function agentCursorIsLive(leaseId: string): Promise<boolean> {
+  return agentCursorStateIsLive(await readAgentCursorState(leaseId));
+}
+
+/** Milliseconds to wait after aiming so the overlay trajectory finishes before the act. */
 export function cursorTravelMs(from: Point | undefined, to: Point): number {
   if (!from || !Number.isFinite(from.x) || !Number.isFinite(from.y)) {
     return 220;
@@ -122,15 +154,18 @@ export function cursorTravelMs(from: Point | undefined, to: Point): number {
   if (distance < 2) {
     return 80;
   }
-  // Match the native overlay warp, then a short settle so the strike reads after arrival.
-  return Math.min(380, Math.max(110, distance / 2.4)) + 90;
+  // Match the native overlay trajectory, then a short settle so the strike reads after arrival.
+  return Math.min(780, Math.max(180, 200 + distance / 1.7)) + 90;
 }
 
 export async function updateAgentCursor(input: {
   leaseId: string;
   agent?: string;
   point?: Point;
-  label?: string;
+  /**
+   * `null` clears the badge; omit to keep the previous label.
+   */
+  label?: string | null;
   phase?: "idle" | "click" | "type" | "key" | "countdown";
   typingText?: string;
   keyLabel?: string;
@@ -151,8 +186,13 @@ export async function updateAgentCursor(input: {
     ...previous,
     x: input.point?.x ?? previous.x,
     y: input.point?.y ?? previous.y,
+    // Target bounds and action points arrive in Quartz global coordinates
+    // (top-left origin); the native overlay defaults to AppKit unless told
+    // otherwise, so the space must travel with every write or the cursor
+    // lands mirrored vertically.
+    coordinateSpace: "quartz",
     agent: input.agent ?? previous.agent,
-    label: input.label ?? previous.label,
+    label: input.label === null ? undefined : (input.label ?? previous.label),
     phase: input.phase ?? "idle",
     typingText: input.typingText,
     keyLabel: input.keyLabel,
@@ -176,6 +216,58 @@ export async function updateAgentCursor(input: {
 
 export const POINTER_FOCUS_COUNTDOWN_SECONDS = 3;
 export const POINTER_FOCUS_COUNTDOWN_STEP_MS = 800;
+
+/**
+ * How long pointer-taking acts must pause before the next one counts down
+ * again. It runs from the last such act, not the last countdown, and one
+ * record covers every lease, agent, and MCP connection on this Mac. A driver
+ * that paces clicks 20-30s apart, re-begins leases, or leans on implicit ones
+ * still gets one countdown per stretch of work, not one per click.
+ */
+export const POINTER_FOCUS_REARM_MS = 90_000;
+
+export function pointerFocusRecordPath(): string {
+  return join(homedir(), "Library/Application Support/Action/runtime/drive/pointer-focus.json");
+}
+
+/** True when a pointer-taking act should count down before it runs. */
+export async function pointerFocusWarningDue(input: {
+  now?: number;
+  path?: string;
+} = {}): Promise<boolean> {
+  const now = input.now ?? Date.now();
+  try {
+    const record = JSON.parse(
+      await readFile(input.path ?? pointerFocusRecordPath(), "utf8"),
+    ) as { lastActAt?: string };
+    const last = Date.parse(record.lastActAt ?? "");
+    // A missing or torn record, or a clock that went backwards, warns.
+    return !Number.isFinite(last) || last > now || now - last >= POINTER_FOCUS_REARM_MS;
+  } catch {
+    return true;
+  }
+}
+
+/** Record a pointer-taking act, warned or not, so the next one inside the window stays quiet. */
+export async function notePointerFocusAct(input: {
+  now?: number;
+  path?: string;
+  leaseId?: string;
+  agent?: string;
+} = {}): Promise<void> {
+  const path = input.path ?? pointerFocusRecordPath();
+  await mkdir(dirname(path), { recursive: true });
+  const record = {
+    lastActAt: new Date(input.now ?? Date.now()).toISOString(),
+    leaseId: input.leaseId,
+    agent: input.agent,
+  };
+  // Several MCP processes share this file; the rename keeps a reader from
+  // seeing half a write.
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(record)}\n`);
+  await rename(temporary, path);
+}
 
 /** Return true only for acts likely to move the real pointer or steal foreground focus. */
 export function requiresPointerFocusWarning(input: {

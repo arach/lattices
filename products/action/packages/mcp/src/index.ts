@@ -13,6 +13,7 @@ import { recordToolCall, verbForTool } from "./tool-ledger.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { exitWithParent } from "./lifecycle.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -41,6 +42,9 @@ import {
   ocrScreenshot,
   StageDirector,
   StageSceneError,
+  agentCursorIsLive,
+  notePointerFocusAct,
+  pointerFocusWarningDue,
   pointFromBounds,
   publishPointerEventLog,
   readPointerEventLog,
@@ -114,9 +118,10 @@ const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath });
 const stageDirector = new StageDirector(nativeHostPath);
 const driverIdentity = new DriverIdentityContext();
 const cursorPresenter = new DriveCursorPresenter({
-  start: async ({ lease, label }) => startAgentCursor({ nativeHostPath, lease, label }),
+  start: async ({ lease, label, point }) => startAgentCursor({ nativeHostPath, lease, label, point }),
   update: updateAgentCursor,
   stop: stopAgentCursor,
+  isLive: agentCursorIsLive,
 });
 const activeRecordings = new Map<string, RecordingEntry>();
 const activePointerEventLogs = new Map<string, PointerEventLogHandle>();
@@ -465,19 +470,15 @@ async function ensureDriveLeaseForAct(input: {
 }
 
 function actPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
-  const bounds = target?.bounds;
-  const point = bounds
-    ? pointFromBounds(bounds)
-    : action.target?.point
-      ? {
-          x: Number((action.target.point as { x?: number }).x),
-          y: Number((action.target.point as { y?: number }).y),
-        }
-      : undefined;
+  const inputPoint = action.input?.point as { x?: number; y?: number } | undefined;
+  const point = action.target?.point
+    ?? inputPoint
+    ?? target?.point
+    ?? (target?.bounds ? pointFromBounds(target.bounds) : undefined);
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
     return undefined;
   }
-  return point;
+  return { x: Number(point.x), y: Number(point.y) };
 }
 
 function actHighlight(target: ResolvedTarget | undefined): {
@@ -558,7 +559,9 @@ async function stageCursor(input: {
     leaseId: input.lease.leaseId,
     agent: input.lease.agent,
     point: input.point,
-    label: input.label ?? "looking",
+    label: cursorPresenter.presentsCues(input.lease.leaseId)
+      ? (input.label ?? "looking")
+      : null,
     phase: "idle",
     highlight: input.highlight,
   });
@@ -574,6 +577,9 @@ async function presentActCue(input: {
   target: ResolvedTarget | undefined;
 }): Promise<void> {
   try {
+    if (!cursorPresenter.presentsCues(input.lease.leaseId)) {
+      return;
+    }
     const kind = input.action.kind;
     const cueId = `${input.action.id}_${Date.now()}`;
     const safePoint = actPoint(input.action, input.target);
@@ -598,7 +604,7 @@ async function presentActCue(input: {
           leaseId: input.lease.leaseId,
           agent: input.lease.agent,
           phase: "idle",
-          label: "driving",
+          label: null,
           highlight: null,
         });
       }, holdMs);
@@ -626,7 +632,7 @@ async function presentActCue(input: {
           leaseId: input.lease.leaseId,
           agent: input.lease.agent,
           phase: "idle",
-          label: "driving",
+          label: null,
           highlight: null,
         });
       }, 700);
@@ -648,7 +654,7 @@ async function presentActCue(input: {
           leaseId: input.lease.leaseId,
           agent: input.lease.agent,
           phase: "idle",
-          label: "driving",
+          label: null,
           highlight: null,
         });
       }, 480);
@@ -855,6 +861,7 @@ const tools: Tool[] = [
       showSupervisionLabel: booleanProperty("Show the driver identity label to the operator. Defaults to true."),
       pointerControl: booleanProperty("Allow pointer drags and coordinate targeting on this background lease. Some work has no accessibility element to aim at \u2014 dragging a selection rectangle is coordinate-only by nature. Defaults to false; the lease records the grant so supervision can show it."),
       cursorStyle: enumProperty(["synthetic", "system"], "Cursor presentation. Defaults to synthetic; system uses the normal macOS cursor."),
+      cursorCues: booleanProperty("Draw action cues on the synthetic cursor \u2014 act labels, click flashes, typing captions, and the pointer-focus countdown. Defaults to true; false keeps the cursor following silently, which suits long computer-use sessions."),
     }, ["agent", "task"]),
     { readOnlyHint: false, idempotentHint: false },
   ),
@@ -959,7 +966,7 @@ const tools: Tool[] = [
   tool(
     "action.observe.ax",
     "Observe Accessibility",
-    "Capture an accessibility snapshot for the current focused surface.",
+    "Capture an accessibility snapshot for the current focused surface. Chrome may expose only window chrome (toolbar and tab strip), not web content, without AXManualAccessibility. For page content, use the Chrome companion DOM surface or observe_ocr and coordinate targets.",
     objectSchema({
       sessionId: textProperty("Optional session id used to choose the artifact directory."),
       outputPath: textProperty("Optional absolute or Action-root-relative JSON output path."),
@@ -969,7 +976,7 @@ const tools: Tool[] = [
   tool(
     "action.resolve.target",
     "Resolve Target",
-    "Resolve a target query through Action's runtime target interface.",
+    "Resolve a target query through Action's runtime target interface. Coordinate queries retain their screen point. Text/role queries do not search browser DOM: Chrome AX may expose only window chrome without AXManualAccessibility. Use the Chrome companion DOM surface or observe_ocr with coordinate targets for page content.",
     objectSchema({
       query: objectProperty("TargetQuery object with semanticId, text, role, surfaceId, anchorId, or point."),
     }, ["query"]),
@@ -1219,6 +1226,7 @@ const handlers: Record<string, ToolHandler> = {
       implicit: result.lease.implicit,
     }]);
     cursorPresenter.recordStyle(result.lease.leaseId, parseDriveCursorStyle(args.cursorStyle));
+    cursorPresenter.recordCues(result.lease.leaseId, optionalBoolean(args.cursorCues) ?? true);
     await cursorPresenter.ensure(result.lease);
     return {
       ok: true,
@@ -1582,29 +1590,30 @@ const handlers: Record<string, ToolHandler> = {
       description: action.description,
     });
 
+    const takesPointer = requiresPointerFocusWarning({ action, target, axTier, channel });
     let pointerFocusWarningShown = false;
     if (
-      cursorPresenter.isPresenting(lease.leaseId)
-      && requiresPointerFocusWarning({ action, target, axTier, channel })
+      takesPointer
+      && cursorPresenter.isPresenting(lease.leaseId)
+      && cursorPresenter.presentsCues(lease.leaseId)
+      && await pointerFocusWarningDue()
     ) {
-      const bounds = target?.bounds;
-      const point = bounds
-        ? pointFromBounds(bounds)
-        : action.target?.point
-          ? {
-              x: Number((action.target.point as { x?: number }).x),
-              y: Number((action.target.point as { y?: number }).y),
-            }
-          : undefined;
-      const safePoint = point && Number.isFinite(point.x) && Number.isFinite(point.y)
-        ? point
-        : undefined;
       pointerFocusWarningShown = await runPointerFocusCountdown({
         leaseId: lease.leaseId,
         agent: lease.agent,
-        point: safePoint,
+        point: actPoint(action, target),
         label: (action.description || action.kind).slice(0, 40),
       });
+    }
+    if (takesPointer) {
+      // The countdown is Action's to pace, not the caller's: every pointer-taking
+      // act pushes the re-arm out, so a session warns once per stretch of work
+      // however it spaces its clicks or splits its leases.
+      try {
+        await notePointerFocusAct({ leaseId: lease.leaseId, agent: lease.agent });
+      } catch {
+        // A lost record only means the next act may warn again.
+      }
     }
     await revalidatePointerFocusLease({
       warningShown: pointerFocusWarningShown,
@@ -1643,7 +1652,7 @@ const handlers: Record<string, ToolHandler> = {
             leaseId: lease.leaseId,
             agent: lease.agent,
             phase: "idle",
-            label: "driving",
+            label: null,
           });
         } catch {
           // The native lease expiry remains the independent cleanup path.
@@ -2027,6 +2036,7 @@ function createServer(): Server {
 export async function main(): Promise<void> {
   const server = createServer();
   await server.connect(new StdioServerTransport());
+  exitWithParent();
 }
 
 if (import.meta.main) {

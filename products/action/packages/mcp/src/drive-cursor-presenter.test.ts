@@ -30,6 +30,7 @@ describe("drive cursor presenter", () => {
       start: async () => { calls.push("start"); },
       update: async () => { calls.push("update"); },
       stop: async () => { calls.push("stop"); },
+      isLive: async () => true,
     });
     const currentLease = lease("system-lease");
 
@@ -48,6 +49,7 @@ describe("drive cursor presenter", () => {
       start: async () => { calls.push({ operation: "start" }); },
       update: async (cue) => { calls.push({ operation: "update", cue }); },
       stop: async () => { calls.push({ operation: "stop" }); },
+      isLive: async () => true,
     });
     const currentLease = lease("synthetic-lease");
 
@@ -65,5 +67,65 @@ describe("drive cursor presenter", () => {
     assert.equal(parseDriveCursorStyle("synthetic"), "synthetic");
     assert.equal(parseDriveCursorStyle(undefined), "synthetic");
     assert.equal(parseDriveCursorStyle("hidden"), "synthetic");
+  });
+  test("silent-cue leases keep the cursor but skip act cues and countdown warnings", async () => {
+    const calls: string[] = [];
+    const presenter = new DriveCursorPresenter({
+      start: async () => { calls.push("start"); },
+      update: async () => { calls.push("update"); },
+      stop: async () => { calls.push("stop"); },
+      isLive: async () => true,
+    });
+    const currentLease = lease("quiet-lease");
+    presenter.recordCues(currentLease.leaseId, false);
+
+    assert.equal(presenter.presentsCues(currentLease.leaseId), false);
+    // Cue policy never gates presentation itself — the cursor still follows.
+    await presenter.ensure(currentLease);
+    await presenter.update({ leaseId: currentLease.leaseId, label: "click" });
+    assert.deepEqual(calls, ["start", "update"]);
+  });
+
+  test("restarts an overlay that quit while the agent was away, where the cursor last was", async () => {
+    const calls: Array<{ operation: string; point?: { x: number; y: number } }> = [];
+    let live = true;
+    const presenter = new DriveCursorPresenter({
+      start: async ({ point }) => { calls.push({ operation: "start", point }); },
+      update: async () => { calls.push({ operation: "update" }); },
+      stop: async () => { calls.push({ operation: "stop" }); },
+      isLive: async () => live,
+    });
+    const currentLease = lease("paused-lease");
+
+    await presenter.ensure(currentLease);
+    await presenter.update({ leaseId: currentLease.leaseId, point: { x: 640, y: 320 } });
+    // The overlay idles out and deletes its state while the agent deploys.
+    live = false;
+    await presenter.ensure(currentLease);
+    live = true;
+    await presenter.update({ leaseId: currentLease.leaseId, point: { x: 900, y: 500 } });
+
+    assert.deepEqual(calls, [
+      { operation: "start", point: undefined },
+      { operation: "update" },
+      { operation: "start", point: { x: 640, y: 320 } },
+      { operation: "update" },
+    ]);
+    assert.equal(presenter.isPresenting(currentLease.leaseId), true);
+
+    // A heartbeat from an observe call revives it the same way.
+    live = false;
+    await presenter.renew(currentLease);
+    assert.deepEqual(calls.at(-1), { operation: "start", point: { x: 900, y: 500 } });
+  });
+
+  test("cues default to on for leases without a recorded preference", () => {
+    const presenter = new DriveCursorPresenter({
+      start: async () => {},
+      update: async () => {},
+      stop: async () => {},
+      isLive: async () => true,
+    });
+    assert.equal(presenter.presentsCues("unknown-lease"), true);
   });
 });

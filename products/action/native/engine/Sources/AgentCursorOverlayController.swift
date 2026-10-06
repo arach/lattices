@@ -1,16 +1,19 @@
 import AppKit
 import Foundation
+import ScreenCaptureKit
 
 /// Long-lived synthetic agent cursor for drive leases.
 ///
 /// Stays up until the stop file appears. A state JSON steers position and click
-/// flashes. Motion uses a short wind-up, a fast Trek-style warp, then ease-in
-/// lock — with a short trail while traveling and a bicycle-balance sway parked.
+/// flashes. Motion follows a bounded arc with a smooth launch and arrival,
+/// a short trail while traveling, and a subtle balance sway while parked.
 struct AgentCursorState: Codable, Equatable {
     var x: Double?
     var y: Double?
     /// `appkit` (legacy/default) or `quartz`. Quartz input is converted once at the overlay edge.
     var coordinateSpace: String?
+    /// auto (default), light, or dark scene treatment.
+    var appearance: String?
     var agent: String?
     var label: String?
     /// `idle` | `click` | `type` | `key` | `countdown`
@@ -59,6 +62,7 @@ final class AgentCursorOverlayController: NSObject {
     private var targetPoint: CGPoint?
     private var travelPoint: CGPoint?
     private var moveOrigin: CGPoint?
+    private var moveControl: CGPoint?
     private var moveStartedAt: TimeInterval?
     private var moveDuration: TimeInterval = 0.28
     private var isTraveling = false
@@ -74,6 +78,17 @@ final class AgentCursorOverlayController: NSObject {
     private let startedAt = Date()
     private var trail: [TrailSample] = []
     private var lastFrameAt: TimeInterval = 0
+    private var lastAppearanceSampleAt: TimeInterval = -1
+    private var appearanceSampleInFlight = false
+    private var appearanceContent: SCShareableContent?
+    private var appearanceContentAt: TimeInterval = -10
+    private var darkScene = false
+    private var appearanceBlend: CGFloat = 0
+    /// Last moment the cursor moved or played a cue; the badge hides shortly after.
+    private var lastActivityAt: TimeInterval = 0
+    /// Start of a "find me" ripple, requested by the supervision HUD or menu bar.
+    private var locateStartedAt: TimeInterval?
+    private static let locateDuration: TimeInterval = 1.6
     private static let idleExpirySeconds: TimeInterval = 90
     private static let iso8601Format = Date.ISO8601FormatStyle()
     private static let fractionalISO8601Format = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
@@ -101,6 +116,9 @@ final class AgentCursorOverlayController: NSObject {
         self.logger = DebugLogger(path: debugLogPath)
     }
 
+    /// Marker written beside the state file by whoever wants the cursor to announce itself.
+    private var locateFile: String { stateFile + ".locate" }
+
     func run() throws {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
@@ -109,13 +127,16 @@ final class AgentCursorOverlayController: NSObject {
             at: URL(fileURLWithPath: stateFile).deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        // A marker left over from a previous overlay must not fire on launch.
+        try? FileManager.default.removeItem(atPath: locateFile)
 
         if !FileManager.default.fileExists(atPath: stateFile) {
             let seed = AgentCursorState(
                 x: nil,
                 y: nil,
                 agent: "Agent",
-                label: "driving",
+                // No resting label: the cursor parks clean and badges only while active.
+                label: nil,
                 phase: "idle",
                 expiresAt: Date().addingTimeInterval(Self.idleExpirySeconds).formatted(Self.fractionalISO8601Format),
                 updatedAt: ISO8601DateFormatter().string(from: Date())
@@ -172,9 +193,21 @@ final class AgentCursorOverlayController: NSObject {
             return
         }
         reloadState(force: false)
+        if FileManager.default.fileExists(atPath: locateFile) {
+            try? FileManager.default.removeItem(atPath: locateFile)
+            beginLocate()
+        }
         if stateIsExpired(at: Date()) {
             shutdown(reason: "idle-expiry")
         }
+    }
+
+    /// Ripple outward from the wedge and show the badge so a parked cursor is easy to spot.
+    private func beginLocate() {
+        let now = Date().timeIntervalSince(startedAt)
+        locateStartedAt = now
+        lastActivityAt = now
+        logger.log("agent-cursor: locate requested")
     }
 
     private func reloadState(force: Bool) {
@@ -218,6 +251,7 @@ final class AgentCursorOverlayController: NSObject {
         guard phaseChanged || cueChanged else {
             return
         }
+        lastActivityAt = Date().timeIntervalSince(startedAt)
         if let cueId = decoded.cueId {
             lastCueId = cueId
         }
@@ -280,9 +314,20 @@ final class AgentCursorOverlayController: NSObject {
         moveOrigin = from
         targetPoint = target
         let distance = hypot(target.x - from.x, target.y - from.y)
-        // Fast warp: short overall, still room for wind-up + lock.
-        // Peak feels like a Trek jump — most of the distance in the middle third.
-        moveDuration = min(0.38, max(0.11, Double(distance) / 2400.0))
+        // Small corrections stay direct. Longer travel traces a gentle bow,
+        // with a reproducible side chosen from the dominant direction.
+        let dx = target.x - from.x
+        let dy = target.y - from.y
+        let bend = min(110, max(0, (distance - 35) * 0.18))
+        let side: CGFloat = abs(dx) >= abs(dy) ? (dx >= 0 ? 1 : -1) : (dy >= 0 ? -1 : 1)
+        var control = CGPoint(x: (from.x + target.x) / 2 - dy / max(1, distance) * bend * side,
+                              y: (from.y + target.y) / 2 + dx / max(1, distance) * bend * side)
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(from) && $0.frame.contains(target) }) {
+            control.x = min(screen.frame.maxX, max(screen.frame.minX, control.x))
+            control.y = min(screen.frame.maxY, max(screen.frame.minY, control.y))
+        }
+        moveControl = control
+        moveDuration = min(0.78, max(0.18, 0.20 + Double(distance) / 1700.0))
         moveStartedAt = Date().timeIntervalSince(startedAt)
         isTraveling = distance > 0.8
         if isTraveling {
@@ -345,24 +390,17 @@ final class AgentCursorOverlayController: NSObject {
         overlayView = view
     }
 
-    /// Trek-style ease: short wind-up, long fast warp, short lock-in.
-    /// Most of the path is covered in the middle — not a slow cubic all the way.
-    private static func trekEase(_ t: Double) -> Double {
+    /// Continuous acceleration at launch and arrival; no abrupt warp segments.
+    private static func travelEase(_ t: Double) -> Double {
         let x = min(1, max(0, t))
-        // 0–18% wind-up covers ~10% of distance
-        if x < 0.18 {
-            let u = x / 0.18
-            return 0.10 * (u * u)
-        }
-        // 18–80% warp covers ~80% of distance — high, near-linear speed
-        if x < 0.80 {
-            let u = (x - 0.18) / 0.62
-            return 0.10 + 0.80 * u
-        }
-        // 80–100% lock-in covers last ~10% with ease-out
-        let u = (x - 0.80) / 0.20
-        let easeOut = 1 - (1 - u) * (1 - u) * (1 - u)
-        return 0.90 + 0.10 * easeOut
+        return x * x * x * (x * (x * 6 - 15) + 10)
+    }
+
+    private static func trajectory(from: CGPoint, control: CGPoint, to: CGPoint, progress: Double) -> CGPoint {
+        let t = CGFloat(travelEase(progress))
+        let v = 1 - t
+        return CGPoint(x: v * v * from.x + 2 * v * t * control.x + t * t * to.x,
+                       y: v * v * from.y + 2 * v * t * control.y + t * t * to.y)
     }
 
     private func renderFrame() {
@@ -388,43 +426,35 @@ final class AgentCursorOverlayController: NSObject {
                     fireClickCue()
                 }
             } else {
-                let eased = Self.trekEase(u)
+                let control = moveControl ?? origin
+                let position = Self.trajectory(from: origin, control: control, to: target, progress: u)
                 let prevU = max(0, (now - dt - t0) / max(0.001, moveDuration))
-                let prevEased = Self.trekEase(prevU)
-                let x = origin.x + (target.x - origin.x) * eased
-                let y = origin.y + (target.y - origin.y) * eased
-                let prev = CGPoint(
-                    x: origin.x + (target.x - origin.x) * prevEased,
-                    y: origin.y + (target.y - origin.y) * prevEased
-                )
-                travelPoint = CGPoint(x: x, y: y)
-                speed = CGFloat(hypot(x - prev.x, y - prev.y) / max(dt, 0.001))
-                trail.append(TrailSample(point: CGPoint(x: x, y: y), at: now))
+                let prev = Self.trajectory(from: origin, control: control, to: target, progress: prevU)
+                travelPoint = position
+                speed = CGFloat(hypot(position.x - prev.x, position.y - prev.y) / max(dt, 0.001))
+                trail.append(TrailSample(point: position, at: now))
             }
         } else if let target = targetPoint {
             travelPoint = target
         }
 
-        // Slightly longer trail so the warp streak reads at higher speed.
+        // A short trail makes the trajectory legible without obscuring the UI.
         let trailHorizon = now - 0.14
         trail.removeAll { $0.at < trailHorizon }
 
-        guard var global = travelPoint else {
+        guard let global = travelPoint else {
             return
         }
 
         let travelDamping: CGFloat = isTraveling ? 0.18 : 1.0
         stepBalance(dt: dt, amplitude: travelDamping)
 
+        updateAppearance(at: global, now: now)
+        let appearanceTarget: CGFloat = darkScene ? 1 : 0
+        appearanceBlend += (appearanceTarget - appearanceBlend) * min(1, CGFloat(dt) * 8)
+
         // Brand lean is the resting pose; bicycle micro-sway rides on top.
         let lean = brandLean + leanAngle
-        let balanceOffset = CGPoint(
-            x: sin(lean) * 2.6,
-            y: (1 - cos(lean)) * 1.0
-        )
-        global.x += balanceOffset.x
-        global.y += balanceOffset.y
-
         let local = CGPoint(
             x: global.x - screen.frame.origin.x,
             y: global.y - screen.frame.origin.y
@@ -487,8 +517,24 @@ final class AgentCursorOverlayController: NSObject {
             if phase == "click" {
                 return state.label ?? "click"
             }
-            return state.label
+            return nil
         }()
+
+        if isTraveling || speed > 1 {
+            lastActivityAt = now
+        }
+
+        var locateProgress: CGFloat?
+        if let locateStartedAt {
+            let elapsed = now - locateStartedAt
+            if elapsed < Self.locateDuration {
+                locateProgress = CGFloat(elapsed / Self.locateDuration)
+                // Keep the badge up for the whole ripple.
+                lastActivityAt = now
+            } else {
+                self.locateStartedAt = nil
+            }
+        }
 
         var localHighlight: CGRect?
         if let box = state.highlight, box.width > 4, box.height > 4 {
@@ -499,12 +545,12 @@ final class AgentCursorOverlayController: NSObject {
                 height: box.height
             )
         }
-
         overlayView?.model = AgentCursorRenderModel(
             point: local,
             trail: localTrail,
             agent: state.agent ?? "Agent",
             label: badgeLabel,
+            badgeVisible: phase != "idle" || now - lastActivityAt < 2.0,
             clickProgress: clickProgress,
             leanAngle: lean,
             speed: speed,
@@ -513,9 +559,66 @@ final class AgentCursorOverlayController: NSObject {
             showCaret: showCaret,
             isKeyCue: phase == "key",
             countdown: phase == "countdown" ? state.countdown : nil,
-            highlight: localHighlight
+            darkSceneBlend: appearanceBlend,
+            highlight: localHighlight,
+            locateProgress: locateProgress
         )
         overlayView?.needsDisplay = true
+    }
+
+    /// Exclude this overlay from sampling so our glow cannot feed back into
+    /// the scene decision. Keep the last treatment when capture is unavailable.
+    private func updateAppearance(at point: CGPoint, now: TimeInterval) {
+        if state.appearance == "light" { darkScene = false; return }
+        if state.appearance == "dark" { darkScene = true; return }
+        guard now - lastAppearanceSampleAt >= 0.35 else { return }
+        lastAppearanceSampleAt = now
+        guard #available(macOS 14.0, *), !appearanceSampleInFlight,
+              CGPreflightScreenCaptureAccess(), let window = overlayWindow else { return }
+        appearanceSampleInFlight = true
+        let windowID = CGWindowID(window.windowNumber)
+        let quartz = CGPoint(x: point.x, y: CGDisplayBounds(CGMainDisplayID()).height - point.y)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.appearanceSampleInFlight = false }
+            do {
+                if self.appearanceContent == nil || now - self.appearanceContentAt > 3 {
+                    self.appearanceContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                    self.appearanceContentAt = now
+                }
+                guard let content = self.appearanceContent,
+                      let display = content.displays.first(where: { $0.frame.contains(quartz) }),
+                      let ownWindow = content.windows.first(where: { $0.windowID == windowID }) else { return }
+                let filter = SCContentFilter(display: display, excludingWindows: [ownWindow])
+                let config = SCStreamConfiguration()
+                config.sourceRect = CGRect(x: quartz.x - display.frame.minX - 20,
+                    y: quartz.y - display.frame.minY - 20, width: 40, height: 40)
+                    .intersection(CGRect(origin: .zero, size: display.frame.size))
+                config.width = 8
+                config.height = 8
+                config.showsCursor = false
+                let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+                // An explicit scene override may have arrived during capture.
+                guard self.state.appearance == nil || self.state.appearance == "auto",
+                      let current = self.travelPoint, hypot(current.x - point.x, current.y - point.y) < 50 else { return }
+                var pixel = [UInt8](repeating: 0, count: 4)
+                let sampled = pixel.withUnsafeMutableBytes { bytes -> Bool in
+                    guard let context = CGContext(data: bytes.baseAddress, width: 1, height: 1,
+                        bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+                    context.interpolationQuality = .high
+                    context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                    return true
+                }
+                guard sampled else { return }
+                let brightness = (0.2126 * Double(pixel[0]) + 0.7152 * Double(pixel[1]) + 0.0722 * Double(pixel[2])) / 255
+                if brightness < 0.40 { self.darkScene = true }
+                else if brightness > 0.62 { self.darkScene = false }
+            } catch {
+                // Keep the last readable treatment if permission/capture changes.
+                self.appearanceContent = nil
+            }
+        }
     }
 
     private func stepBalance(dt: TimeInterval, amplitude: CGFloat) {
@@ -569,6 +672,9 @@ struct AgentCursorRenderModel {
     var trail: [CGPoint]
     var agent: String
     var label: String?
+    /// False once the cursor has been parked idle briefly — badges show while
+    /// active and hide at rest so a long computer-use session stays quiet.
+    var badgeVisible: Bool
     var clickProgress: CGFloat?
     var leanAngle: CGFloat
     var speed: CGFloat
@@ -577,7 +683,10 @@ struct AgentCursorRenderModel {
     var showCaret: Bool
     var isKeyCue: Bool
     var countdown: Int?
+    var darkSceneBlend: CGFloat = 0
     var highlight: CGRect?
+    /// 0…1 while a "find me" ripple plays; nil otherwise.
+    var locateProgress: CGFloat?
 }
 
 final class AgentCursorOverlayView: NSView {
@@ -586,9 +695,6 @@ final class AgentCursorOverlayView: NSView {
     private static let brandCoralHot = NSColor(calibratedRed: 1.0, green: 0.49, blue: 0.32, alpha: 1)
     private static let brandPaper = NSColor(calibratedRed: 0.953, green: 0.922, blue: 0.867, alpha: 1)
     private static let brandCanvas = NSColor(calibratedRed: 0.055, green: 0.071, blue: 0.074, alpha: 0.88)
-
-    /// Tip is the hotspot; dimensions stay close to the standard macOS pointer.
-    private static let triangleHeight: CGFloat = 19
 
     var model: AgentCursorRenderModel?
 
@@ -608,6 +714,9 @@ final class AgentCursorOverlayView: NSView {
         if let clickProgress = model.clickProgress {
             drawClickRing(at: model.point, progress: clickProgress)
         }
+        if let locateProgress = model.locateProgress {
+            drawLocateRings(at: model.point, progress: locateProgress)
+        }
         drawTriangle(at: model.point, lean: model.leanAngle)
         if let typing = model.typingVisible, !typing.isEmpty, !model.isKeyCue {
             drawTypingCaption(near: model.point, text: typing, showCaret: model.showCaret, lean: model.leanAngle)
@@ -615,7 +724,7 @@ final class AgentCursorOverlayView: NSView {
         if model.isKeyCue, let key = model.label, !key.isEmpty {
             drawKeyCap(near: model.point, key: key, lean: model.leanAngle)
         }
-        drawBadge(near: model.point, agent: model.agent, label: model.label, lean: model.leanAngle)
+        drawBadge(near: model.point, agent: model.agent, label: model.label, visible: model.badgeVisible, lean: model.leanAngle)
     }
 
     private func drawCountdown(at point: CGPoint, value: Int, lean: CGFloat) {
@@ -800,6 +909,32 @@ final class AgentCursorOverlayView: NSView {
         }
     }
 
+    /// Three staggered rings expanding from the hotspot. Neutral ink so the
+    /// ripple reads on any scene without adding a colour cast.
+    private func drawLocateRings(at point: CGPoint, progress: CGFloat) {
+        let blend = model?.darkSceneBlend ?? 0
+        let graphite = NSColor(calibratedRed: 0.12, green: 0.14, blue: 0.15, alpha: 1)
+        let ink = graphite.blended(withFraction: blend, of: .white) ?? graphite
+        let halo = NSColor.white.blended(withFraction: blend, of: .black) ?? .white
+        for ring in 0..<3 {
+            let offset = CGFloat(ring) * 0.22
+            let local = (progress - offset) / (1 - offset)
+            guard local > 0, local < 1 else { continue }
+            let ease = 1 - pow(1 - local, 2.2)
+            let radius = 14 + 96 * ease
+            let alpha = 0.55 * pow(1 - local, 1.3)
+            let path = NSBezierPath(
+                ovalIn: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+            )
+            path.lineWidth = 3.4 - 1.6 * local
+            halo.withAlphaComponent(alpha * 0.5).setStroke()
+            path.stroke()
+            path.lineWidth = 1.8 - 0.8 * local
+            ink.withAlphaComponent(alpha).setStroke()
+            path.stroke()
+        }
+    }
+
     private func drawClickRing(at point: CGPoint, progress: CGFloat) {
         let ease = 1 - pow(1 - progress, 2.4)
         let radius = CGFloat(7 + 18 * ease)
@@ -813,195 +948,101 @@ final class AgentCursorOverlayView: NSView {
             )
         )
         path.lineWidth = CGFloat(1.7 - 0.8 * progress)
-        NSColor.black.withAlphaComponent(alpha).setStroke()
+        NSColor.white.blended(withFraction: 1 - (model?.darkSceneBlend ?? 0), of: Self.brandCoral)?.withAlphaComponent(alpha).setStroke()
         path.stroke()
     }
 
     private func drawTriangle(at point: CGPoint, lean: CGFloat) {
-        let h = Self.triangleHeight
+        // A stemless wedge. The origin remains the exact action hotspot.
         let path = NSBezierPath()
-        path.move(to: .zero)
-        path.line(to: CGPoint(x: 0, y: -h))
-        path.line(to: CGPoint(x: 4.8, y: -14.2))
-        path.line(to: CGPoint(x: 8.2, y: -20.2))
-        path.line(to: CGPoint(x: 11.0, y: -18.5))
-        path.line(to: CGPoint(x: 7.6, y: -12.7))
-        path.line(to: CGPoint(x: 14.4, y: -11.9))
+        path.move(to: CGPoint(x: 0.3, y: -2.5))
+        path.curve(to: CGPoint(x: 3, y: -24.5), controlPoint1: CGPoint(x: 0.8, y: -7), controlPoint2: CGPoint(x: 1.6, y: -21))
+        path.curve(to: CGPoint(x: 7, y: -24), controlPoint1: CGPoint(x: 3.8, y: -28), controlPoint2: CGPoint(x: 5.6, y: -27))
+        path.curve(to: CGPoint(x: 19, y: -15.2), controlPoint1: CGPoint(x: 9.4, y: -18), controlPoint2: CGPoint(x: 13.5, y: -15.6))
+        path.curve(to: CGPoint(x: 19.8, y: -12), controlPoint1: CGPoint(x: 22.5, y: -15), controlPoint2: CGPoint(x: 22.4, y: -13.6))
+        path.line(to: CGPoint(x: 2.5, y: -0.8))
+        path.curve(to: CGPoint(x: 0.3, y: -2.5), controlPoint1: CGPoint(x: 0.3, y: 0.7), controlPoint2: CGPoint(x: -0.1, y: -0.1))
         path.close()
         path.lineJoinStyle = .round
-        path.lineCapStyle = .round
-
         var transform = AffineTransform(translationByX: point.x, byY: point.y)
-        transform.rotate(byRadians: lean)
+        transform.rotate(byRadians: lean + 18 * .pi / 180)
         path.transform(using: transform)
 
+        let blend = model?.darkSceneBlend ?? 0
+        let graphite = NSColor(calibratedRed: 0.12, green: 0.14, blue: 0.15, alpha: 1)
+        let body = Self.brandPaper.blended(withFraction: blend, of: graphite) ?? Self.brandPaper
+        let rim = graphite.blended(withFraction: blend, of: .white) ?? graphite
+        let accent = Self.brandCoral.blended(withFraction: blend,
+            of: NSColor(calibratedRed: 0.48, green: 0.73, blue: 1, alpha: 1)) ?? Self.brandCoral
+        // Light scenes get a plain drop shadow: a coral bloom spread over paper
+        // reads as a yellow haze. The tinted glow is a dark-scene treatment only.
+        let neutralShadow = NSColor(calibratedWhite: 0, alpha: 0.38)
+        let glowColor = neutralShadow.blended(withFraction: blend, of: accent.withAlphaComponent(0.8)) ?? neutralShadow
         NSGraphicsContext.saveGraphicsState()
-        let ambient = NSShadow()
-        ambient.shadowBlurRadius = 8
-        ambient.shadowOffset = CGSize(width: 0, height: -1.5)
-        ambient.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.24)
-        ambient.set()
-        NSColor(calibratedWhite: 0, alpha: 0.001).setFill()
+        let glow = NSShadow()
+        glow.shadowBlurRadius = 7 + 5 * blend
+        glow.shadowOffset = CGSize(width: 1, height: -2)
+        glow.shadowColor = glowColor
+        glow.set()
+        body.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
-
-        NSGraphicsContext.saveGraphicsState()
-        let contact = NSShadow()
-        contact.shadowBlurRadius = 3.0
-        contact.shadowOffset = CGSize(width: 0, height: -1.0)
-        contact.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.32)
-        contact.set()
-        NSColor.black.withAlphaComponent(0.98).setFill()
-        path.fill()
-        NSGraphicsContext.restoreGraphicsState()
-        NSColor.white.withAlphaComponent(0.96).setStroke()
-        path.lineWidth = 1.35
+        rim.setStroke()
+        path.lineWidth = 1.5
         path.stroke()
+        // Fine inset illumination preserves the silhouette at recording scale.
+        // Neutral on light scenes for the same reason as the shadow: no cast.
+        let insetLight = graphite.withAlphaComponent(0.30)
+        let inset = insetLight.blended(withFraction: blend, of: accent.withAlphaComponent(0.55)) ?? insetLight
+        NSGraphicsContext.saveGraphicsState()
+        path.addClip()
+        inset.setStroke()
+        path.lineWidth = 3
+        path.stroke()
+        NSGraphicsContext.restoreGraphicsState()
     }
 
-    /// Angular metal plaque — thin grotesque/mono type, near-sharp corners, brushed surface.
-    private func drawBadge(near point: CGPoint, agent: String, label: String?, lean: CGFloat) {
+    /// Agent identity leads; the current action remains a quieter supporting cue.
+    private func drawBadge(near point: CGPoint, agent: String, label: String?, visible: Bool, lean: CGFloat) {
+        guard visible else { return }
         let primary = agent.trimmingCharacters(in: .whitespacesAndNewlines)
-        let secondary = label?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let line: String
-        if let secondary, !secondary.isEmpty {
-            line = "\(primary)  ·  \(secondary)"
-        } else {
-            line = primary
+        let secondary = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        let text = NSMutableAttributedString(string: primary.isEmpty ? "Agent" : primary, attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+            .foregroundColor: Self.brandPaper,
+            .paragraphStyle: paragraph,
+        ])
+        if !secondary.isEmpty {
+            text.append(NSAttributedString(string: "  ·  \(secondary)", attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+                .foregroundColor: NSColor(calibratedWhite: 0.78, alpha: 1),
+                .paragraphStyle: paragraph,
+            ]))
         }
-
-        let font = Self.labelFont(size: 10.5)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor(calibratedWhite: 0.82, alpha: 0.92),
-            .kern: 0.85, // open tracking — space-grotesque feel
-        ]
-        let textSize = (line as NSString).size(withAttributes: attrs)
-
-        let padX: CGFloat = 9
-        let padY: CGFloat = 5.5
-        let markSize: CGFloat = 4
-        let gap: CGFloat = 7
-        let width = padX + markSize + gap + textSize.width + padX
-        let height = max(20, textSize.height + padY * 2)
-
-        let origin = CGPoint(
-            x: point.x + 16 + lean * 10,
-            y: point.y - (height + 13)
-        )
+        let inset: CGFloat = 10
+        let height: CGFloat = 28
+        let width = min(text.size().width + 20, min(360, max(0, bounds.width - inset * 2)))
+        var origin = CGPoint(x: point.x + 22, y: point.y - height - 24)
+        if origin.x + width > bounds.maxX - inset { origin.x = point.x - width - 18 }
+        if origin.y < bounds.minY + inset { origin.y = point.y + 18 }
+        origin.x = max(bounds.minX + inset, min(origin.x, bounds.maxX - width - inset))
+        origin.y = max(bounds.minY + inset, min(origin.y, bounds.maxY - height - inset))
         let rect = CGRect(origin: origin, size: CGSize(width: width, height: height))
-        // Near-angular: tiny radius, not a pill.
-        let corner: CGFloat = 2.5
-        let plate = NSBezierPath(roundedRect: rect, xRadius: corner, yRadius: corner)
-
-        // Soft dark bloom behind the plate — more blur, less hard drop.
+        let plate = NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6)
         NSGraphicsContext.saveGraphicsState()
-        let bloom = NSShadow()
-        bloom.shadowBlurRadius = 22
-        bloom.shadowOffset = CGSize(width: 0, height: -2)
-        bloom.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.55)
-        bloom.set()
-        NSColor(calibratedWhite: 0, alpha: 0.001).setFill()
+        let shadow = NSShadow()
+        shadow.shadowBlurRadius = 8
+        shadow.shadowOffset = CGSize(width: 0, height: -2)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
+        shadow.set()
+        NSColor(calibratedRed: 0.125, green: 0.157, blue: 0.169, alpha: 0.98).setFill()
         plate.fill()
         NSGraphicsContext.restoreGraphicsState()
 
-        NSGraphicsContext.saveGraphicsState()
-        let contact = NSShadow()
-        contact.shadowBlurRadius = 14
-        contact.shadowOffset = CGSize(width: 0, height: -3)
-        contact.shadowColor = NSColor(calibratedWhite: 0, alpha: 0.48)
-        contact.set()
-        // Darker metal core.
-        NSColor(calibratedRed: 0.07, green: 0.075, blue: 0.07, alpha: 0.96).setFill()
-        plate.fill()
-        NSGraphicsContext.restoreGraphicsState()
-
-        // Brushed metal gradient — darker graphite, restrained highlights.
-        // Bottom stop kept closer to mid so the lower slice doesn't read as a heavy bar.
-        if let metal = NSGradient(colors: [
-            NSColor(calibratedRed: 0.22, green: 0.23, blue: 0.21, alpha: 0.97),
-            NSColor(calibratedRed: 0.11, green: 0.115, blue: 0.11, alpha: 0.98),
-            NSColor(calibratedRed: 0.08, green: 0.085, blue: 0.08, alpha: 0.98),
-            NSColor(calibratedRed: 0.12, green: 0.125, blue: 0.12, alpha: 0.96),
-        ]) {
-            NSGraphicsContext.saveGraphicsState()
-            plate.addClip()
-            metal.draw(in: rect, angle: 90)
-            NSGraphicsContext.restoreGraphicsState()
-        }
-
-        // Faint top sheen — darker plate, quieter highlight.
-        let sheen = NSBezierPath()
-        sheen.move(to: CGPoint(x: rect.minX + corner, y: rect.maxY - 0.8))
-        sheen.line(to: CGPoint(x: rect.maxX - corner, y: rect.maxY - 0.8))
-        NSColor(calibratedWhite: 1.0, alpha: 0.12).setStroke()
-        sheen.lineWidth = 0.7
-        sheen.stroke()
-
-        // Bottom settle trough — very light so it doesn't slice the plate in half.
-        let trough = NSBezierPath()
-        trough.move(to: CGPoint(x: rect.minX + corner, y: rect.minY + 0.9))
-        trough.line(to: CGPoint(x: rect.maxX - corner, y: rect.minY + 0.9))
-        NSColor(calibratedWhite: 0.0, alpha: 0.16).setStroke()
-        trough.lineWidth = 0.45
-        trough.stroke()
-
-        // Machined edge — darker, less bright chrome.
-        NSColor(calibratedRed: 0.38, green: 0.39, blue: 0.36, alpha: 0.42).setStroke()
-        plate.lineWidth = 0.9
-        plate.stroke()
-
-        // Inner etch
-        let inner = NSBezierPath(
-            roundedRect: rect.insetBy(dx: 0.6, dy: 0.6),
-            xRadius: max(1.5, corner - 0.4),
-            yRadius: max(1.5, corner - 0.4)
-        )
-        NSColor(calibratedWhite: 1.0, alpha: 0.04).setStroke()
-        inner.lineWidth = 0.5
-        inner.stroke()
-
-        // Square status mark (angular, matches the plate language).
-        let markRect = CGRect(
-            x: rect.minX + padX,
-            y: rect.midY - markSize / 2,
-            width: markSize,
-            height: markSize
-        )
-        let mark = NSBezierPath(roundedRect: markRect, xRadius: 0.8, yRadius: 0.8)
-        Self.brandCoral.withAlphaComponent(0.92).setFill()
-        mark.fill()
-        NSColor(calibratedWhite: 1.0, alpha: 0.18).setStroke()
-        mark.lineWidth = 0.4
-        mark.stroke()
-
-        let textOrigin = CGPoint(
-            x: rect.minX + padX + markSize + gap,
-            y: rect.midY - textSize.height / 2 - 0.5
-        )
-        (line as NSString).draw(at: textOrigin, withAttributes: attrs)
-    }
-
-    /// Thin mono / grotesque stack — JBM if installed, else SF Mono light, else system ultraLight.
-    private static func labelFont(size: CGFloat) -> NSFont {
-        let candidates = [
-            "JetBrainsMono-Thin",
-            "JetBrainsMono-ExtraLight",
-            "JetBrainsMonoNL-Thin",
-            "SpaceGrotesk-Light",
-            "SpaceGrotesk-Regular",
-            "SFMono-Light",
-            "SFMono-Ultralight",
-            "Menlo-Regular",
-            "AvenirNext-UltraLight",
-            "HelveticaNeue-UltraLight",
-        ]
-        for name in candidates {
-            if let font = NSFont(name: name, size: size) {
-                return font
-            }
-        }
-        // System monospaced light is the reliable thin industrial fallback.
-        return NSFont.monospacedSystemFont(ofSize: size, weight: .ultraLight)
+        text.draw(with: CGRect(x: rect.minX + 10, y: rect.midY - text.size().height / 2,
+                               width: max(0, width - 20), height: text.size().height),
+                  options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     }
 }
