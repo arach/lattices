@@ -16,6 +16,7 @@ enum ScreenOverlayOwner: String {
     case focusHighlight
     case agentApi
     case tilePointer
+    case quickMenu
 }
 
 enum ScreenOverlayScreenTarget: Equatable {

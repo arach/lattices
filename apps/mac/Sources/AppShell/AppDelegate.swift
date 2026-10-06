@@ -68,6 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
         SpatialLensController.shared.start()
+        WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
         DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
