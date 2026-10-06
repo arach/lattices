@@ -1,4 +1,4 @@
-import { marked, type TokenizerAndRendererExtension } from "marked";
+import { Marked, marked, type TokenizerAndRendererExtension } from "marked";
 
 /** Minimal HTML-escape for text we interpolate into rendered link markup. */
 function escapeHtml(s: string): string {
@@ -53,10 +53,10 @@ marked.use({ extensions: [wikiLinkExtension] });
  *     including the empty-note placeholder.
  *
  * SECURITY NOTE: `marked` does NOT sanitize raw HTML embedded in the markdown.
- * Blink notes are the user's own local content (no remote/untrusted input is
- * ever rendered here), so raw HTML is intentionally passed through rather than
- * pulling in a sanitizer dependency. If this surface ever renders third-party
- * content, add DOMPurify (or equivalent) before shipping.
+ * Blink notes are the user's own local content, so raw HTML is intentionally
+ * passed through rather than pulling in a sanitizer dependency. Text that is
+ * not a note (the reader layer's terminal selections) renders under the
+ * untrusted policy below instead — never route third-party content around it.
  */
 
 /**
@@ -68,7 +68,41 @@ marked.use({ extensions: [wikiLinkExtension] });
  * paragraph semantics (a single newline is not a hard break).
  */
 export function renderMarkdown(source: string): string {
+  if (untrusted) return untrustedMarked.parse(source, { async: false });
   return marked(source, { gfm: true, async: false, breaks: false });
+}
+
+/**
+ * Policy for text that is not the user's own note — the reader layer shows
+ * whatever was selected in a terminal. Raw HTML is shown as text, only web and
+ * mail links stay clickable, and images render as their alt text so nothing
+ * loads remotely. `breaks: true` keeps line structure the terminal cleanup
+ * deliberately left in place (short lines, lead-ins).
+ */
+const untrustedMarked = new Marked({
+  gfm: true,
+  breaks: true,
+  renderer: {
+    html({ text }) {
+      return escapeHtml(text);
+    },
+    link({ href, title, tokens }) {
+      const label = this.parser.parseInline(tokens);
+      if (!/^(https?:|mailto:)/i.test(href)) return label;
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      return `<a href="${escapeHtml(href)}"${titleAttr}>${label}</a>`;
+    },
+    image({ text }) {
+      return escapeHtml(text);
+    },
+  },
+});
+
+let untrusted = false;
+
+/** Switch every subsequent render to (or back from) the untrusted-text policy. */
+export function setUntrusted(value: boolean): void {
+  untrusted = value;
 }
 
 /** True if the document is empty or whitespace-only. */
@@ -100,6 +134,32 @@ function wrapCharacters(root: HTMLElement): HTMLElement[] {
     node.replaceWith(frag);
   }
   return spans;
+}
+
+/** Longest the whole stream may take to start its last block. */
+const STREAM_SPAN_MS = 900;
+
+/**
+ * Stream an already-rendered document in, block by block. Lists stream per
+ * item; everything else per top-level block. Blocks past the cap share the
+ * last delay, so long documents never make the reader wait.
+ */
+export function streamIn(root: HTMLElement): void {
+  const blocks: HTMLElement[] = [];
+  for (const child of Array.from(root.children) as HTMLElement[]) {
+    if (child.tagName === "UL" || child.tagName === "OL") {
+      blocks.push(...(Array.from(child.children) as HTMLElement[]));
+    } else {
+      blocks.push(child);
+    }
+  }
+  if (blocks.length === 0) return;
+  const step = Math.min(60, Math.max(18, STREAM_SPAN_MS / blocks.length));
+  blocks.forEach((block, index) => {
+    const delay = Math.min(index * step, STREAM_SPAN_MS);
+    block.style.setProperty("--blink-stream-delay", `${Math.round(delay)}ms`);
+    block.classList.add("blink-stream");
+  });
 }
 
 /**

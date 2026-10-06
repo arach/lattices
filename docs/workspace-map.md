@@ -197,7 +197,7 @@ in `map --display 1`. `--display` filters both terminal and JSON output. For eve
 known window, including hidden and off-Space windows, call `windows.list`
 directly instead. The versioned projection copies the documented display,
 Space, and window fields explicitly rather than passing through arbitrary
-future daemon fields; optional `latticesSession` and `layerTag` values remain
+future daemon fields; the optional `latticesSession` value remains
 available when `windows.list` supplies them.
 
 The two daemon reads happen close together but are not an atomic WindowServer

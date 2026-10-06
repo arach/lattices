@@ -11,14 +11,18 @@ struct SettingsView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var selection: SettingsSection = .general
+    @ObservedObject private var menuBar = CompanionMenuBarVisibility.shared
+    @StateObject private var rail = WindowFrameRail(persistKey: "blink.settings.rail")
 
-    private var settingsTheme: HudTheme {
+    private var isDark: Bool {
         switch store.config.appearance.lowercased() {
-        case "light": return .lightDraft
-        case "dark": return .default
-        default: return colorScheme == .light ? .lightDraft : .default
+        case "light": return false
+        case "dark": return true
+        default: return colorScheme == .dark
         }
     }
+
+    private var settingsTheme: HudTheme { BlinkBrand.hudTheme(dark: isDark) }
 
     private var tildePath: String {
         notesDirectory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
@@ -153,114 +157,113 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-
-            Rectangle()
-                .fill(settingsTheme.hairline.standard)
-                .frame(width: HudStrokeWidth.thin)
-                .accessibilityHidden(true)
-
+        WindowFrame(
+            rail: rail,
+            chrome: settingsTheme.palette.chrome,
+            sheet: settingsTheme.palette.bg,
+            edge: settingsTheme.hairline.subtle
+        ) {
+            brand
+        } navigation: { folded in
+            sidebar(folded: folded)
+        } content: {
             content
         }
-        .frame(
-            minWidth: HudLayout.dialogWidth + HudLayout.rowHeightRegular,
-            idealWidth: HudLayout.readableWidth + HudSpacing.xxxl,
-            minHeight: HudLayout.dialogWidth - HudSpacing.xxxl,
-            idealHeight: HudLayout.readableWidth - HudSpacing.huge
-        )
-        .background(settingsTheme.palette.bg)
+        .frame(minWidth: 620, idealWidth: 780, minHeight: 460, idealHeight: 580)
+        .background { shortcuts }
+        .buttonStyle(BrandButtonStyle())
         .hudTheme(settingsTheme)
     }
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: HudSpacing.xl) {
-            Text("Settings")
-                .font(.system(size: 20, weight: .semibold))
+    /// The mark and wordmark after the traffic lights, open or folded.
+    private var brand: some View {
+        HStack(spacing: 7) {
+            BlinkMark(ink: settingsTheme.palette.ink)
+                .frame(width: 16, height: 16)
+            Text("blink")
+                .font(.system(size: 16, weight: .light, design: .serif))
+                .tracking(-0.2)
                 .foregroundStyle(settingsTheme.palette.ink)
-                .padding(.horizontal, HudSpacing.xxl)
-                .padding(.top, HudSpacing.xxxl)
+        }
+    }
 
-            VStack(spacing: HudSpacing.xs) {
-                ForEach(SettingsSection.allCases) { section in
-                    Button {
+    private func sidebar(folded: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
+                ForEach(Array(SettingsSection.allCases.enumerated()), id: \.element) { index, section in
+                    SettingsNavRow(
+                        section: section,
+                        shortcut: index + 1,
+                        folded: folded,
+                        selected: selection == section
+                    ) {
                         selection = section
-                    } label: {
-                        HStack(spacing: HudSpacing.lg) {
-                            Image(systemName: section.icon)
-                                .font(.system(size: 13, weight: .medium))
-                                .frame(width: HudIconSize.small, height: HudIconSize.small)
-
-                            Text(section.title)
-                                .font(.system(size: 13, weight: .medium))
-
-                            Spacer(minLength: 0)
-                        }
-                        .foregroundStyle(
-                            selection == section
-                                ? settingsTheme.palette.ink
-                                : settingsTheme.palette.muted
-                        )
-                        .padding(.horizontal, HudSpacing.xl)
-                        .frame(height: HudLayout.rowHeightCompact)
-                        .background(
-                            RoundedRectangle(cornerRadius: settingsTheme.radius.standard)
-                                .fill(
-                                    selection == section
-                                        ? settingsTheme.palette.accentSoft
-                                        : Color.clear
-                                )
-                        )
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(section.title) settings")
-                    .accessibilityAddTraits(selection == section ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, HudSpacing.md)
+            .padding(.top, folded ? HudSpacing.md : 0)
 
             Spacer(minLength: HudSpacing.xxxl)
 
-            HStack(alignment: .top, spacing: HudSpacing.sm) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 10, weight: .medium))
-                    .padding(.top, HudSpacing.xxs)
-
-                Text("Changes sync with config.json")
-                    .font(.system(size: 11))
-                    .fixedSize(horizontal: false, vertical: true)
+            if !folded {
+                Button(action: openConfig) {
+                    Text("config.json")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                }
+                .buttonStyle(BrandButtonStyle(quiet: true))
+                .help("Every setting here lives in config.json")
+                .padding(.horizontal, HudSpacing.md)
+                .padding(.bottom, HudSpacing.lg)
+                .transition(.opacity)
             }
-            .foregroundStyle(settingsTheme.palette.dim)
-            .padding(.horizontal, HudSpacing.xxl)
-            .padding(.bottom, HudSpacing.xxl)
         }
-        .frame(width: HudLayout.popoverWidthCompact / 2)
-        .background(settingsTheme.palette.chrome)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// ⌘1… jump to a page and ⌘B folds the rail, as in Hudson's side nav.
+    private var shortcuts: some View {
+        ZStack {
+            ForEach(Array(SettingsSection.allCases.enumerated()), id: \.element) { index, section in
+                Button("") { selection = section }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+            Button("") { rail.toggle() }
+                .keyboardShortcut("b", modifiers: .command)
+        }
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: HudSpacing.xs) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(selection.title)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 28, weight: .semibold, design: .serif))
+                    .tracking(-0.6)
                     .foregroundStyle(settingsTheme.palette.ink)
 
                 Text(selection.subtitle)
-                    .font(.system(size: 12))
+                    .font(.system(size: 13.5))
                     .foregroundStyle(settingsTheme.palette.muted)
-            }
-            .padding(.horizontal, HudSpacing.huge)
-            .padding(.top, HudSpacing.xxxl)
-            .padding(.bottom, HudSpacing.xxl)
+                    .padding(.top, 6)
 
-            ScrollView {
                 selectedPage
-                    .frame(maxWidth: HudLayout.readableWidth, alignment: .leading)
-                    .padding(.horizontal, HudSpacing.huge)
-                    .padding(.bottom, HudSpacing.huge)
+                    .padding(.top, 28)
             }
+            .frame(maxWidth: 600, alignment: .leading)
+            .padding(.horizontal, 40)
+            .padding(.top, 48)
+            .padding(.bottom, 56)
+            .id(selection)
+            .transition(
+                .asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: Woven.reduceMotion ? 0 : 4)),
+                    removal: .identity
+                )
+            )
         }
+        .scrollIndicators(.automatic)
+        .animation(BlinkBrand.rise, value: selection)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -274,76 +277,62 @@ struct SettingsView: View {
     }
 
     private var generalPage: some View {
-        VStack(alignment: .leading, spacing: HudSpacing.xl) {
-            HudSettingsSection("Files", labelTint: settingsTheme.palette.muted) {
-                HudSettingsRow(
-                    icon: "folder",
-                    title: "Notes folder",
-                    subtitle: tildePath,
-                    badge: {
-                        Button("Reveal") {
-                            NSWorkspace.shared.activateFileViewerSelecting([notesDirectory])
-                        }
-                        .controlSize(.small)
-                        .accessibilityHint("Shows the Blink notes folder in Finder")
+        VStack(alignment: .leading, spacing: 28) {
+            BrandSection("Files") {
+                HudSettingsControlRow(title: "Notes folder", subtitle: tildePath) {
+                    Button("Reveal") {
+                        NSWorkspace.shared.activateFileViewerSelecting([notesDirectory])
                     }
-                )
+                    .accessibilityHint("Shows the Blink notes folder in Finder")
+                }
                 SettingsDivider()
-                HudSettingsRow(
-                    icon: "curlybraces",
-                    title: "Config file",
-                    subtitle: store.displayPath,
-                    badge: {
-                        Button("Open") { openConfig() }
-                            .controlSize(.small)
-                            .accessibilityHint("Opens Blink's JSON configuration file")
-                    }
-                )
+                HudSettingsControlRow(title: "Config file", subtitle: store.displayPath) {
+                    Button("Open") { openConfig() }
+                        .accessibilityHint("Opens Blink's JSON configuration file")
+                }
             }
 
-            HudSettingsSection("Startup", labelTint: settingsTheme.palette.muted) {
+            BrandSection("Startup") {
                 HudSettingsControlRow(
                     title: "Restore panels at launch",
-                    subtitle: "Reopen notes where you left them",
-                    icon: "macwindow.on.rectangle"
+                    subtitle: "Reopen notes where you left them"
                 ) {
                     Toggle("Restore panels at launch", isOn: restoreSession)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .accessibilityLabel("Restore panels at launch")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Launch at login",
-                    subtitle: "Start Blink when you sign in",
-                    icon: "power"
+                    subtitle: "Start Blink when you sign in"
                 ) {
-                    CompanionMenuBarPreference()
                     Toggle("Launch at login", isOn: launchAtLogin)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .accessibilityLabel("Launch Blink at login")
+                }
+                SettingsDivider()
+                HudSettingsControlRow(
+                    title: "Always show menu bar icon",
+                    subtitle: "Otherwise it appears whenever Lattices isn't running"
+                ) {
+                    Toggle("Always show menu bar icon", isOn: $menuBar.alwaysShow)
+                        .toggleStyle(BrandToggleStyle())
+                        .labelsHidden()
                 }
             }
         }
     }
 
     private var notesPage: some View {
-        VStack(alignment: .leading, spacing: HudSpacing.xl) {
-            HudSettingsSection("Defaults", labelTint: settingsTheme.palette.muted) {
+        VStack(alignment: .leading, spacing: 28) {
+            BrandSection("Defaults") {
                 HudSettingsControlRow(
                     title: "Open notes in",
-                    subtitle: "New notes can open ready to read or write",
-                    icon: "book"
+                    subtitle: "New notes can open ready to read or write"
                 ) {
-                    Picker("Open notes in", selection: defaultMode) {
-                        Text("Read").tag("read")
-                        Text("Edit").tag("edit")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    BrandSegmented(selection: defaultMode, options: [("Read", "read"), ("Edit", "edit")])
                     .frame(width: HudLayout.popoverWidthCompact / 2.6)
                     .accessibilityLabel("Default note mode")
                 }
@@ -351,7 +340,6 @@ struct SettingsView: View {
                 HudSettingsPickerRow(
                     title: "Default sheet",
                     subtitle: "The starting look for notes without an override",
-                    icon: "rectangle.on.rectangle",
                     selection: defaultSheet
                 ) {
                     Text("Glass").tag("glass")
@@ -363,8 +351,7 @@ struct SettingsView: View {
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Default panel size",
-                    subtitle: panelSize.wrappedValue.description,
-                    icon: "arrow.up.left.and.arrow.down.right"
+                    subtitle: panelSize.wrappedValue.description
                 ) {
                     Picker("Default panel size", selection: panelSize) {
                         Text("Compact").tag(PanelSizePreset.compact)
@@ -381,73 +368,55 @@ struct SettingsView: View {
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Panel shadow",
-                    subtitle: "Add depth to glass and card sheets",
-                    icon: "square.3.layers.3d.down.right"
+                    subtitle: "Add depth to glass and card sheets"
                 ) {
                     Toggle("Panel shadow", isOn: panelShadow)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .accessibilityLabel("Show panel shadows")
                 }
             }
 
-            HudSettingsSection("Advanced", labelTint: settingsTheme.palette.muted) {
-                HudSettingsRow(
-                    icon: "paintpalette",
-                    title: "Appearance, typography, styles & workspaces",
-                    subtitle: "Tune fonts, colors, glass, spacing and named styles in config.json",
-                    onTap: openConfig
-                )
-                .accessibilityHint("Opens Blink's JSON configuration file")
+            BrandSection("Advanced") {
+                HudSettingsControlRow(
+                    title: "Typography, styles & workspaces",
+                    subtitle: "Fonts, colors, glass and named styles live in config.json"
+                ) {
+                    Button("Open") { openConfig() }
+                        .accessibilityHint("Opens Blink's JSON configuration file")
+                }
             }
         }
     }
 
     private var desktopPage: some View {
-        VStack(alignment: .leading, spacing: HudSpacing.xl) {
-            HudSettingsSection("Appearance", labelTint: settingsTheme.palette.muted) {
+        VStack(alignment: .leading, spacing: 28) {
+            BrandSection("Appearance") {
                 HudSettingsControlRow(
                     title: "Appearance",
-                    subtitle: "Utilities only; notes may differ",
-                    icon: "circle.lefthalf.filled"
+                    subtitle: "Utilities only; notes may differ"
                 ) {
-                    Picker("Appearance", selection: appearance) {
-                        Text("Auto").tag("auto")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    BrandSegmented(selection: appearance, options: [("Auto", "auto"), ("Light", "light"), ("Dark", "dark")])
                     .frame(width: HudLayout.popoverWidthCompact / 2)
                     .accessibilityLabel("Blink appearance")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Desktop background",
-                    subtitle: "A calm stage behind a set of notes",
-                    icon: "rectangle.inset.filled"
+                    subtitle: "A calm stage behind a set of notes"
                 ) {
-                    Picker("Desktop background", selection: backgroundLevel) {
-                        ForEach(BackgroundLevel.allCases) { level in
-                            Text(level.title).tag(level)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    BrandSegmented(selection: backgroundLevel, options: BackgroundLevel.allCases.map { ($0.title, $0) })
                     .frame(width: HudLayout.popoverWidthCompact / 2)
                     .accessibilityLabel("Desktop background strength")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Keep one note clear",
-                    subtitle: "Show the background only when notes form a set",
-                    icon: "rectangle.on.rectangle.slash"
+                    subtitle: "Show the background only when notes form a set"
                 ) {
                     Toggle("Keep one note clear", isOn: suppressSoloDrape)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .disabled(!store.config.drape.enabled)
                         .accessibilityLabel("Keep the desktop clear behind a single note")
                 }
@@ -455,33 +424,30 @@ struct SettingsView: View {
                 HudSettingsControlRow(
                     title: "Focus dimming",
                     subtitle: "Quiet the desktop around the focused note",
-                    value: "\(Int(store.config.focus.dim * 100))%",
-                    icon: "circle.dashed"
+                    value: "\(Int(store.config.focus.dim * 100))%"
                 ) {
                     Slider(value: focusDim, in: 0...0.8, step: 0.05)
+                        .tint(settingsTheme.palette.ink)
                         .frame(width: HudLayout.popoverWidthCompact / 2)
                         .accessibilityLabel("Focus dimming")
                         .accessibilityValue("\(Int(store.config.focus.dim * 100)) percent")
                 }
             }
 
-            HudSettingsSection("Motion & Gestures", labelTint: settingsTheme.palette.muted) {
+            BrandSection("Motion & Gestures") {
                 HudSettingsControlRow(
                     title: "Panel motion",
-                    subtitle: "Animate notes as they appear and recede",
-                    icon: "sparkles"
+                    subtitle: "Animate notes as they appear and recede"
                 ) {
                     Toggle("Panel motion", isOn: motionEnabled)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .accessibilityLabel("Animate panels")
                 }
                 SettingsDivider()
                 HudSettingsPickerRow(
                     title: "Entrance effect",
                     subtitle: "Reduce Motion in macOS always takes precedence",
-                    icon: "wand.and.stars",
                     selection: entrance
                 ) {
                     Text("Shimmer").tag("shimmer")
@@ -493,25 +459,21 @@ struct SettingsView: View {
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Fling panels",
-                    subtitle: "Release a quick drag to glide and bounce",
-                    icon: "hand.draw"
+                    subtitle: "Release a quick drag to glide and bounce"
                 ) {
                     Toggle("Fling panels", isOn: flingEnabled)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .accessibilityLabel("Fling panels after a quick drag")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Shake to shade",
-                    subtitle: "Shake a panel sideways to fold its content",
-                    icon: "arrow.left.and.right"
+                    subtitle: "Shake a panel sideways to fold its content"
                 ) {
                     Toggle("Shake to shade", isOn: shakeEnabled)
-                        .toggleStyle(.switch)
+                        .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .controlSize(.small)
                         .accessibilityLabel("Shake panels to shade them")
                 }
             }
@@ -523,7 +485,7 @@ struct SettingsView: View {
     }
 }
 
-private enum SettingsSection: String, CaseIterable, Identifiable {
+private enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
     case general
     case notes
     case desktop
@@ -595,14 +557,63 @@ private enum PanelSizePreset: String, Hashable {
     }
 }
 
+/// A full-bleed square row with a flat ink wash when selected; the page you're
+/// on is the one coral icon. Folded, it keeps only the icon and names itself in a tooltip.
+private struct SettingsNavRow: View {
+    let section: SettingsSection
+    let shortcut: Int
+    let folded: Bool
+    let selected: Bool
+    let action: () -> Void
+
+    @Environment(\.hudTheme) private var theme
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: HudSpacing.lg) {
+                Image(systemName: section.icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selected ? theme.palette.accent : theme.palette.muted)
+                    .frame(width: HudIconSize.small, height: HudIconSize.small)
+
+                if !folded {
+                    Text(section.title)
+                        .font(.system(size: 13, weight: selected ? .semibold : .medium))
+                        .lineLimit(1)
+                    Spacer(minLength: HudSpacing.sm)
+                    Text("⌘\(shortcut)")
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(theme.palette.dim)
+                        .opacity(hovering || selected ? 1 : 0)
+                }
+            }
+            .foregroundStyle(selected ? theme.palette.ink : theme.palette.muted)
+            .padding(.horizontal, folded ? 0 : HudSpacing.xl)
+            .frame(maxWidth: .infinity, alignment: folded ? .center : .leading)
+            .frame(height: HudLayout.rowHeightCompact)
+            .background(
+                theme.palette.ink.opacity(selected ? 0.08 : hovering ? 0.04 : 0)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .onHover { hovering = $0 }
+        .help(folded ? "\(section.title)  ⌘\(shortcut)" : "")
+        .accessibilityLabel("\(section.title) settings")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 private struct SettingsDivider: View {
     @Environment(\.hudTheme) private var theme
 
     var body: some View {
         Rectangle()
             .fill(theme.hairline.subtle)
-            .frame(height: HudStrokeWidth.thin)
-            .padding(.leading, HudIconSize.medium + HudSpacing.xl + HudSpacing.md)
+            .frame(height: 1)
+            .padding(.horizontal, HudSpacing.md)
             .accessibilityHidden(true)
     }
 }

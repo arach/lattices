@@ -117,6 +117,10 @@ struct AssistantProvider: Identifiable, Equatable {
 
 final class WorkspaceAssistantSession: ObservableObject {
     static let shared = WorkspaceAssistantSession()
+    static func makeEditorSession() -> WorkspaceAssistantSession { WorkspaceAssistantSession(editorOnly: true) }
+    private let editorOnly: Bool
+    @Published private(set) var editorError: String?
+    @Published private(set) var editorSuggestions: [[String: String]] = []
 
     @Published private(set) var messages: [WorkspaceAssistantMessage] = [
         WorkspaceAssistantMessage(
@@ -196,9 +200,13 @@ final class WorkspaceAssistantSession: ObservableObject {
     private static let selectedProviderDefaultsKey = "HudsonAISelectedProvider"
     private static let scoutBindingRefDefaultsKey = "ScoutWorkspaceAssistantBindingRef"
     private static let preferredHarnessDefaultsKey = "LatticesAssistantPreferredHarness"
+    private static let preferredModelDefaultsKey = "LatticesAssistantPreferredModel"
+    private static let preferredEffortDefaultsKey = "LatticesAssistantPreferredEffort"
 
     /// Last successful agent-runtime harness id (for status chrome).
     @Published private(set) var agentRuntimeHarnessLabel: String?
+    /// Model the harness reported for the last successful turn.
+    @Published private(set) var agentRuntimeModel: String?
     private static let voiceInferenceTimeout: TimeInterval = 45
     private static let voiceAppendSystemPrompt = """
         You are the Workspace Assistant for Lattices voice surfaces.
@@ -238,7 +246,14 @@ final class WorkspaceAssistantSession: ObservableObject {
     private var voiceInputCancellable: AnyCancellable?
     #endif
 
-    private init() {
+    private init(editorOnly: Bool = false) {
+        self.editorOnly = editorOnly
+        if editorOnly {
+            // No local-command handlers, voice observers, settings/auth writes
+            // or persistent Scout binding for the Editor's isolated conversation.
+            messages = []
+            return
+        }
         scoutBindingRef = UserDefaults.standard.string(forKey: Self.scoutBindingRefDefaultsKey)
         let savedProvider = UserDefaults.standard.string(forKey: Self.selectedProviderDefaultsKey)
         if let savedProvider {
@@ -320,6 +335,30 @@ final class WorkspaceAssistantSession: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: Self.preferredHarnessDefaultsKey)
             }
             objectWillChange.send()
+        }
+    }
+
+    /// The composer picker's harness / model / effort. The harness is the saved
+    /// preference, else whatever answered last, else the runtime's first choice.
+    /// Model and effort are saved per pick and only sent to the harness they
+    /// were picked for.
+    var runtimeSelection: HudRuntimeSelection {
+        get {
+            let defaults = UserDefaults.standard
+            let harness = preferredAgentHarness
+                ?? agentRuntimeHarnessLabel
+                ?? AgentRuntimeTransport.defaultHarnessPreference[0]
+            return HudRuntimeSelection(
+                harnessId: harness,
+                modelId: defaults.string(forKey: Self.preferredModelDefaultsKey) ?? "",
+                effortId: defaults.string(forKey: Self.preferredEffortDefaultsKey) ?? HudRuntimeEffort.autoId
+            )
+        }
+        set {
+            let defaults = UserDefaults.standard
+            defaults.set(newValue.modelId, forKey: Self.preferredModelDefaultsKey)
+            defaults.set(newValue.effortId, forKey: Self.preferredEffortDefaultsKey)
+            preferredAgentHarness = newValue.harnessId
         }
     }
 
@@ -427,11 +466,46 @@ final class WorkspaceAssistantSession: ObservableObject {
         send(text)
     }
 
+    /// Editor-only entry point. Tool-free transport is an enforced capability,
+    /// not a system-prompt request to an otherwise unrestricted agent.
+    func send(_ text: String, editorContext: String, layerId: String) {
+        guard editorOnly, !isSending else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        messages.append(WorkspaceAssistantMessage(role: .user, text: trimmed, timestamp: Date()))
+        editorError = nil; editorSuggestions = []; isSending = true
+        let history = messages.suffix(12).map { "\($0.role): \($0.text)" }.joined(separator: "\n")
+        let prompt = "Layer ID: \(layerId)\nRead-only context:\n\(editorContext)\nConversation:\n\(history)"
+        streamingTask = Task { [weak self] in
+            do {
+                let raw = try await EditorAssistantTransport.complete(prompt)
+                var answer = raw
+                var suggestions: [[String: String]] = []
+                let cleaned = raw.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "")
+                if let object = try? JSONSerialization.jsonObject(with: Data(cleaned.utf8)) as? [String: Any],
+                   let text = object["text"] as? String {
+                    answer = text
+                    suggestions = (object["suggestions"] as? [[String: String]] ?? []).filter {
+                        ["gather", "open"].contains($0["kind"] ?? "") && $0["layerId"] == layerId && !($0["label"] ?? "").isEmpty
+                    }
+                }
+                await MainActor.run { [weak self] in
+                    self?.messages.append(WorkspaceAssistantMessage(role: .assistant, text: answer, timestamp: Date()))
+                    self?.editorSuggestions = suggestions
+                    self?.isSending = false
+                }
+            } catch {
+                await MainActor.run { [weak self] in self?.editorError = error.localizedDescription; self?.isSending = false }
+            }
+        }
+    }
+
     func send(_ text: String) {
         send(text, attachments: [])
     }
 
     func send(_ text: String, attachments: [WorkspaceAssistantAttachment]) {
+        guard !editorOnly else { return } // Fail closed: never route editor text to local commands or unrestricted tools.
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if isSending {
@@ -476,6 +550,14 @@ final class WorkspaceAssistantSession: ObservableObject {
         let system = chatSystemPrompt(attachments: attachments)
         let projectPath = scoutProjectPath()
         let preferredHarness = UserDefaults.standard.string(forKey: Self.preferredHarnessDefaultsKey)
+        let selection = runtimeSelection
+        let launch = MainActor.assumeIsolated {
+            AgentRuntimeLaunch(
+                harness: selection.harnessId,
+                model: AssistantRuntimeCatalog.shared.launchModel(for: selection),
+                effort: AssistantRuntimeCatalog.shared.launchEffort(for: selection)
+            )
+        }
         let canUseAPI = hasSelectedCredential
         let providerName = currentProvider.name
         streamingTask = Task { [weak self] in
@@ -488,6 +570,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                     systemPrompt: system,
                     cwd: projectPath,
                     preferredHarness: preferredHarness,
+                    launch: launch,
                     messageID: messageID,
                     generation: turnGen,
                     inferenceTimer: timer,
@@ -534,6 +617,7 @@ final class WorkspaceAssistantSession: ObservableObject {
         systemPrompt: String,
         cwd: String,
         preferredHarness: String?,
+        launch: AgentRuntimeLaunch,
         messageID: UUID,
         generation: Int,
         inferenceTimer: DiagnosticLog.TimedAction,
@@ -547,6 +631,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 systemPrompt: systemPrompt,
                 cwd: cwd,
                 preferredHarness: preferredHarness,
+                launch: launch,
                 onDelta: { [weak self] snapshot in
                     Task { @MainActor in
                         guard let self, self.turnGeneration == generation else { return }
@@ -567,6 +652,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 self.isSending = false
                 self.statusText = "idle"
                 self.agentRuntimeHarnessLabel = reply.harness
+                if let model = reply.model { self.agentRuntimeModel = model }
                 DiagnosticLog.shared.finish(inferenceTimer)
                 DiagnosticLog.shared.info("Assistant · agent-runtime \(reply.harness) completed")
                 self.commitStreamingText(reply.text)
@@ -1469,7 +1555,7 @@ final class WorkspaceAssistantSession: ObservableObject {
             }
 
             if isSettingsMutationIntent(lower), let enabled = parseBooleanMutation(from: lower) {
-                OcrModel.shared.setEnabled(enabled)
+                ScreenText.shared.setEnabled(enabled)
                 return "\(enabled ? "Enabled" : "Disabled") screen text recognition."
             }
             return nil
@@ -1583,6 +1669,11 @@ final class WorkspaceAssistantSession: ObservableObject {
             """
         }
         .joined(separator: "\n\n")
+    }
+
+    /// Folder name of the directory new turns run in, for status chrome.
+    var workingDirectoryName: String {
+        URL(fileURLWithPath: scoutProjectPath()).lastPathComponent
     }
 
     private func scoutProjectPath() -> String {
@@ -1826,7 +1917,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                     "deepScanBudget": prefs.ocrDeepBudget,
                 ],
                 "mouseShortcuts": mouseShortcutContextPayload(),
-                "studioLayers": StudioLayerStore.shared.assistantContextPayload(),
+                "layers": WorkspaceManager.shared.layersContextPayload(),
                 "liveTabGroups": LiveTabGroupStore.shared.assistantContextPayload(),
             ],
             "settingsCatalog": [
@@ -1872,7 +1963,6 @@ final class WorkspaceAssistantSession: ObservableObject {
             ],
             "settingsFiles": [
                 "workspace": "\(NSHomeDirectory())/.lattices/workspace.json",
-                "studioLayers": StudioLayerStore.shared.configFilePath,
                 "mouseShortcuts": MouseShortcutStore.shared.configURL.path,
                 "mouseShortcutsHistory": MouseShortcutStore.shared.historyDirectoryURL.path,
                 "snapZones": "\(NSHomeDirectory())/.lattices/snap-zones.json",
@@ -1886,7 +1976,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 "lattices restart [pane]",
                 "lattices tile <position>",
                 "lattices group [id]",
-                "lattices layer [name|index]",
+                "lattices layer [name|slot]",
                 "lattices windows --json",
                 "lattices search <query>",
                 "lattices app restart",

@@ -5,16 +5,15 @@ import AppKit
 /// One match clause. The Hyperspace editor intentionally keeps authoring simple:
 /// pick an app name and, optionally, a direct or regex match against the window
 /// name/title.
-/// The extra fields remain Codable so older layers.json files keep working.
-/// A `StudioLayer` ORs its clauses together, so a heterogeneous selection
-/// (a Chrome window + a terminal) becomes "app Chrome OR app iTerm".
+/// A ⌘⌥ layer entry's `match`; a layer holds a window when any of its
+/// entries matches it.
 struct StudioLayerClause: Codable, Equatable {
     var app: String? = nil              // app name contains (case-insensitive)
     var appEquals: String? = nil        // app name exactly equals (case-insensitive)
     var appRegex: String? = nil         // app name matches regex (case-insensitive)
-    var titleContains: String? = nil    // window title contains (case-insensitive)
-    var titleEquals: String? = nil      // window title exactly equals (case-insensitive)
-    var titleRegex: String? = nil       // window title matches regex (case-insensitive)
+    var titleContains: String? = nil    // window title contains (case-insensitive); CG or AX title
+    var titleEquals: String? = nil      // window title exactly equals (case-insensitive); CG or AX title
+    var titleRegex: String? = nil       // window title matches regex (case-insensitive); CG or AX title
     var session: String? = nil          // lattices session exactly equals (case-insensitive)
     var sessionContains: String? = nil  // lattices session contains (case-insensitive)
     var isOnScreen: Bool? = nil         // visible on current Space
@@ -27,6 +26,16 @@ struct StudioLayerClause: Codable, Equatable {
             return false
         }
         return true
+    }
+
+    /// The length of its longest app criterion when it looks at nothing
+    /// but the app; nil when it also looks at the title, session, Space or
+    /// screen, or not at the app.
+    var appOnly: Int? {
+        let apps = [app, appEquals, appRegex].compactMap(trimmed)
+        let others = [titleContains, titleEquals, titleRegex, session, sessionContains].compactMap(trimmed)
+        guard !apps.isEmpty, others.isEmpty, isOnScreen == nil, spaceId == nil else { return nil }
+        return apps.map(\.count).max()
     }
 
     var summary: String {
@@ -71,15 +80,17 @@ struct StudioLayerClause: Codable, Equatable {
             matched = true
         }
         if let titleContains = trimmed(titleContains) {
-            guard e.title.localizedCaseInsensitiveContains(titleContains) else { return false }
+            guard e.titleContains(titleContains) else { return false }
             matched = true
         }
         if let titleEquals = trimmed(titleEquals) {
-            guard e.title.localizedCaseInsensitiveCompare(titleEquals) == .orderedSame else { return false }
+            guard Self.titles(of: e).contains(where: {
+                $0.localizedCaseInsensitiveCompare(titleEquals) == .orderedSame
+            }) else { return false }
             matched = true
         }
         if let titleRegex = trimmed(titleRegex) {
-            guard Self.regex(titleRegex, matches: e.title) else { return false }
+            guard Self.titles(of: e).contains(where: { Self.regex(titleRegex, matches: $0) }) else { return false }
             matched = true
         }
         if let session = trimmed(session) {
@@ -102,6 +113,11 @@ struct StudioLayerClause: Codable, Equatable {
         return matched
     }
 
+    /// The window's title as CG gives it, and whole from AX when AX has it.
+    private static func titles(of e: WindowEntry) -> [String] {
+        [e.title] + (e.fullTitle.map { [$0] } ?? [])
+    }
+
     private static func regex(_ pattern: String, matches value: String) -> Bool {
         guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return false
@@ -119,35 +135,5 @@ struct StudioLayerClause: Codable, Equatable {
     private func appendNonEmpty(_ value: String?, prefix: String?, suffix: String = "", to parts: inout [String]) {
         guard let value = trimmed(value) else { return }
         parts.append("\(prefix ?? "")\(value)\(suffix)")
-    }
-}
-
-// MARK: - StudioLayer
-
-/// A named, rule-backed layer. Membership is *computed* by evaluating the rule
-/// against live windows — it is not a frozen list of window IDs — so a layer
-/// survives restarts and auto-includes any new window that matches. Authored in
-/// Hyperspace (or edited by hand), recalled from the Studio panel or ⌘L. This
-/// is the unified successor to clusters and session layers.
-struct StudioLayer: Identifiable, Codable, Equatable {
-    let id: String
-    var name: String
-    var match: [StudioLayerClause]
-
-    init(id: String = UUID().uuidString, name: String, match: [StudioLayerClause]) {
-        self.id = id
-        self.name = name
-        self.match = match
-    }
-
-    /// A window belongs to the layer if it satisfies ANY clause (OR).
-    func contains(_ e: WindowEntry) -> Bool {
-        match.contains { $0.matches(e) }
-    }
-
-    /// Human-readable rule, e.g. "App: Google Chrome · Name: GitHub".
-    var summary: String {
-        guard !match.isEmpty else { return "no rule" }
-        return match.map(\.summary).joined(separator: " OR ")
     }
 }

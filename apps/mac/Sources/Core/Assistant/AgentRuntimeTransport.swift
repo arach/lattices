@@ -4,6 +4,8 @@ import Foundation
 struct AgentRuntimeReply {
     let text: String
     let harness: String
+    /// Model the harness reported on its session (`session.model`), if any.
+    let model: String?
     let sessionId: String
 }
 
@@ -35,6 +37,37 @@ enum AgentRuntimeTransportError: LocalizedError {
             return "The agent turn timed out."
         case .requestTimeout:
             return "The agent runtime did not respond in time."
+        }
+    }
+}
+
+/// The picked model / effort for one harness. Applied only when that harness
+/// answers the turn; a fallback harness starts on its own defaults.
+struct AgentRuntimeLaunch: Equatable {
+    let harness: String
+    let model: String?
+    let effort: String?
+
+    /// What changes the session: a new pick restarts it.
+    var key: String { [harness, model ?? "", effort ?? ""].joined(separator: "|") }
+
+    /// Start-request fields in the shape each agent-sessions adapter reads:
+    /// claude-code and pi take `model`, pi takes `options.thinking`, codex
+    /// takes its app-server launch args.
+    var startFields: [String: Any] {
+        switch harness {
+        case "codex":
+            var args: [String] = []
+            if let model { args += ["--model", model] }
+            if let effort { args += ["--reasoning-effort", effort] }
+            return args.isEmpty ? [:] : ["options": ["launchArgs": args]]
+        case "pi":
+            var fields: [String: Any] = [:]
+            if let model { fields["model"] = model }
+            if let effort { fields["options"] = ["thinking": effort] }
+            return fields
+        default:
+            return model.map { ["model": $0] } ?? [:]
         }
     }
 }
@@ -76,6 +109,10 @@ final class AgentRuntimeTransport {
 
     private var activeSessionID: String?
     private var activeHarness: String?
+    /// Latest `session.model` from the adapter's `session:update` events.
+    private var activeModel: String?
+    /// `AgentRuntimeLaunch.key` the live session was started with.
+    private var activeLaunchKey: String?
     private var textBlockIDs = Set<String>()
     private var accumulatedText = ""
     /// Last adapter/process error seen on stderr or session:update status=error.
@@ -147,6 +184,7 @@ final class AgentRuntimeTransport {
         systemPrompt: String,
         cwd: String,
         preferredHarness: String? = nil,
+        launch: AgentRuntimeLaunch? = nil,
         onDelta: @escaping (String) -> Void,
         onTool: ((String) -> Void)? = nil,
         timeoutSeconds: TimeInterval = AgentRuntimeTransport.defaultTurnTimeoutSeconds
@@ -169,6 +207,9 @@ final class AgentRuntimeTransport {
                     systemPrompt: systemPrompt,
                     cwd: cwd,
                     harness: harness.id,
+                    launch: launch?.harness == harness.id
+                        ? launch!
+                        : AgentRuntimeLaunch(harness: harness.id, model: nil, effort: nil),
                     onDelta: onDelta,
                     onTool: onTool,
                     timeoutSeconds: timeoutSeconds
@@ -222,11 +263,12 @@ final class AgentRuntimeTransport {
         systemPrompt: String,
         cwd: String,
         harness: String,
+        launch: AgentRuntimeLaunch,
         onDelta: @escaping (String) -> Void,
         onTool: ((String) -> Void)?,
         timeoutSeconds: TimeInterval
     ) async throws -> AgentRuntimeReply {
-        try await ensureSession(harness: harness, systemPrompt: systemPrompt, cwd: cwd)
+        try await ensureSession(launch: launch, systemPrompt: systemPrompt, cwd: cwd)
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AgentRuntimeReply, Error>) in
             lock.lock()
@@ -295,28 +337,32 @@ final class AgentRuntimeTransport {
 
     // MARK: - Session lifecycle
 
-    private func ensureSession(harness: String, systemPrompt: String, cwd: String) async throws {
+    private func ensureSession(launch: AgentRuntimeLaunch, systemPrompt: String, cwd: String) async throws {
+        let harness = launch.harness
         try await ensureProcess()
         lock.lock()
-        let same = activeSessionID != nil && activeHarness == harness
+        let same = activeSessionID != nil && activeHarness == harness && activeLaunchKey == launch.key
         lock.unlock()
         if same { return }
 
         // Drop prior session id; start fresh for harness / prompt changes.
         lock.lock()
+        if activeLaunchKey != launch.key { activeModel = nil }
         activeSessionID = nil
         activeHarness = nil
         lock.unlock()
 
         let sessionID = "lattices-assistant-\(UUID().uuidString.prefix(8).lowercased())"
-        let response = try await request([
+        var start: [String: Any] = [
             "op": "start",
             "sessionId": sessionID,
             "harness": harness,
             "name": "Lattices Assistant",
             "cwd": cwd,
             "systemPrompt": systemPrompt,
-        ])
+        ]
+        start.merge(launch.startFields) { _, picked in picked }
+        let response = try await request(start)
         guard response["ok"] as? Bool == true else {
             let err = response["error"] as? String ?? "start failed"
             throw AgentRuntimeTransportError.startFailed(err)
@@ -325,6 +371,7 @@ final class AgentRuntimeTransport {
         lock.lock()
         activeSessionID = resolvedID
         activeHarness = harness
+        activeLaunchKey = launch.key
         lock.unlock()
     }
 
@@ -690,6 +737,13 @@ final class AgentRuntimeTransport {
 
         case "session:update":
             if let session = event["session"] as? [String: Any],
+               let model = session["model"] as? String,
+               !model.isEmpty {
+                lock.lock()
+                activeModel = model
+                lock.unlock()
+            }
+            if let session = event["session"] as? [String: Any],
                let status = session["status"] as? String,
                status == "error" {
                 lock.lock()
@@ -733,6 +787,7 @@ final class AgentRuntimeTransport {
         turnTimeoutWork = nil
         let text = accumulatedText
         let harness = activeHarness ?? "unknown"
+        let model = activeModel
         let sessionId = activeSessionID ?? ""
         let adapterError = lastAdapterError
         onTextDelta = nil
@@ -752,7 +807,7 @@ final class AgentRuntimeTransport {
             }
             cont.resume(throwing: AgentRuntimeTransportError.turnFailed(reason))
         } else {
-            cont.resume(returning: AgentRuntimeReply(text: trimmed, harness: harness, sessionId: sessionId))
+            cont.resume(returning: AgentRuntimeReply(text: trimmed, harness: harness, model: model, sessionId: sessionId))
         }
     }
 

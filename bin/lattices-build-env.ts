@@ -14,6 +14,10 @@
  *
  * Both modes take an optional manifest path after the mode; the default is
  * apps/mac/build.json. Voice's package script passes products/voice/build.json.
+ *
+ * Tier: the manifest's `tier` ("free" | "bundle") picks which build this is;
+ * LATTICES_TIER overrides it for one build. The bundle tier adds the `bundle`
+ * feature, which compiles apps/mac/Sources/Bundle.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -26,10 +30,14 @@ import { join } from "node:path";
 // var across build scripts.
 export const FEATURE_CATALOG: Record<string, { env: Record<string, string>; note: string }> = {
   voice: { env: { HUDSONKIT_WITH_VOICE: "1" }, note: "HudsonVoice — Vox/Parakeet dictation" },
+  bundle: { env: { LATTICES_BUNDLE: "1" }, note: "Bundle tier — compiles apps/mac/Sources/Bundle" },
 };
+
+export type BuildTier = "free" | "bundle";
 
 export interface BuildManifest {
   app?: string;
+  tier?: BuildTier;
   features?: string[];
 }
 
@@ -54,13 +62,28 @@ export function resolveFeatureEnv(features: string[] = []): Record<string, strin
   return env;
 }
 
-/** Resolve the manifest's declared features into a build-env map. */
+/** The tier to build: LATTICES_TIER, else the manifest's, else free. */
+export function resolveTier(manifest: BuildManifest = loadManifest()): BuildTier {
+  const tier = process.env.LATTICES_TIER || manifest.tier || "free";
+  if (tier !== "free" && tier !== "bundle") {
+    throw new Error(`unknown tier "${tier}" — use free or bundle`);
+  }
+  return tier;
+}
+
+/** Resolve the manifest's declared features (and tier) into a build-env map. */
 export function resolveBuildEnv(manifestPath?: string): Record<string, string> {
-  const features = loadManifest(manifestPath).features ?? [];
+  const manifest = loadManifest(manifestPath);
+  const features = [...(manifest.features ?? [])];
+  if (resolveTier(manifest) === "bundle" && !features.includes("bundle")) features.push("bundle");
   const env = resolveFeatureEnv(features);
   // HudsonKit enables HudsonVoice by default; opt out unless the voice feature is declared.
   if (!features.includes("voice")) {
     env.HUDSONKIT_WITH_VOICE = "0";
+  }
+  // Pin the free tier too, so a LATTICES_BUNDLE left in the shell can't leak in.
+  if (!features.includes("bundle")) {
+    env.LATTICES_BUNDLE = "0";
   }
   return env;
 }

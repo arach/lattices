@@ -13,9 +13,28 @@ const MDX_COMPONENTS = [
   'TestResults',
 ] as const
 
+const MDX_IMPORT = /^import\s+(?:[\w*{][^'"]*\s+from\s+)?['"][^'"]+['"];?\s*$/
+const FENCE = /^\s*(```|~~~)/
+
+/** Drops MDX `import` statements, leaving imports inside code samples intact. */
+export function stripMdxImports(content: string): string {
+  let fence: string | null = null
+  return content
+    .split('\n')
+    .filter((line) => {
+      const marker = line.match(FENCE)?.[1]
+      if (marker) {
+        if (fence === null) fence = marker
+        else if (fence === marker) fence = null
+        return true
+      }
+      return fence !== null || !MDX_IMPORT.test(line)
+    })
+    .join('\n')
+}
+
 export function prepareMarkdown(content: string): string {
-  let prepared = content
-    .replace(/^import\s+.+$/gm, '')
+  let prepared = stripMdxImports(content)
     .replace(/\sclient:load/g, '')
 
   for (const name of MDX_COMPONENTS) {

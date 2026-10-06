@@ -35,6 +35,9 @@ final class DaemonServer: ObservableObject {
     private static let blockingMethods: Set<String> = [
         "window.pick.start",
         "session.launch",
+        // Carrying a window across Spaces takes about a second per Space.
+        "window.move",
+        "window.present",
     ]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -211,6 +214,7 @@ final class DaemonServer: ObservableObject {
         }
 
         client.speechAuthorized = SpeechCompanionConnection.authorizes(handshake: request, tokenFile: speechCapabilityURL)
+        client.caller = CaptureCaller.parse(handshake: request)
 
         // Register client
         lock.lock()
@@ -382,6 +386,9 @@ final class DaemonServer: ObservableObject {
 
         let response = LatticesApi.shared.handle(request)
         sendResponse(response, to: client)
+        if CaptureAudit.methods.contains(request.method), response.error == nil {
+            CaptureAudit.record(method: request.method, caller: client.caller, result: response.result)
+        }
     }
 
     // MARK: - Voice helper routing (LAT-012)
@@ -618,6 +625,7 @@ final class DaemonServer: ObservableObject {
 
 final class WebSocketClient {
     var speechAuthorized = false
+    var caller: CaptureCaller?
     var speechConnection: SpeechCompanionConnection?
     /// Replies to requests the daemon sent the Voice helper itself. Touched only on the daemon queue.
     var helperCallbacks: [String: (DaemonResponse) -> Void] = [:]

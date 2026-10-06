@@ -4,7 +4,7 @@ enum WorkspaceInspectorPresenter {
     static func show() {
         guard let entry = DesktopModel.shared.frontmostWindow(),
               entry.app != "Lattices" else {
-            ScreenMapWindowController.shared.showPage(.screenMap)
+            ScreenMapWindowController.shared.showPage(.overview)
             return
         }
 

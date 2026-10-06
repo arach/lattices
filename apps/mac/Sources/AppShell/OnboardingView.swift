@@ -121,7 +121,7 @@ struct OnboardingView: View {
                 .lineSpacing(3)
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Capability.allCases) { cap in
+                ForEach(Capability.available) { cap in
                     capabilityRow(cap)
                 }
             }

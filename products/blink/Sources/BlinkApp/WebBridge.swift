@@ -61,6 +61,7 @@ final class EditorWebView: NSObject, WKScriptMessageHandler, WKNavigationDelegat
     private var pendingSheet: String?
     private var pendingEnter: (kind: String, durationMs: Double)?
     private var pendingTypeOn: (base: String, suffix: String, source: String?)?
+    private var pendingUntrusted: Bool?
     private let log = HudLogger(category: "blink.bridge")
 
     override init() {
@@ -259,6 +260,30 @@ final class EditorWebView: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         evaluate("window.blink.finishTypeOn && window.blink.finishTypeOn()")
     }
 
+    /// Install `text` and stream its rendered blocks in (reader layer arrival).
+    /// Callers wait for `onReady`; a stale bundle without `stream` falls back
+    /// to a plain `setContent`. Never echoes `contentChanged`.
+    func stream(_ text: String) {
+        guard isReady else {
+            pendingContent = text
+            return
+        }
+        let encoded = Self.jsString(text)
+        evaluate("window.blink.stream ? window.blink.stream(\(encoded)) : window.blink.setContent(\(encoded))")
+    }
+
+    /// Render content under the untrusted-text policy (raw HTML escaped, only
+    /// web links, no remote images). For text that is not a note, such as the
+    /// reader layer's terminal selections. Queued before `ready` and applied
+    /// ahead of content so the first render already uses it.
+    func setUntrusted(_ value: Bool) {
+        guard isReady else {
+            pendingUntrusted = value
+            return
+        }
+        evaluate("window.blink.setUntrusted && window.blink.setUntrusted(\(value))")
+    }
+
     /// Push CSS variables to the bundle (theming). Guarded so an older bundle
     /// without setTheme is a no-op rather than an error.
     func setTheme(_ vars: [String: String]) {
@@ -286,6 +311,10 @@ final class EditorWebView: NSObject, WKScriptMessageHandler, WKNavigationDelegat
         switch type {
         case "ready":
             isReady = true
+            if let untrusted = pendingUntrusted {
+                pendingUntrusted = nil
+                setUntrusted(untrusted)
+            }
             if let pending = pendingContent {
                 pendingContent = nil
                 setContent(pending)

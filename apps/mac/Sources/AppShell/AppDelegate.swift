@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationObservers: [NSObjectProtocol] = []
     private var systemSettingsWasFrontmost = false
     private var terminationSignalSources: [DispatchSourceSignal] = []
+    private var inputLease: AppInputLease?
 
     static func updateActivationPolicy() {
         AppActivationCoordinator.shared.refresh()
@@ -23,8 +24,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Refuse before creating controllers or changing any global input state.
+        // The peer check also covers older versions that predate the lease.
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if let peer = NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && AppInputLease.isPeer(
+                bundleIdentifier: $0.bundleIdentifier, pid: $0.processIdentifier, ownPID: ownPID
+            )
+        }) {
+            NSLog("Lattices input startup refused: peer pid=%d bundle=%@", peer.processIdentifier,
+                  peer.bundleURL?.path ?? "unknown")
+            exit(EXIT_FAILURE)
+        }
+        do {
+            let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            inputLease = try AppInputLease(path: directory.appendingPathComponent("app-input.lock").path)
+        } catch {
+            NSLog("Lattices input startup refused: %@", String(describing: error))
+            exit(EXIT_FAILURE)
+        }
+
         HudLoggerSinks.install(HudLogStore.shared)
         HudLoggerSinks.install(LatticesLogDiskSink.shared)
+        #if LATTICES_BUNDLE
+        LatticesBundle.register()
+        #endif
+        DiagnosticLog.shared.info("Lattices tier: \(LatticesTier.current.rawValue) [\(BundleModules.ids.joined(separator: ", "))]")
         traceBuildIdentity()
         HudLogger(category: "lattices").info("Lattices booted", metadata: ["state": "ready"])
 
@@ -45,12 +71,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
-        SpatialLensController.shared.start()
+        BundleModules.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
         DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
+        // A crash can leave layer-parked windows in the corner; put them back.
+        DispatchQueue.global(qos: .userInitiated).async {
+            LayerStage.shared.restoreParked(reason: "launch")
+        }
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -72,7 +102,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // --screen-map flag: auto-open layout on launch
         if CommandLine.arguments.contains("--screen-map") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                ScreenMapWindowController.shared.showPage(.screenMap)
+                ScreenMapWindowController.shared.showPage(.overview)
             }
         }
 
@@ -128,6 +158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global(qos: .userInitiated))
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
+                LayerStage.shared.restoreParked(reason: "signal \(sig)")
                 exit(128 + sig)
             }
             source.resume()
@@ -136,12 +167,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()
         removeSystemInputBoundaryObservers()
         SecureEventInputMonitor.shared.stop()
         SpaceSwitchInterceptor.shared.stop()
         KeyboardRemapController.shared.stop()
-        SpatialLensController.shared.stop()
+        BundleModules.stop()
         AppServicesBootstrap.stop()
     }
 
@@ -290,6 +322,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .lowercased()
 
         switch host {
+        case "editor":
+            // lattices://editor opens only the read-only Editor surface.
+            EditorWindowController.shared.show()
+            DiagnosticLog.shared.info("DeepLink: opened Editor")
         case "companion":
             handleCompanionDeepLink(action: action)
         case "daemon":

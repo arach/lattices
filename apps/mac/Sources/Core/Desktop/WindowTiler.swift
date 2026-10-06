@@ -551,6 +551,15 @@ struct DisplaySpaces {
     /// desktops plus fullscreen app Spaces. `currentSpaceId` can be a
     /// fullscreen Space, so navigation must use this list, not `spaces`.
     var orderedSpaceIds: [Int] = []
+
+    /// Pure relative target resolution for previous/next space (no SkyLight call).
+    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
+    func relativeSpace(direction: Int) -> SpaceInfo? {
+        guard let currentIdx = spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
+        let targetIdx = currentIdx + direction
+        guard spaces.indices.contains(targetIdx) else { return nil }
+        return spaces[targetIdx]
+    }
 }
 
 private enum CGS {
@@ -586,6 +595,13 @@ private enum CGS {
     static let setCurrentSpace: SetCurrentSpaceFunc? = {
         guard let h = handle, let sym = dlsym(h, "SLSManagedDisplaySetCurrentSpace") else { return nil }
         return unsafeBitCast(sym, to: SetCurrentSpaceFunc.self)
+    }()
+
+    typealias GetWindowBoundsFunc = @convention(c) (Int32, UInt32, UnsafeMutablePointer<CGRect>) -> Int32
+
+    static let getWindowBounds: GetWindowBoundsFunc? = {
+        guard let h = handle, let sym = dlsym(h, "SLSGetWindowBounds") ?? dlsym(h, "CGSGetWindowBounds") else { return nil }
+        return unsafeBitCast(sym, to: GetWindowBoundsFunc.self)
     }()
 
     // Screen-update freeze used to hide the Dock-swipe transition.
@@ -1230,6 +1246,17 @@ enum WindowTiler {
         return result.map { $0.intValue }
     }
 
+    /// A window's frame as the WindowServer keeps it, CG coordinates.
+    /// CGWindowList collapses a hidden app's windows to 1×1 on macOS 27;
+    /// this still has the real frame.
+    static func trueBounds(of wid: UInt32) -> CGRect? {
+        guard let mainConn = CGS.mainConnectionID,
+              let getBounds = CGS.getWindowBounds else { return nil }
+        var rect = CGRect.zero
+        guard getBounds(mainConn(), wid, &rect) == 0, !rect.isEmpty else { return nil }
+        return rect
+    }
+
     /// Switch a display to a specific Space.
     /// Returns true once the requested Space becomes current.
     @discardableResult
@@ -1428,7 +1455,7 @@ enum WindowTiler {
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
     /// Move a window between spaces via CGS private APIs. Internal — used by present() and moveWindowToSpace().
-    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
+    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int, switchOnDenial: Bool = true) -> MoveResult? {
         let diag = DiagnosticLog.shared
         guard let mainConn = CGS.mainConnectionID,
               let addToSpaces = CGS.addWindowsToSpaces,
@@ -1453,7 +1480,12 @@ enum WindowTiler {
             return .success(method: "CGS", wid: wid)
         }
 
-        // CGS was silently denied — switch the view instead
+        // CGS was silently denied. Callers that can carry the window
+        // (WindowSpaceCarry) ask for the refusal; the rest switch the view.
+        guard switchOnDenial else {
+            diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction)")
+            return .failed(reason: "denied")
+        }
         diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction) — switching view")
         switchToSpace(spaceId: toSpace)
         return .success(method: "switch-view", wid: wid)
@@ -2166,7 +2198,10 @@ enum WindowTiler {
                     continue
                 }
 
+                let capture = EditorMutationJournal.begin(wid: wm.wid, ax: axWin)
+                if EditorMutationJournal.current != nil && capture == nil { continue }
                 applyFrameToAXWindow(axWin, wid: wm.wid, target: wm.target)
+                EditorMutationJournal.end(capture)
                 moved += 1
             }
         }
@@ -2524,7 +2559,10 @@ enum WindowTiler {
         if let cid { _ = _SLSDisableUpdate?(cid) }
 
         for move in moves {
+            let capture = EditorMutationJournal.begin(wid: move.wid, ax: move.axWindow)
+            if EditorMutationJournal.current != nil && capture == nil { continue }
             setFrameTriplet(move.axWindow, to: move.frame)
+            EditorMutationJournal.end(capture)
             AXUIElementPerformAction(move.axWindow, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(move.axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
             processed += 1
@@ -2654,23 +2692,33 @@ enum WindowTiler {
 
     /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
     /// If `region` is provided (fractional x, y, w, h), the grid is constrained to that sub-area.
+    /// The whole batch lands on one screen: `screen` when given, else the
+    /// first window's. Callers with windows on several monitors call once
+    /// per monitor with its screen.
     static func batchRaiseAndDistribute(
         windows: [(wid: UInt32, pid: Int32)],
         region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil,
         reactivateLattices: Bool = true,
-        shape shapeOverride: [Int]? = nil
+        shape shapeOverride: [Int]? = nil,
+        screen explicitScreen: NSScreen? = nil
     ) {
         guard !windows.isEmpty else { return }
         let diag = DiagnosticLog.shared
 
-        // Find screen from first window
-        guard let firstFrame = cgWindowFrame(wid: windows[0].wid) else {
-            diag.warn("batchRaiseAndDistribute: no frame for first window wid=\(windows[0].wid)")
-            return
+        let screen: NSScreen
+        if let explicitScreen {
+            screen = explicitScreen
+        } else {
+            // The first window's screen. Its CG frame is top-left origin, so
+            // convert before testing it against AppKit's screen frames.
+            guard let firstFrame = cgWindowFrame(wid: windows[0].wid) else {
+                diag.warn("batchRaiseAndDistribute: no frame for first window wid=\(windows[0].wid)")
+                return
+            }
+            screen = screenForWindowFrame(WindowFrame(
+                x: firstFrame.minX, y: firstFrame.minY, w: firstFrame.width, h: firstFrame.height
+            ))
         }
-        let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(NSPoint(x: firstFrame.midX, y: firstFrame.midY))
-        }) ?? NSScreen.main ?? NSScreen.screens[0]
 
         let visible = screen.visibleFrame
         let screenFrame = screen.frame
@@ -3031,7 +3079,7 @@ enum WindowTiler {
     /// The SkyLight Space list for a CG display, matched by UUID — SkyLight's
     /// order is not NSScreen's. With "Displays have separate Spaces" off
     /// there is a single shared list, which owns every screen.
-    private static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
+    static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
         if all.count == 1 { return all[0] }
         let id = displayID ?? CGMainDisplayID()
         guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }

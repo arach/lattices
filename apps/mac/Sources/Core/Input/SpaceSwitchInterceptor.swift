@@ -136,7 +136,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
             (.cgSessionEventTap, "session"),
         ]
         var installedLabel = "unknown"
-        let tap = tapCandidates.lazy.compactMap { location, label -> CFMachPort? in
+        let tap = EventTapInstallation.firstAvailable(tapCandidates) { location, label -> CFMachPort? in
             let candidate = CGEvent.tapCreate(
                 tap: location,
                 place: .headInsertEventTap,
@@ -147,7 +147,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
             )
             if candidate != nil { installedLabel = label }
             return candidate
-        }.first
+        }
 
         guard let tap else {
             DiagnosticLog.shared.warn("SpaceSwitch: failed to install keyboard event tap")

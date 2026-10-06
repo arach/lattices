@@ -90,7 +90,7 @@ struct MainView: View {
     }
 
     private var visiblyMissingCapabilities: [Capability] {
-        Capability.allCases.filter { !$0.isGranted && !prefs.isCapabilityDismissed($0.rawValue) }
+        Capability.available.filter { !$0.isGranted && !prefs.isCapabilityDismissed($0.rawValue) }
     }
 
     private var mainContent: some View {
@@ -329,7 +329,7 @@ struct MainView: View {
                 icon: "rectangle.3.group",
                 accentColor: Palette.textDim
             ) {
-                ScreenMapWindowController.shared.showPage(.screenMap)
+                ScreenMapWindowController.shared.showPage(.overview)
             }
             ActionRow(
                 label: "Command Bar",

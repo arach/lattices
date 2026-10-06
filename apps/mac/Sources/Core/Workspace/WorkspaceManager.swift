@@ -32,22 +32,48 @@ struct LayerProject: Codable {
     let group: String?
     let tile: String?
     let display: Int?
-    let app: String?       // match by owner app name (e.g. "Google Chrome", "Xcode")
-    let title: String?     // substring match on window title (case-insensitive)
+    var app: String?       // match by owner app name (e.g. "Google Chrome", "Xcode")
+    var title: String?     // substring match on window title (case-insensitive)
     let url: String?       // URL to open if no matching window found
     let launch: String?    // app name to launch if not running (via `open -a`)
+    /// A Studio rule (regex, exact names, sessions, exclusions), for what
+    /// `app` and `title` can't say. Takes the place of the fields above.
+    var match: StudioLayerClause? = nil
+    /// Windows added to the layer by hand as this entry. A pin outranks any
+    /// rule, so its window stays here whatever its title turns to.
+    var pins: [LayerPin]? = nil
+    /// Saved from a window (⌘⌥T, the layer bezel, a move) rather than
+    /// written: it holds windows by its pins alone (`isSaved`). Nil in an
+    /// entry written by hand, and then left out of the file.
+    var saved: Bool? = nil
+}
+
+/// A window saved into a layer, by wid while it lives. `app` and `title`,
+/// as they read when it was saved, find it again once the wid is gone
+/// and its app has quit (`LayerMembership`).
+struct LayerPin: Codable, Equatable {
+    var wid: UInt32
+    let app: String
+    let title: String
+    /// The process that had the window. Nil in a pin from before it was
+    /// kept, and then left out of the file.
+    var pid: Int32? = nil
 }
 
 struct Layer: Codable, Identifiable {
     let id: String
-    let label: String
-    let projects: [LayerProject]
+    var label: String
+    var projects: [LayerProject]
+    /// How to lay the layer's windows out when it's shown: "auto",
+    /// "columns" or "master-stack" (`LayerLayout`). Nil leaves them where
+    /// they are.
+    var layout: String? = nil
 }
 
 struct WorkspaceConfig: Codable {
     let name: String
     let groups: [TabGroup]?
-    let layers: [Layer]?
+    var layers: [Layer]?
 }
 
 // MARK: - Grid Presets & Named Layouts
@@ -435,12 +461,12 @@ class WorkspaceManager: ObservableObject {
     @Published private(set) var selectedGroupTabIndices: [String: Int] = [:]
     @Published private(set) var expandedGroupIDs: Set<String> = []
 
-    private let configPath: String
+    let configPath: String
     private let gridConfigPath: String
     private let snapZonesConfigPath: String
     private var gridConfigSourceToken = ""
     private var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
-    private let activeLayerKey = "lattices.activeLayerIndex"
+    let activeLayerKey = "lattices.activeLayerIndex"
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -778,7 +804,29 @@ class WorkspaceManager: ObservableObject {
 
     func collapseGroup(_ group: TabGroup) {
         DesktopModel.shared.poll()
-        let windows = orderedWindows(for: group)
+        let selected = selectedTabIndex(in: group)
+        let front = group.tabs.indices.contains(selected) ? window(for: group.tabs[selected]) : nil
+        collapse(group, windows: orderedWindows(for: group), focusing: front)
+    }
+
+    /// `collapseGroup` after a layer launched the group's missing tabs: only
+    /// the windows layer `layerId` holds by the group's entry now, on screen
+    /// and not tucked. Nothing once another layer is active.
+    private func collapseGroup(_ group: TabGroup, ofLayer layerId: String) {
+        guard let layer = activeLayer, layer.id == layerId,
+              let entry = layer.projects.firstIndex(where: { $0.group == group.id }) else { return }
+        let tucked = LayerStage.shared.tucked(layerId)
+        let held = membership(of: layer, in: DesktopModel.shared.refreshNow()).members
+            .filter { $0.project == entry && $0.entry.isOnScreen && !tucked.contains($0.entry.wid) }
+        let windows = tabOrdered(held.map(\.entry), in: group)
+        let selected = selectedTabIndex(in: group)
+        let front = group.tabs.indices.contains(selected)
+            ? windows.last { LayerMembership.reads(group.tabs[selected], $0) } : nil
+        collapse(group, windows: windows, focusing: front)
+    }
+
+    /// Stacks `windows` in the group's slot, the last in front, and focuses `front`.
+    private func collapse(_ group: TabGroup, windows: [WindowEntry], focusing front: WindowEntry?) {
         guard !windows.isEmpty,
               let (placement, targetScreen) = groupPlacement(group) else { return }
 
@@ -788,33 +836,50 @@ class WorkspaceManager: ObservableObject {
         )
         expandedGroupIDs.remove(group.id)
 
-        let selected = selectedTabIndex(in: group)
-        if selected < group.tabs.count, let entry = window(for: group.tabs[selected]) {
-            _ = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
+        if let front {
+            _ = WindowTiler.focusWindow(wid: front.wid, pid: front.pid)
         }
         DiagnosticLog.shared.info("WorkspaceManager: collapsed mixed group '\(group.label)' to \(placement.wireValue)")
     }
 
-    private func window(for tab: TabGroupTab) -> WindowEntry? {
+    private func window(for tab: TabGroupTab, currentSpaceOnly: Bool = false) -> WindowEntry? {
         if let path = tab.path {
-            return windowForSession(Self.sessionName(for: path))
+            return windowForSession(Self.sessionName(for: path), currentSpaceOnly: currentSpaceOnly)
         }
         guard let app = tab.app else { return nil }
-        return DesktopModel.shared.windowForApp(app: app, title: tab.title)
+        return DesktopModel.shared.windowForApp(app: app, title: tab.title, currentSpaceOnly: currentSpaceOnly)
     }
 
-    private func orderedWindows(for group: TabGroup) -> [WindowEntry] {
+    private func orderedWindows(for group: TabGroup, currentSpaceOnly: Bool = false) -> [WindowEntry] {
         let selected = selectedTabIndex(in: group)
         var result: [WindowEntry] = []
         for (index, tab) in group.tabs.enumerated() where index != selected {
-            if let entry = window(for: tab), !result.contains(where: { $0.wid == entry.wid }) {
+            if let entry = window(for: tab, currentSpaceOnly: currentSpaceOnly), !result.contains(where: { $0.wid == entry.wid }) {
                 result.append(entry)
             }
         }
         if selected < group.tabs.count,
-           let entry = window(for: group.tabs[selected]),
+           let entry = window(for: group.tabs[selected], currentSpaceOnly: currentSpaceOnly),
            !result.contains(where: { $0.wid == entry.wid }) {
             result.append(entry)
+        }
+        return result
+    }
+
+    /// One of `windows` per tab of `group`, the front one each tab reads,
+    /// with the selected tab last so it lands in front.
+    private func tabOrdered(_ windows: [WindowEntry], in group: TabGroup) -> [WindowEntry] {
+        let selected = selectedTabIndex(in: group)
+        var order = group.tabs.indices.filter { $0 != selected }
+        if group.tabs.indices.contains(selected) { order.append(selected) }
+        var result: [WindowEntry] = []
+        for index in order {
+            let tab = group.tabs[index]
+            if let window = windows.first(where: { window in
+                LayerMembership.reads(tab, window) && !result.contains { $0.wid == window.wid }
+            }) {
+                result.append(window)
+            }
         }
         return result
     }
@@ -867,123 +932,203 @@ class WorkspaceManager: ObservableObject {
     // MARK: - Window Lookup
 
     /// Find a tracked window for a session name (instant — uses DesktopModel cache)
-    private func windowForSession(_ sessionName: String) -> WindowEntry? {
-        DesktopModel.shared.windowForSession(sessionName)
-    }
-
-    /// Resolve a session name to a tile target: (wid, pid, frame).
-    /// Returns nil if the window isn't tracked or has no tile position.
-    private func batchTarget(session: String, position: PlacementSpec, screen: NSScreen) -> (wid: UInt32, pid: Int32, frame: CGRect)? {
-        guard let entry = windowForSession(session) else { return nil }
-        let frame = WindowTiler.tileFrame(for: position, on: screen)
-        return (entry.wid, entry.pid, frame)
+    private func windowForSession(_ sessionName: String, currentSpaceOnly: Bool = false) -> WindowEntry? {
+        DesktopModel.shared.windowForSession(sessionName, currentSpaceOnly: currentSpaceOnly)
     }
 
     // MARK: - Tiling
 
-    /// Re-tile the current layer without switching (for "tile all")
+    /// Re-tile the current layer without switching (for "tile all"): the
+    /// same switch, to the layer already active.
     func retileCurrentLayer() {
-        tileLayer(index: activeLayerIndex, launch: false, force: true)
+        tileLayer(index: activeLayerIndex)
     }
 
-    /// Count running projects+groups in a layer
-    func layerRunningCount(index: Int) -> (running: Int, total: Int) {
-        guard let config, let layers = config.layers, index < layers.count else { return (0, 0) }
-        let layer = layers[index]
-        let scanner = ProjectScanner.shared
-        var running = 0
-        let total = layer.projects.count
+    // MARK: - Layer Stage
 
-        for lp in layer.projects {
-            if let groupId = lp.group, let group = group(byId: groupId) {
-                if isGroupRunning(group) { running += 1 }
-            } else if let appName = lp.app {
-                if DesktopModel.shared.windowForApp(app: appName, title: lp.title) != nil { running += 1 }
-            } else if let path = lp.path {
-                let project = scanner.projects.first(where: { $0.path == path })
-                if project?.isRunning == true { running += 1 }
-            }
+    /// What entries point at beyond the layers: tab groups and projects'
+    /// companion windows.
+    var membershipSources: LayerMembership.Sources {
+        LayerMembership.Sources(
+            group: { self.group(byId: $0) },
+            projectWindows: { self.projectWindows(at: $0) }
+        )
+    }
+
+    /// Which layer holds each window, across every configured layer.
+    func layerMembership(in windows: [WindowEntry]) -> LayerMembership.Resolution {
+        LayerMembership.resolve(layers, windows: windows, sources: membershipSources)
+    }
+
+    /// Every window the layer holds, on any desktop: the layer's own
+    /// windows, as opposed to whatever else was showing when it was left.
+    func memberWindowIDs(of layer: Layer, in windows: [WindowEntry]) -> Set<UInt32> {
+        Set(memberWindows(of: layer, in: windows).map(\.entry.wid))
+    }
+
+    /// The layer's windows in entry order, front to back within an entry,
+    /// each under the entry that holds it, whose index in `layer.projects`
+    /// is `project`. A window belongs to one layer at most
+    /// (`LayerMembership`). `placed` marks the ones whose entry sets its own
+    /// `tile` or `display`, which a layout leaves be.
+    func memberWindows(of layer: Layer, in windows: [WindowEntry]) -> [(entry: WindowEntry, placed: Bool, project: Int)] {
+        membership(of: layer, in: windows).members
+    }
+
+    /// `memberWindows`, and which of them a pin holds. A configured layer is
+    /// weighed against the others; one that isn't, or a stand-in whose id
+    /// has a `#`, is resolved alone.
+    func membership(of layer: Layer, in windows: [WindowEntry]) -> (members: [LayerMembership.Member], pinned: Set<UInt32>) {
+        var scope = [layer]
+        var at = 0
+        if !layer.id.contains("#"), let index = layers.firstIndex(where: { $0.id == layer.id }) {
+            scope = layers
+            scope[index] = layer
+            at = index
         }
-        return (running, total)
+        let resolution = LayerMembership.resolve(scope, windows: windows, sources: membershipSources)
+        let members = resolution.layers[at]
+        return (members, resolution.pinned.intersection(members.map(\.entry.wid)))
     }
 
-    // MARK: - Layer Focus (raise only)
+    /// Put away what the incoming layer doesn't use and bring back what it
+    /// had showing (see `LayerStage`), from a fresh inventory. Staging the
+    /// active layer again reconciles it the same way.
+    @discardableResult
+    private func stageSwitch(to index: Int, in layers: [Layer], persistRebinds: Bool = true) -> LayerStage.Outcome {
+        let windows = DesktopModel.shared.refreshNow()
+        let resolution = LayerMembership.resolve(layers, windows: windows, sources: membershipSources)
+        var members: [String: Set<UInt32>] = [:]
+        for (layer, held) in zip(layers, resolution.layers) {
+            members[layer.id, default: []].formUnion(held.map(\.entry.wid))
+        }
+        if persistRebinds { keepRebinds(resolution, of: layers) }
+        let outgoing = layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
+        return LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows)
+    }
 
-    /// Switch to a layer by raising all its windows in place — no launching, no tiling, no moving.
-    /// This is the default hotkey action: just bring the layer's windows to the front.
+    // MARK: - Layer Switch
+
+    /// The one switch every path takes, the active layer again included:
+    /// stage (`stageSwitch`), then from a fresh inventory resolve the
+    /// layer's windows, let `place` put them where their entries say, lay
+    /// them out (`arrangeLayer`) or raise them in place, show the bezel from
+    /// that inventory and what the stage did, and post `.layerSwitched`.
+    /// The members the layer keeps `tucked` stay put away: `place` gets them
+    /// to leave be, and nothing lays them out or raises them.
+    /// The bezel leaves the apps out when `listApps` is false.
+    @discardableResult
+    private func switchLayer(
+        to index: Int,
+        in layers: [Layer],
+        listApps: Bool = true,
+        persistRebinds: Bool = true,
+        place: (_ held: [LayerMembership.Member], _ pinned: Set<UInt32>, _ tucked: Set<UInt32>) -> Void = { _, _, _ in }
+    ) -> LayerStage.Outcome {
+        let layer = layers[index]
+        let outcome = stageSwitch(to: index, in: layers, persistRebinds: persistRebinds)
+
+        let windows = DesktopModel.shared.refreshNow()
+        let (held, pinned) = membership(of: layer, in: windows)
+        let tucked = LayerStage.shared.tucked(layer.id)
+        place(held, pinned, tucked)
+        if !arrangeLayer(layer, windows: windows, except: tucked) {
+            raiseWindows(of: layer, held: held.filter { !tucked.contains($0.entry.wid) }, pinned: pinned)
+        }
+
+        activeLayerIndex = index
+        UserDefaults.standard.set(index, forKey: activeLayerKey)
+
+        if listApps {
+            showBezel(for: index, in: layers, windows: windows, outcome: outcome)
+        } else {
+            LayerBezel.shared.show(label: layer.label, index: index, total: layers.count)
+        }
+        EventBus.shared.post(.layerSwitched(index: index))
+        return outcome
+    }
+
+    // MARK: - Layer Focus (no launching)
+
+    /// Switch to a layer: put away what it doesn't use, then bring its
+    /// windows forward — no launching. This is the default hotkey action. A
+    /// layer with a `layout` lays its windows out (`arrangeLayer`); one
+    /// without raises them in place. Choosing the active layer again runs
+    /// the same switch, which reconciles it and gathers its windows back
+    /// up. Windows on a desktop that isn't showing are left there; raising
+    /// one would switch Spaces.
     func focusLayer(index: Int) {
-        guard let config, let layers = config.layers, index < layers.count else { return }
-        if index == activeLayerIndex { return }
+        guard let config, let layers = config.layers, layers.indices.contains(index) else { return }
+        let switching = index != activeLayerIndex
 
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("focusLayer \(activeLayerIndex)→\(index)")
 
-        DesktopModel.shared.poll()
+        switchLayer(to: index, in: layers)
+        if switching {
+            HandsOffSession.shared.playCachedCue("Switched.")
+        }
 
-        let targetLayer = layers[index]
+        diag.finish(t)
+    }
+
+    /// Raises the layer's windows on the showing desktop, where they are:
+    /// every window pinned to an entry, then the front window of an app or
+    /// rule entry holding no pinned one, or of each tab of a group, and a
+    /// project's session and companion windows. Only the members `held`
+    /// resolved for the layer; `pinned` are the ones a pin holds.
+    private func raiseWindows(of targetLayer: Layer, held: [LayerMembership.Member], pinned: Set<UInt32>) {
+        let members = held.filter { $0.entry.isOnScreen }
+        var seen = Set<UInt32>()
         var windowsToRaise: [(wid: UInt32, pid: Int32)] = []
+        func raise(_ entry: WindowEntry) {
+            if seen.insert(entry.wid).inserted { windowsToRaise.append((entry.wid, entry.pid)) }
+        }
 
-        for lp in targetLayer.projects {
+        for (index, lp) in targetLayer.projects.enumerated() {
+            let mine = members.filter { $0.project == index }
+            let pinnedHere = mine.filter { pinned.contains($0.entry.wid) }
+            pinnedHere.forEach { raise($0.entry) }
+
+            if lp.match != nil {
+                if pinnedHere.isEmpty, let front = mine.first { raise(front.entry) }
+                continue
+            }
             if let groupId = lp.group, let grp = group(byId: groupId) {
-                // Raise all tab windows in the group
-                for tab in grp.tabs {
-                    if let entry = window(for: tab) {
-                        windowsToRaise.append((entry.wid, entry.pid))
-                    }
-                }
+                tabOrdered(mine.map(\.entry), in: grp).forEach(raise)
                 continue
             }
-
-            if let appName = lp.app {
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
-                    windowsToRaise.append((entry.wid, entry.pid))
-                }
+            if lp.app != nil {
+                if pinnedHere.isEmpty, let front = mine.first { raise(front.entry) }
                 continue
             }
-
-            guard let path = lp.path else { continue }
-            let sessionName = Self.sessionName(for: path)
-            if let entry = windowForSession(sessionName) {
-                windowsToRaise.append((entry.wid, entry.pid))
-            }
-
-            // Also raise companion windows
-            let companions = projectWindows(at: path)
-            for cw in companions {
-                guard let appName = cw.app else { continue }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
-                    windowsToRaise.append((entry.wid, entry.pid))
-                }
+            if lp.path != nil {
+                mine.forEach { raise($0.entry) }
             }
         }
 
         if !windowsToRaise.isEmpty {
             WindowTiler.raiseWindowsAndReactivate(windows: windowsToRaise)
         }
-
-        activeLayerIndex = index
-        UserDefaults.standard.set(index, forKey: activeLayerKey)
-
-        let allLabels = layers.map(\.label)
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: layers.count, allLabels: allLabels)
-        HandsOffSession.shared.playCachedCue("Switched.")
-
-        diag.finish(t)
     }
 
-    // MARK: - Unified Layer Tiling
+    // MARK: - Layer Tiling
 
-    /// Unified entry point for arranging a layer's windows.
-    ///
-    /// | launch | force | Behavior |
-    /// |--------|-------|----------|
-    /// | false  | false | Tile running projects only (focus) |
-    /// | true   | false | Launch stopped + tile all, skip if same layer |
-    /// | true   | true  | Re-launch current layer |
-    /// | false  | true  | Re-tile current layer |
-    func tileLayer(index: Int, launch: Bool = false, force: Bool = false) {
-        guard let config, let layers = config.layers, index < layers.count else { return }
-        if launch && !force && index == activeLayerIndex { return }
+    /// A running session the inventory has no window for yet, tiled by name
+    /// after the switch.
+    private typealias TileFallback = (session: String, position: PlacementSpec, screen: NSScreen)
+    /// A launch to run after the switch, and where to tile its session once
+    /// it's up.
+    private typealias TileLaunch = (session: String, position: PlacementSpec?, screen: NSScreen, launchAction: () -> Void)
+
+    /// Switch to a layer as `focusLayer` does, first putting each entry's
+    /// windows where its `tile` or `display` says (`tileEntries`). With
+    /// `launch`, it also starts what isn't running and tiles it once it's
+    /// up; the bezel then leaves the apps out, since ones still launching
+    /// would read as not open. Choosing the active layer again runs the same
+    /// switch, which re-tiles it.
+    func tileLayer(index: Int, launch: Bool = false) {
+        guard let config, let layers = config.layers, layers.indices.contains(index) else { return }
 
         let diag = DiagnosticLog.shared
         let label = launch ? "tileLayer(launch)" : "tileLayer(focus)"
@@ -992,178 +1137,13 @@ class WorkspaceManager: ObservableObject {
         isSwitching = true
         let terminal = Preferences.shared.terminal
         let scanner = ProjectScanner.shared
-        let targetLayer = layers[index]
+        var fallbacks: [TileFallback] = []
+        var launchQueue: [TileLaunch] = []
 
-        // Fresh poll so we see windows on all Spaces before matching
-        DesktopModel.shared.poll()
-
-        // Tile debug log (written to ~/.lattices/tile-debug.log)
-        let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
-        var debugLines: [String] = ["tileLayer index=\(index) launch=\(launch) force=\(force) layer=\(targetLayer.id)"]
-
-        // Phase 1: classify each project
-        var batchMoves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
-        var fallbacks: [(session: String, position: PlacementSpec, screen: NSScreen)] = []
-        var launchQueue: [(session: String, position: PlacementSpec?, screen: NSScreen, launchAction: () -> Void)] = []
-
-        // Log screen info
-        for (i, s) in NSScreen.screens.enumerated() {
-            debugLines.append("screen[\(i)]: frame=\(s.frame) visible=\(s.visibleFrame)")
-        }
-
-        for lp in targetLayer.projects {
-            guard let lpScreen = screen(for: lp.display) else { continue }
-
-            if let groupId = lp.group, let grp = group(byId: groupId) {
-                let position = lp.tile.flatMap { resolvePlacement($0) }
-                let groupWindows = orderedWindows(for: grp)
-                let groupRunning = isGroupRunning(grp)
-
-                if !groupWindows.isEmpty, let pos = position {
-                    let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
-                    batchMoves.append(contentsOf: groupWindows.map {
-                        (wid: $0.wid, pid: $0.pid, frame: frame)
-                    })
-                    expandedGroupIDs.remove(grp.id)
-                    if launch, runningTabCount(grp) < grp.tabs.count {
-                        launchGroup(grp)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            self.collapseGroup(grp)
-                        }
-                    }
-                } else if !groupRunning && launch {
-                    diag.info("  launch group: \(grp.label)")
-                    launchQueue.append(("group:\(grp.id)", nil, lpScreen, { [weak self] in
-                        guard let self else { return }
-                        self.launchGroup(grp)
-                        if position != nil {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                self.collapseGroup(grp)
-                            }
-                        }
-                    }))
-                } else if groupWindows.isEmpty {
-                    diag.info("  skip (not running): \(grp.label)")
-                }
-                continue
-            }
-
-            // App-based window matching
-            if let appName = lp.app {
-                let position = lp.tile.flatMap { resolvePlacement($0) }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: lp.title) {
-                    if let pos = position {
-                        let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
-                        batchMoves.append((entry.wid, entry.pid, frame))
-                    }
-                } else if let found = Self.findAppWindow(app: appName, title: lp.title) {
-                    // Window exists but wasn't in DesktopModel (e.g. different Space) — tile it
-                    diag.info("  found app via CGWindowList fallback: \(appName) wid=\(found.wid)")
-                    if let pos = position {
-                        let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
-                        batchMoves.append((found.wid, found.pid, frame))
-                    }
-                } else if launch {
-                    diag.info("  launch app: \(appName)")
-                    let capturedLp = lp
-                    let capturedScreen = lpScreen
-                    launchQueue.append(("app:\(appName)", nil, capturedScreen, { [weak self] in
-                        self?.launchAppEntry(capturedLp)
-                    }))
-                    // Queue a delayed tile after launch
-                    if let pos = position {
-                        let capturedTitle = lp.title
-                        let delay = Double(launchQueue.count) * 0.5 + 1.0
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            DesktopModel.shared.poll()
-                            if let entry = DesktopModel.shared.windowForApp(app: appName, title: capturedTitle) {
-                                let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
-                                WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
-                            }
-                        }
-                    }
-                } else {
-                    diag.info("  skip (not found): \(appName)")
-                }
-                continue
-            }
-
-            guard let path = lp.path else { continue }
-            let sessionName = Self.sessionName(for: path)
-            let project = scanner.projects.first(where: { $0.path == path })
-            let position = lp.tile.flatMap { resolvePlacement($0) }
-            // Check scanner first, fall back to direct tmux check for projects without .lattices.json
-            let isRunning = project?.isRunning == true || shell([tmuxPath, "has-session", "-t", sessionName]) == 0
-
-            if isRunning {
-                let foundWindow = windowForSession(sessionName)
-                let msg = "  \(sessionName): running=\(isRunning) window=\(foundWindow?.wid ?? 0) tile=\(position?.wireValue ?? "nil") desktopCount=\(DesktopModel.shared.windows.count)"
-                diag.info(msg)
-                debugLines.append(msg)
-                if let pos = position,
-                   let target = batchTarget(session: sessionName, position: pos, screen: lpScreen) {
-                    batchMoves.append(target)
-                    debugLines.append("    → batch move wid=\(target.wid) frame=\(target.frame)")
-                } else if let pos = position {
-                    fallbacks.append((sessionName, pos, lpScreen))
-                    debugLines.append("    → fallback \(pos.wireValue)")
-                }
-            } else if launch {
-                if let project {
-                    let t = diag.startTimed("launch: \(project.name)")
-                    SessionManager.launch(project: project)
-                    diag.finish(t)
-                } else {
-                    diag.info("  launch (direct): \(sessionName)")
-                    terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
-                }
-                launchQueue.append((sessionName, position, lpScreen, {}))
-            } else {
-                diag.info("  skip (not running): \(sessionName)")
-            }
-
-            // Compose companion windows from project's .lattices.json "windows" array
-            let companions = projectWindows(at: path)
-            for cw in companions {
-                guard let appName = cw.app else { continue }
-                let cwScreen = screen(for: cw.display ?? lp.display) ?? lpScreen
-                let cwPosition = cw.tile.flatMap { resolvePlacement($0) }
-                if let entry = DesktopModel.shared.windowForApp(app: appName, title: cw.title) {
-                    if let pos = cwPosition {
-                        let frame = WindowTiler.tileFrame(for: pos, on: cwScreen)
-                        batchMoves.append((entry.wid, entry.pid, frame))
-                    }
-                } else if launch {
-                    diag.info("  launch companion: \(appName)")
-                    let capturedCw = cw
-                    launchQueue.append(("app:\(appName)", nil, cwScreen, { [weak self] in
-                        self?.launchAppEntry(capturedCw)
-                    }))
-                    if let pos = cwPosition {
-                        let capturedTitle = cw.title
-                        let capturedScreen = cwScreen
-                        let delay = Double(launchQueue.count) * 0.5 + 1.0
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            DesktopModel.shared.poll()
-                            if let entry = DesktopModel.shared.windowForApp(app: appName, title: capturedTitle) {
-                                let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
-                                WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Write debug log
-        debugLines.append("batchMoves=\(batchMoves.count) fallbacks=\(fallbacks.count) launchQueue=\(launchQueue.count)")
-        try? debugLines.joined(separator: "\n").write(toFile: debugPath, atomically: true, encoding: .utf8)
-
-        // Phase 2: batch tile all tracked windows
-        if !batchMoves.isEmpty {
-            let t = diag.startTimed("batch tile \(batchMoves.count) windows")
-            WindowTiler.batchMoveAndRaiseWindows(batchMoves)
-            diag.finish(t)
+        switchLayer(to: index, in: layers, listApps: !launch) { held, pinned, tucked in
+            let work = self.tileEntries(of: layers[index], index: index, held: held, pinned: pinned, tucked: tucked, launch: launch)
+            fallbacks = work.fallbacks
+            launchQueue = work.launches
         }
 
         // Phase 3: fallback for running-but-untracked windows
@@ -1189,14 +1169,6 @@ class WorkspaceManager: ObservableObject {
             }
         }
 
-        activeLayerIndex = index
-        UserDefaults.standard.set(index, forKey: activeLayerKey)
-
-        // Show layer bezel
-        let totalLayers = layers.count
-        let allLabels = layers.map(\.label)
-        LayerBezel.shared.show(label: targetLayer.label, index: index, total: totalLayers, allLabels: allLabels)
-
         let maxDelay = max(
             fallbacks.isEmpty ? 0.0 : Double(fallbacks.count) * 0.15 + 0.3,
             launchQueue.isEmpty ? 0.0 : Double(launchQueue.count) * 0.15 + 0.5
@@ -1207,6 +1179,240 @@ class WorkspaceManager: ObservableObject {
             self.isSwitching = false
             diag.finish(overall)
         }
+    }
+
+    /// Puts each entry's windows where its `tile` or `display` says, from
+    /// the members `held` a fresh inventory resolved for the layer (`pinned`
+    /// the ones a pin holds), and with `launch` starts what isn't running.
+    /// Only windows the layer holds are placed; `findAppWindow` only tells
+    /// whether an app is open elsewhere, so a second one isn't launched.
+    /// `tucked` ones are left where they are, as if on another desktop.
+    /// Returns the sessions to tile by name and the launches to run.
+    private func tileEntries(
+        of targetLayer: Layer,
+        index: Int,
+        held: [LayerMembership.Member],
+        pinned: Set<UInt32>,
+        tucked: Set<UInt32>,
+        launch: Bool
+    ) -> (fallbacks: [TileFallback], launches: [TileLaunch]) {
+        let diag = DiagnosticLog.shared
+        let terminal = Preferences.shared.terminal
+        let scanner = ProjectScanner.shared
+
+        // Tile debug log (written to ~/.lattices/tile-debug.log)
+        let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
+        var debugLines: [String] = ["tileLayer index=\(index) launch=\(launch) layer=\(targetLayer.id)"]
+
+        // Phase 1: classify each project
+        var batchMoves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
+        var fallbacks: [TileFallback] = []
+        var launchQueue: [TileLaunch] = []
+
+        // Log screen info
+        for (i, s) in NSScreen.screens.enumerated() {
+            debugLines.append("screen[\(i)]: frame=\(s.frame) visible=\(s.visibleFrame)")
+        }
+
+        // The window each app or rule entry places: one pinned to it, else
+        // its front one. `away` are the ones on a desktop that isn't showing,
+        // or put away.
+        let members = held.filter { $0.entry.isOnScreen && !tucked.contains($0.entry.wid) }
+        func target(for entry: Int) -> WindowEntry? {
+            let mine = members.filter { $0.project == entry }
+            return (mine.first { pinned.contains($0.entry.wid) } ?? mine.first)?.entry
+        }
+        func showing(_ entry: Int) -> [WindowEntry] {
+            members.filter { $0.project == entry }.map(\.entry)
+        }
+        func away(_ entry: Int) -> [WindowEntry] {
+            held.filter { $0.project == entry && (!$0.entry.isOnScreen || tucked.contains($0.entry.wid)) }.map(\.entry)
+        }
+
+        for (entryIndex, lp) in targetLayer.projects.enumerated() {
+            guard let lpScreen = screen(for: lp.display) else { continue }
+
+            if lp.match != nil {
+                if let pos = lp.tile.flatMap({ resolvePlacement($0) }), let entry = target(for: entryIndex) {
+                    batchMoves.append((entry.wid, entry.pid, WindowTiler.tileFrame(for: pos, on: lpScreen)))
+                }
+                continue
+            }
+
+            if let groupId = lp.group, let grp = group(byId: groupId) {
+                let position = lp.tile.flatMap { resolvePlacement($0) }
+                let groupWindows = tabOrdered(showing(entryIndex), in: grp)
+                let groupRunning = isGroupRunning(grp)
+
+                if !groupWindows.isEmpty, let pos = position {
+                    let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
+                    batchMoves.append(contentsOf: groupWindows.map {
+                        (wid: $0.wid, pid: $0.pid, frame: frame)
+                    })
+                    expandedGroupIDs.remove(grp.id)
+                    if launch, runningTabCount(grp) < grp.tabs.count {
+                        launchGroup(grp)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            self.collapseGroup(grp, ofLayer: targetLayer.id)
+                        }
+                    }
+                } else if !groupRunning && launch {
+                    diag.info("  launch group: \(grp.label)")
+                    launchQueue.append(("group:\(grp.id)", nil, lpScreen, { [weak self] in
+                        guard let self else { return }
+                        self.launchGroup(grp)
+                        if position != nil {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                self.collapseGroup(grp, ofLayer: targetLayer.id)
+                            }
+                        }
+                    }))
+                } else if groupWindows.isEmpty {
+                    diag.info("  skip (not running): \(grp.label)")
+                }
+                continue
+            }
+
+            // App-based window matching
+            if let appName = lp.app {
+                let position = lp.tile.flatMap { resolvePlacement($0) }
+                if let entry = target(for: entryIndex) {
+                    if let pos = position {
+                        let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
+                        batchMoves.append((entry.wid, entry.pid, frame))
+                    }
+                } else if let found = away(entryIndex).first {
+                    // Open on a desktop that isn't showing: leave it there rather
+                    // than switch Spaces, and don't launch a second one.
+                    diag.info("  skip (on another desktop): \(appName) wid=\(found.wid)")
+                } else if launch, let found = Self.findAppWindow(app: appName, title: lp.title) {
+                    // Open, but not a window this layer holds: don't launch a second one.
+                    diag.info("  skip (open, not held): \(appName) wid=\(found.wid)")
+                } else if launch {
+                    diag.info("  launch app: \(appName)")
+                    let capturedLp = lp
+                    let capturedScreen = lpScreen
+                    launchQueue.append(("app:\(appName)", nil, capturedScreen, { [weak self] in
+                        self?.launchAppEntry(capturedLp)
+                    }))
+                    // Queue a delayed tile after launch, of the window the
+                    // entry holds once it's up.
+                    if let pos = position {
+                        let delay = Double(launchQueue.count) * 0.5 + 1.0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                            guard let entry = self?.launchedWindow(of: targetLayer, entry: entryIndex) else { return }
+                            let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
+                            WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
+                        }
+                    }
+                } else {
+                    diag.info("  skip (not found): \(appName)")
+                }
+                continue
+            }
+
+            guard let path = lp.path else { continue }
+            let sessionName = Self.sessionName(for: path)
+            let project = scanner.projects.first(where: { $0.path == path })
+            let position = lp.tile.flatMap { resolvePlacement($0) }
+            // Check scanner first, fall back to direct tmux check for projects without .lattices.json
+            let isRunning = project?.isRunning == true || shell([tmuxPath, "has-session", "-t", sessionName]) == 0
+
+            if isRunning {
+                let sessionWindow = showing(entryIndex).first { LayerMembership.shows(session: sessionName, $0) }
+                let foundWindow = sessionWindow ?? away(entryIndex).first { LayerMembership.shows(session: sessionName, $0) }
+                let msg = "  \(sessionName): running=\(isRunning) window=\(foundWindow?.wid ?? 0) tile=\(position?.wireValue ?? "nil") desktopCount=\(DesktopModel.shared.windows.count)"
+                diag.info(msg)
+                debugLines.append(msg)
+                if let pos = position, let window = sessionWindow {
+                    let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
+                    batchMoves.append((window.wid, window.pid, frame))
+                    debugLines.append("    → batch move wid=\(window.wid) frame=\(frame)")
+                } else if let pos = position {
+                    if foundWindow != nil {
+                        // On a desktop that isn't showing: leave it there.
+                        debugLines.append("    → skip (on another desktop)")
+                    } else {
+                        fallbacks.append((sessionName, pos, lpScreen))
+                        debugLines.append("    → fallback \(pos.wireValue)")
+                    }
+                }
+            } else if launch {
+                if let project {
+                    let t = diag.startTimed("launch: \(project.name)")
+                    SessionManager.launch(project: project)
+                    diag.finish(t)
+                } else {
+                    diag.info("  launch (direct): \(sessionName)")
+                    terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
+                }
+                launchQueue.append((sessionName, position, lpScreen, {}))
+            } else {
+                diag.info("  skip (not running): \(sessionName)")
+            }
+
+            // Compose companion windows from project's .lattices.json "windows" array
+            let companions = projectWindows(at: path)
+            for cw in companions {
+                guard let appName = cw.app else { continue }
+                let cwScreen = screen(for: cw.display ?? lp.display) ?? lpScreen
+                let cwPosition = cw.tile.flatMap { resolvePlacement($0) }
+                func reads(_ window: WindowEntry) -> Bool { LayerMembership.reads(app: appName, title: cw.title, window) }
+                if let entry = showing(entryIndex).first(where: reads) {
+                    if let pos = cwPosition {
+                        let frame = WindowTiler.tileFrame(for: pos, on: cwScreen)
+                        batchMoves.append((entry.wid, entry.pid, frame))
+                    }
+                } else if away(entryIndex).contains(where: reads) {
+                    diag.info("  skip companion (on another desktop): \(appName)")
+                } else if launch, DesktopModel.shared.windowForApp(app: appName, title: cw.title) != nil {
+                    // Open, but not a window this layer holds: don't launch a second one.
+                    diag.info("  skip companion (open, not held): \(appName)")
+                } else if launch {
+                    diag.info("  launch companion: \(appName)")
+                    let capturedCw = cw
+                    launchQueue.append(("app:\(appName)", nil, cwScreen, { [weak self] in
+                        self?.launchAppEntry(capturedCw)
+                    }))
+                    if let pos = cwPosition {
+                        let capturedTitle = cw.title
+                        let capturedScreen = cwScreen
+                        let delay = Double(launchQueue.count) * 0.5 + 1.0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                            guard let entry = self?.launchedWindow(of: targetLayer, entry: entryIndex, matching: {
+                                LayerMembership.reads(app: appName, title: capturedTitle, $0)
+                            }) else { return }
+                            let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
+                            WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
+                        }
+                    }
+                }
+            }
+        }
+
+        // Write debug log
+        debugLines.append("batchMoves=\(batchMoves.count) fallbacks=\(fallbacks.count) launchQueue=\(launchQueue.count)")
+        try? debugLines.joined(separator: "\n").write(toFile: debugPath, atomically: true, encoding: .utf8)
+
+        // Phase 2: batch tile all tracked windows
+        if !batchMoves.isEmpty {
+            let t = diag.startTimed("batch tile \(batchMoves.count) windows")
+            WindowTiler.batchMoveAndRaiseWindows(batchMoves)
+            diag.finish(t)
+        }
+        return (fallbacks, launchQueue)
+    }
+
+    /// The window entry `project` of `layer` holds on the showing desktop
+    /// that `matching` picks, from a fresh inventory: where a launch that
+    /// has come up gets tiled.
+    private func launchedWindow(
+        of layer: Layer,
+        entry project: Int,
+        matching: (WindowEntry) -> Bool = { _ in true }
+    ) -> WindowEntry? {
+        memberWindows(of: layer, in: DesktopModel.shared.refreshNow())
+            .first { $0.project == project && $0.entry.isOnScreen && matching($0.entry) }?.entry
     }
 
     // MARK: - Per-Project Window Config
@@ -1224,6 +1430,44 @@ class WorkspaceManager: ObservableObject {
             DiagnosticLog.shared.error("WorkspaceManager: failed to decode windows in \(configPath) — \(error.localizedDescription)")
             return []
         }
+    }
+
+    /// Editor-only confirmed path. Never persists rebound pins or changes the
+    /// workspace configuration. Opening entries does not stage or arrange.
+    func executeEditorAction(_ operation: EditorActions.Operation) throws -> [String: Any] {
+        let subject = try EditorSubject(data: Data(contentsOf: URL(fileURLWithPath: configPath)))
+        guard let index = subject.layers.firstIndex(where: { $0.id == operation.layerId }) else {
+            throw EditorBridgeError("stale_plan", "The layer no longer exists.")
+        }
+        if operation.kind == "gather", operation.mode == "focus" {
+            let outcome = switchLayer(to: index, in: subject.layers, persistRebinds: false)
+            return ["putAway": outcome.parked.union(outcome.hidden).count, "skipped": outcome.missing.count]
+        }
+        guard operation.kind == "open", operation.mode == "launch" else {
+            throw EditorBridgeError("invalid_request", "Unsupported operation.")
+        }
+        let layer = subject.layers[index]
+        // Validate every index before any launch. Missingness and canonical
+        // identities were already checked against the fresh confirmed snapshot.
+        guard operation.entryIndices.allSatisfy({ layer.projects.indices.contains($0) }) else {
+            throw EditorBridgeError("stale_plan", "Entries changed.")
+        }
+        for entryIndex in operation.entryIndices {
+            let project = layer.projects[entryIndex]
+            if let url = project.url, let target = URL(string: url) {
+                NSWorkspace.shared.open(target)
+            } else if let app = project.launch ?? project.app ?? project.match?.appEquals ?? project.match?.app {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                task.arguments = ["-a", app]
+                task.standardOutput = FileHandle.nullDevice
+                task.standardError = FileHandle.nullDevice
+                try task.run()
+            } else if let path = project.path {
+                Preferences.shared.terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
+            }
+        }
+        return [:] // Launch acceptance is not proof that a window opened.
     }
 
     // MARK: - App Launch Helper

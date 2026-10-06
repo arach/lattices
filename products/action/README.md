@@ -1,317 +1,170 @@
-# action
+# Action
 
-**[lattices.dev/action](https://lattices.dev/action)** · Native-first macOS automation, capture, and review from Lattices.
+Native macOS computer use: observe a surface, resolve a target, act, and record the result.
 
-`action` is a local runtime for observing a Mac surface, executing deterministic actions, recording what happened, and preserving the result as inspectable session artifacts.
+Action gives agents and scripts a local runtime for working with apps through
+screenshots, accessibility, and input actions. Runs can keep video, observations,
+and traces together so you can inspect what happened. Use Action on its own or
+alongside Lattices for window placement, sessions, and workspace navigation.
 
-The project is built around a signed AppKit application, a local agent runtime, and shared CLI/MCP interfaces. Its strongest path today is native capture and replay; live inspection and durable companion jobs are the active development edge.
+[Product page](https://lattices.dev/action) · [Getting started](docs/getting-started.md) · [Agent API](docs/api.md)
 
-Source lives in the Lattices monorepo at [`products/action`](https://github.com/arach/lattices/tree/main/products/action).
+## Install and run
 
-## Status At A Glance
+Action is a separate macOS app. With Bun installed, install the Lattices CLI and
+use its Action entry point:
 
-Working today:
+```sh
+bun add --global @arach/lattices
+lattices action install
+lattices action launch
+lattices action status --json
+```
 
-- signed `Action.app` with a real AppKit lifecycle, menus, permissions UX, and embedded WebKit surfaces
-- native screenshots plus region and app-window recording through `ScreenCaptureKit`
-- asynchronous recording with explicit stop and finished markers
-- guided capture sessions with trace, screenshots, manifests, replay, and in-app review
-- current-surface inspection that can persist a screenshot, AX snapshot, and Apple Vision OCR
-- deterministic runtime actions exposed through local CLI and MCP entrypoints
-- a local HUD / console and package.json scripts for the native app loop
+The installer downloads `Action.dmg` from the latest `action-v*` release and
+installs `Action.app` in `/Applications`. It does not require a source checkout.
+Grant Accessibility and Screen Recording permissions when prompted for native
+control and capture.
 
-In active development:
+To query the running Action agent:
 
-- the long-lived Action Companion job queue and Rust supervisor
-- provider-backed vision analysis and viewport-settling loops
-- Chrome DOM observation and actions through the Chrome companion extension
-- shared surface adapters, target evidence, and post-action verification
-- Mira / character treatments used by launcher, session, and automation surfaces
+```sh
+lattices action call status
+```
 
-Still mostly contract or roadmap work:
+## Build from source
 
-- trace-to-scenario generation and deterministic reruns from recorded sessions
-- production composition, including zooms, subtitles, narration, and final rendering
-- continuous computer-use perception and an autonomous observe → think → act loop
-- a general-purpose editor
+Requirements: macOS 14 or newer, Bun, and a Swift 6.2 toolchain. The build script
+uses an available Apple Development or Developer ID Application signing identity;
+without one, it uses ad hoc signing. Stable permission checks and
+`native:verify` require a developer signing identity in Keychain.
 
-## Product Model
+From the Lattices repository root:
 
-Action separates macOS lifecycle work from automation orchestration:
-
-- `Action.app` owns AppKit, WebKit, permission UX, launcher and review UI, and the recording-probe lifecycle.
-- `ActionAgent` owns local transport, native automation methods, and capture orchestration.
-- the TypeScript runtime owns sessions, observations, targets, actions, traces, and artifact manifests.
-- CLI and MCP are thin frontends over the same runtime concepts.
-- compiler and composer packages consume runtime truth; they do not own live app control.
-
-That boundary matters. WebKit and `ScreenCaptureKit` are reliable when they run inside a real app lifecycle, while automation clients need a stable service boundary that does not pretend to be the UI process.
-
-## Current Workflows
-
-### Capture And Review
-
-1. Launch `Action.app`.
-2. Select or stage a target surface.
-3. Start a guided capture.
-4. Execute deterministic actions while Action records video and trace data.
-5. Stop through the live controls.
-6. Review the playable session and its artifacts in-app.
-
-### Inspect A Surface
-
-1. Resolve the currently focused app/window.
-2. Capture a screenshot and accessibility snapshot.
-3. Run Apple Vision OCR by default.
-4. Optionally request provider-backed image analysis.
-5. Persist `session.json`, `manifest.json`, `trace.json`, and the observation artifacts under `artifacts/sessions/`.
-
-The inspection path uses Action Companion when it is reachable and falls back to direct execution otherwise.
-
-## Quick Start
-
-Requirements:
-
-- macOS on Apple Silicon
-- Bun
-- Xcode command line tools / Swift toolchain
-- Accessibility and Screen Recording permission for `Action.app`
-
-Install dependencies and build the signed app:
-
-```bash
+```sh
+cd products/action
 bun install
 bun run native:app:build
-```
-
-Verify the bundle and native permissions:
-
-```bash
-bun run native:doctor
-```
-
-The current development doctor also checks the local vision-secret manifest. Provider-backed vision commands expect `MINIMAX_API_KEY` to be available through the local `secret` keychain helper; native capture itself does not use that provider.
-
-Launch the app:
-
-```bash
 bun run native:launch
 ```
 
-Run focused smoke checks:
+The build produces `native/dist/Action.app`, including the Action agent helper.
+The launch command builds again only if its source checks find a missing or
+outdated app. Continue in `products/action` for the commands below.
 
-```bash
-bun run native:test:screenshot
-bun run native:test:record
+After a native change:
+
+```sh
+bun run native:relaunch
+```
+
+Check the bundle, permission state, and TypeScript sources:
+
+```sh
+bun run native:verify
+bun run native:permissions:status
 bun run typecheck
 ```
 
-## CLI And Agent Surfaces
+With permissions granted, run the capture smoke checks:
 
-Use the product CLI for scenarios and inspection:
-
-```bash
-bun run action
-bun run inspect:surface
-bun run inspect:surface:vision
-bun run scenario:calculator
+```sh
+bun run native:test:screenshot
+bun run native:test:record
 ```
 
-Use the native package scripts for the tightest app development loop. Run them from `products/action`:
+The recording check waits for completion and reports the video, finished marker,
+and debug log. From the monorepo root, `bun run action:launch` and
+`bun run action:dev` wrap the product's launch and relaunch commands.
 
-```bash
-bun run native:relaunch
-bun run native:host -- guided-calculator-demo
-bun run native:logs
+## CLI and MCP
+
+The product CLI provides inspection and scenario commands. From
+`products/action`, inspect the focused surface:
+
+```sh
+bun run action inspect current-surface
 ```
 
-Useful native scripts:
+This captures a screenshot, accessibility snapshot, and Apple Vision OCR. The
+inspection writes its observations, session record, manifest, and trace under
+`artifacts/sessions/`. Provider-backed vision analysis is optional.
 
-- `bun run native:app:build`
-- `bun run native:rebuild`
-- `bun run native:launch`
-- `bun run native:relaunch`
-- `bun run native:quit`
-- `bun run native:doctor`
-- `bun run native:host -- <args...>`
-- `bun run native:agent -- <args...>`
-- `bun run native:agent-cli -- <args...>`
-- `bun run native:logs`
+Start the native Action MCP server over stdio from `products/action`:
 
-From the Lattices repo root, `bun run action:launch` and `bun run action:dev` call `native:launch` and `native:relaunch`.
-
-The MCP server exposes health, session creation, snapshot/OCR/vision/AX observation, target resolution, deterministic actions, asynchronous recording, and artifact listing:
-
-```bash
-bun run mcp
+```sh
+bun --cwd packages/mcp run start
 ```
 
-### Action Browser Plugin
+Configure an MCP client to launch that command with the Action product directory
+as its working directory. The default tool names include:
 
-Action Browser is the smallest agent-ready surface: it opens an isolated, real
-Chrome profile in the background and exposes navigation, page inspection,
-lightweight DOM actions, and PNG screenshots through MCP.
+| Tool | Purpose |
+| --- | --- |
+| `health` | Check native host availability and permissions |
+| `session_create` | Create a session directory |
+| `observe_snapshot` | Capture screenshot, accessibility, and OCR artifacts |
+| `resolve_target` | Resolve a runtime target query |
+| `act_execute` | Click, type, press keys, drag, scroll, focus, or open an app |
+| `record_start`, `record_status`, `record_stop` | Control and verify recording |
+| `artifacts_list` | Read session artifacts |
 
-The tools ship with the lattices CLI and are served by `lattices mcp`. Install
-the CLI once:
+The product-level `bun run mcp` script starts the same server through the local
+`secret` helper and requires `MINIMAX_API_KEY`. Native capture and Apple Vision
+OCR do not require that provider. Older docs use dotted tool names such as
+`action.observe.snapshot`; the server advertises underscore names by default.
 
-```bash
-bun install -g @arach/lattices
+## Relationship to Lattices
+
+Lattices core owns workspace organization and its daemon at
+`ws://127.0.0.1:9399`. Action keeps its own app lifecycle and agent at
+`ws://127.0.0.1:4319`.
+
+- `lattices action` installs, launches, and queries Action. Other product CLI
+  commands are forwarded when a `products/action` checkout is available.
+- `lattices computer` calls the core daemon's `computer.*` workspace automation
+  methods. Its API is documented in the [core API reference](../../docs/api.md).
+- `lattices mcp` serves the Action Browser tools from the Lattices CLI. These
+  tools drive Action-owned Chrome profiles through CDP. The native Action MCP
+  server above controls macOS surfaces through the Action runtime.
+
+For browser identity setup and the boundary between regular Chrome and
+Action-owned profiles, see [Browser profiles](docs/browser-profiles.md) and the
+[Lattices MCP documentation](../../docs/mcp.md).
+
+## Architecture
+
+`Action.app` owns AppKit, WebKit, permission UI, and recording probes. The local
+agent handles transport and native requests. The TypeScript runtime owns
+sessions, observations, targets, actions, and artifacts; CLI and MCP expose it
+to operators and agents.
+
+Recording runs in a fresh `Action.app` instance in `recording-probe` mode. A start
+reply acknowledges startup. Use `record_status` to confirm completion and check
+the video artifact; the `.finished` marker can also contain a recording error.
+
+```text
+native/engine/              Swift app host, agent, recording probe, build scripts
+packages/protocol/          Session, observation, target, action, artifact types
+packages/runtime/           Sessions, inspection, adapters, actions, persistence
+packages/cli/               Product CLI and native development commands
+packages/mcp/               Native Action MCP server
+packages/companion/         Local job queue and observation store
+crates/action-supervisor/   Companion process supervisor
+packages/chrome-companion/  Chrome extension, bridge, profile tooling
+packages/compiler/          Scenario compiler
+packages/composer-core/     Render-manifest contract
+packages/composer-remotion/ Remotion composition package
+Installer/                 DMG packaging
+docs/                      Runtime guides, API, architecture, design plans
 ```
 
-Then register the server. Every harness gets the same entry, and none of them
-name a path — resolution follows the installed binary, so moving the repo or
-bumping the version leaves the config correct:
+## Further reading
 
-```bash
-# Claude Code
-claude mcp add lattices -s user -- lattices mcp
-```
-
-```toml
-# Codex — ~/.codex/config.toml
-[mcp_servers.lattices]
-command = "lattices"
-args = ["mcp"]
-```
-
-```json
-// Kimi Code
-{ "mcpServers": { "lattices": { "command": "lattices", "args": ["mcp"] } } }
-```
-
-`lattices mcp --print-config <claude|codex|kimi>` prints these. Start a new task
-after registering, confirm with `/mcp` that `lattices` is connected, then ask:
-
-> Open https://example.com in Action Browser, take a screenshot, and show it to me.
-
-The plugin marketplace now carries only the `action-browser` **skill** — prose
-about how to drive the tools, not the tools themselves. It is optional:
-
-```bash
-claude plugin marketplace add arach/lattices
-claude plugin install action-browser@lattices --scope user
-```
-
-That split is deliberate. The tools are addressed by name and cannot be broken
-by moving a checkout; the skill is installed the plugin way, and if that ever
-goes stale the cost is an agent with less guidance rather than an agent with no
-browser.
-
-This starter requires macOS, Google Chrome, and Bun. It drives **named Action-owned
-Chrome identities** (default `agent-browser`), never your regular Chrome. To act on
-a site you are signed in to, seed an identity with a selective cookie import rather
-than handing the URL to your own browser; optionally load the Chrome Companion
-extension for richer DOM tools.
-
-```bash
-# prepare a "work" identity + companion load-unpacked once
-bun run chrome:companion:profile -- setup work
-bun run chrome:companion:import:cookies -- import --into work --source "Profile 1" --domains github.com --confirm
-```
-
-Three browsers can be in play — your regular Chrome (open-only handoff, driven by
-Action's native screen + accessibility tools), a blank Action browser, and an
-Action identity seeded from one of your Chrome profiles (DOM tools, already signed
-in). See [docs/browser-profiles.md](docs/browser-profiles.md) for the decision
-table and the full `Profile 1` → `work` example.
-
-Action Browser MCP tools include `browser_profiles`, `browser_use_profile`,
-`browser_import_cookies`, and `browser_companion_status` in addition to open /
-snapshot / click / screenshot.
-
-### Action Companion
-
-The in-development companion stores queued jobs, observations, artifacts, and vision timeline entries in a local SQLite database. A small Rust supervisor manages its process lifecycle.
-
-```bash
-bun run companion:start
-bun run companion:status
-bun run companion:doctor
-bun run companion:stop
-```
-
-### Chrome Companion
-
-The Chrome companion adds DOM-aware observation and actions for browser surfaces while preserving AX and native fallbacks.
-
-```bash
-bun run chrome:companion:build
-bun run chrome:companion:install:dev
-bun run chrome:companion:bridge
-bun run chrome:companion:health
-```
-
-Treat this as a development integration, not a finished browser automation product.
-
-## Distribution
-
-Build a signed and notarized drag-to-Applications DMG:
-
-```bash
-bun run native:dmg:build
-```
-
-For local packaging without Apple notarization:
-
-```bash
-SKIP_NOTARIZE=1 bun run native:dmg:build
-```
-
-The output is `Installer/Action-for-Mac.dmg`.
-
-Ship a public GitHub release from `main`:
-
-```bash
-bun run release:ship -- 0.3.0 --watch
-```
-
-The release workflow builds, signs, notarizes, verifies, and uploads generic and versioned DMG assets. It creates the `action-vX.Y.Z` tag only after verification passes and never replaces the repository-wide Lattices “Latest” release. Add `--no-publish` for an artifact-only run.
-
-## Repository Layout
-
-- `native/engine` — Swift app host, local agent, recording probe, UI, and native scripts
-- `packages/protocol` — shared session, observation, target, action, and artifact types
-- `packages/runtime` — sessions, inspection, adapters, interaction, providers, and companion client
-- `packages/cli` — product CLI plus the scripts behind `bun run native:*`
-- `packages/mcp` — agent-facing MCP server
-- `packages/companion` — durable local job queue and observation store
-- `crates/action-supervisor` — companion process supervisor
-- `packages/chrome-companion` — Chrome extension, local bridge, and browser tooling
-- `packages/compiler` — scenario intent to executable timeline
-- `packages/composer-core` — render-manifest contract
-- `packages/composer-remotion` — early Remotion backend boundary
-- `docs` — architecture, decisions, milestones, and runtime notes
-
-## Important Runtime Notes
-
-- Recording is asynchronous. A start response means startup was accepted, not that capture completed.
-- Completion is represented by the output artifact plus its `.finished` marker.
-- Actual recording work runs in a fresh `Action.app` instance in `recording-probe` mode.
-- Prefer semantic, DOM, or AX targets. Coordinates are the final fallback.
-- Provider secrets stay outside the native app and source tree.
-- `artifacts/`, native build products, and local companion state are intentionally not source-controlled.
-
-## Next Steps
-
-The next milestone is **Agent Work Tape**: one complete proof that an agent can use Action to record and share its own computer use.
-
-1. **Add the agent-friendly session facade.** Provide simple start, checkpoint, finish, and share operations over the existing runtime so agents never need to manage stop files or finished markers themselves.
-2. **Drive the HUD from runtime truth.** Show agent identity, current task, recording state, meaningful checkpoints, and completion without decorative activity or duplicate supervision controls.
-3. **Produce a shareable handoff.** Finish each run with video, timeline, artifacts, agent-friendly Markdown/JSON, and a local review link.
-4. **Harden the golden path.** Make permissions preflight, interrupted-session recovery, artifact completeness, companion setup, and overlay cleanup dependable from a clean checkout.
-5. **Strengthen action evidence.** Keep semantic, DOM, and AX targeting ahead of coordinates; expose ambiguity; and attach before/after observations to important actions.
-6. **Derive reusable scenarios.** Once record-and-share is reliable, turn completed traces into editable scenario drafts and deterministic reruns.
-7. **Compose after capture is solid.** Add production zooms, subtitles, narration, and rendering only after the work-tape contract is trustworthy.
-
-The milestone is done when an agent can start Action, perform real work on macOS, finish the run, and receive a reviewable share bundle without an operator managing the recording lifecycle.
-
-## Read Next
-
-- [Getting Started](docs/getting-started.md)
-- [Native Runtime](docs/native-runtime.md)
-- [Recording](docs/recording.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Live Inspection Runtime](docs/LIVE_INSPECTION_RUNTIME.md)
-- [Surface Adapter Plan](docs/SURFACE_ADAPTER_PLAN.md)
-- [Composition And Scenarios](docs/COMPOSITION_AND_SCENARIOS.md)
+- [Getting started](docs/getting-started.md): native development loop.
+- [Native runtime](docs/native-runtime.md): app and agent ownership.
+- [Recording](docs/recording.md): probe lifecycle and completion markers.
+- [Agent API](docs/api.md): WebSocket protocol and native methods.
+- [Browser profiles](docs/browser-profiles.md): Chrome identities and companion setup.
+- [Architecture](docs/ARCHITECTURE.md): system design and longer-term direction.
+- [Action on lattices.dev](https://lattices.dev/action): product overview and download.

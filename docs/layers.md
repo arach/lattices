@@ -135,13 +135,14 @@ the `tabStacks.*` daemon methods described in the Agent API.
 
 ## Layers
 
-Layers let you group projects into switchable contexts. Define two or
-three layers and switch between them. The target layer's windows come
-to the front and tile into position; the previous layer's windows fall
-behind.
+Layers let you group projects into switchable contexts. Define up to
+eight layers and switch between them. A switch puts away what the new
+layer doesn't use, then brings its windows to the front and tiles them.
+Layers work like virtual desktops, without macOS Spaces: see
+[Putting windows away](#putting-windows-away).
 
-All tmux sessions stay alive across switches. Nothing is detached or
-killed. Layers only control which windows are focused.
+All tmux sessions stay alive across switches. Nothing is detached,
+killed or closed. Layers only control which windows are showing.
 
 ### Configuration
 
@@ -238,7 +239,7 @@ This lets you tile a whole group into a screen position:
 }
 ```
 
-When switching to this layer, Lattices launches or focuses the "vox"
+When this layer is launched, Lattices starts or focuses the "vox"
 group and stacks all of its terminal and app windows in the top-left
 quarter, alongside the design-system project on the right. Use the HUD
 tab strip to change the visible member, or its grid button to fan out
@@ -253,6 +254,7 @@ the whole topic.
 | `layers[].id`     | string   | Unique identifier (e.g. `"web"`)         |
 | `layers[].label`  | string   | Display name shown in the UI             |
 | `layers[].projects` | array  | Projects in this layer                   |
+| `layers[].layout` | string?  | Lay the windows out: `auto`, `columns` or `master-stack` (see [Layouts](#layouts)) |
 | `projects[].path` | string?  | Absolute path to project directory       |
 | `projects[].group`| string?  | Group ID (alternative to `path`)         |
 | `projects[].app`  | string?  | Application name (for non-terminal windows) |
@@ -270,63 +272,167 @@ works: `left`, `right`, `top`, `bottom`, `top-left`, `top-right`,
 `bottom-left`, `bottom-right`, `left-third`, `center-third`,
 `right-third`, `maximize`, `center`.
 
+### Layouts
+
+Instead of a `tile` per entry, a layer can lay its windows out itself:
+
+```json
+{
+  "id": "web",
+  "label": "Web",
+  "layout": "auto",
+  "projects": [
+    { "app": "Ghostty", "title": "mini: web" },
+    { "app": "Cursor", "title": "web" },
+    { "app": "Google Chrome", "title": "localhost" }
+  ]
+}
+```
+
+| `layout`       | Arrangement |
+|----------------|-------------|
+| `auto`         | Lanes by app: terminals and chat on the left, editors and design tools in the middle, browsers and everything else on the right. On an ultrawide (21:9 or wider) each lane is a column, 30/40/30 with all three, and stacks its windows. On a standard display the editor, or else the first window, takes the left half and the rest stack on the right. |
+| `columns`      | Equal columns in entry order, up to four on an ultrawide and three otherwise. The leftmost columns stack any extra windows. |
+| `master-stack` | The first window takes the left 62%; the rest stack on the right. |
+
+A lone window sits centred at half width on an ultrawide and fills a
+standard display. More than three windows in a lane or column form a
+grid two wide.
+
+The layout applies on the main display, to the layer's windows on the
+desktop it's showing, whenever you switch to the layer or choose it
+again. Every window an entry matches takes part, frontmost first, and
+the layer's first window ends up in front. Entries with their own
+`tile` or `display` keep their place.
+
 ### Switching layers
 
 Four ways to switch:
 
 | Method               | How                                      |
 |----------------------|------------------------------------------|
-| **Hotkey**           | Cmd+Option+1, Cmd+Option+2, Cmd+Option+3... |
+| **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Cmd+Option+arrows move across the pad and stop at its edges |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
-| **CLI**              | `lattices layer <name\|index>`           |
+| **CLI**              | `lattices layer <name\|slot>`            |
 
-When you switch to a layer:
+Every one of them switches the same way:
 
-1. Each project's window is **raised and focused**
-2. App windows are matched by `app` / `title` / `url`
-3. If a project isn't running yet, it gets **launched** automatically
-4. Windows with a `tile` value are **tiled** to that position
-5. The previous layer's windows stay open behind the new ones
+1. Everything the layer doesn't use is **put away** (see below)
+2. The layer's windows are **raised**, matched by `app` / `title` / `url`
+3. A layer with a `layout` **lays out** its windows
+
+Choosing the layer you're on again gathers its windows back up.
+
+Two extras go further, and are always asked for by name:
+
+- **Tile** also moves windows with a `tile` value to that position:
+  `lattices layer <name> --tile`, or `mode: "tile"` in the API.
+- **Launch** first starts the projects that aren't running, then tiles:
+  `lattices layer <name> --launch`, **Launch Layer** in the command
+  bar, `l` in command mode, or `mode: "launch"`.
 
 The app remembers which layer was last active across restarts.
+
+### Putting windows away
+
+A switch clears the main display before it raises the new layer:
+
+- **Hidden apps.** An app with nothing in the new layer is hidden, as
+  if you pressed ⌘H.
+- **Parked windows.** The other windows of an app the layer does use
+  (a second Ghostty or Chrome window, say) are parked: moved into the
+  display's bottom-right corner, where macOS leaves a sliver showing.
+  An app that also has windows on another display or desktop is parked
+  rather than hidden, so those windows stay where they are.
+  Some apps (TextEdit and other standard Cocoa windows) won't let a
+  window go off-screen; theirs stay where they are and keep showing.
+- **Scenes.** Each layer remembers what else it had showing, beyond its
+  own entries, and brings it back when you return. A window you open
+  while a layer is up comes back with that layer.
+
+Only the main display and the desktop it's showing take part. Other
+displays are left alone, and a switch never reaches onto another
+desktop or takes you there: a layer window on another desktop stays
+put. Re-tiling the active layer leaves the rest of the screen alone.
+Everything happens at the switch; nothing runs in the background.
+
+### Show All
+
+Parked windows go back where they were when Lattices quits. Their
+frames are saved in `~/.lattices/layer-stage.json`, so after a crash
+the next launch puts them back. To bring everything back without
+quitting:
+
+| Where                | How                                           |
+|----------------------|-----------------------------------------------|
+| **Command bar**      | Show All Windows, listed with the layers while anything is put away |
+| **Menu bar panel**   | Right-click a layer chip → Show All Windows   |
+| **CLI**              | `lattices layer reveal` (or `show-all`)       |
+| **API**              | `layers.reveal`                               |
+
+Show All puts back every parked window and unhides every app a switch
+hid. Apps you hid yourself stay hidden. A window parked on a desktop
+that isn't showing can only move once that desktop is showing, so run
+Show All again from there. It also brings back any window sitting in
+the park corner that Lattices lost track of, centred on the main screen.
+
+⌘\` can land on a parked window: in Ghostty, a parked terminal. It
+stays in the corner until you switch layers or use Show All.
 
 ### Named layer switching
 
 You can switch layers by name from the CLI:
 
 ```bash
-lattices layer hudson     # Switch to the layer named "hudson"
-lattices layer 0          # Switch to the first layer (by index)
+lattices layer hudson           # Switch to the layer named "hudson"
+lattices layer 1                # Switch to the layer on ⌘⌥1
+lattices layer hudson --launch  # Start what isn't running, then tile
 ```
 
-This is useful for scripting — you don't need to know the index,
-just the layer's `id` or `label`.
+A number is a pad slot, as ⌘⌥ takes it: 1–4 and 6–9. A name is the
+layer's `id` or `label`, so scripts don't depend on the order.
 
-### Window tagging
+### Adding and removing windows
 
-You can manually assign any window to a layer, even if it's not
-declared in `workspace.json`. This is useful for ad-hoc windows
-that you want to move with a layer:
+Any window can join a layer without editing `workspace.json` by hand.
+It's saved there as an entry of its app and its title, so it comes back
+after a restart; while it lives, it stays in the layer when its title
+changes.
 
 ```bash
-lattices window assign <wid> <layer>   # Tag a window to a layer
-lattices window map                    # Show all window→layer assignments
+lattices layer add wid:1234 --to web       # default: the active layer
+lattices layer remove wid:1234 --from web
 ```
 
-Tagged windows behave like declared ones — they're raised and tiled
-when their layer activates. Remove a tag by reassigning or with:
-
-```bash
-# Via the agent API
-await daemonCall('window.removeLayer', { wid: 1234 })
-```
+⌘⌥T adds the front window to the layer you're on. In the ⌘⌥Space
+preview, a digit sends the picked window to the layer in that slot and
+Delete takes it out. Hyperspace's layer piles and ⌘L write the same
+layers. A window held by an entry that matches other windows too (a bare
+app, a project) can't be taken out on its own; edit that entry instead.
 
 ### Layer bezel
 
-When you switch layers via hotkey, a translucent HUD pill appears
-briefly at the top of the screen showing the new layer's name.
-This provides instant visual feedback without interrupting your flow.
+When you switch layers, a 3×3 grid flashes in the upper middle of the
+screen, numbered like Cmd+Option+1–9. Layers fill the eight slots round
+the middle in order: 1, 2, 3, 4, then 6, 7, 8, 9, so a ninth layer has no
+slot. The new layer's slot is lit, its name sits underneath, and slots
+without a layer stay dim. The middle slot holds the Lattices pointer,
+which turns to aim at the new layer's slot.
+
+Under the name, the layer's apps are listed, one row each, then the apps
+of windows it had showing when you last left it. A switch only brings
+windows on the desktop the main display is showing, so an app whose
+windows are elsewhere says where, dimmed: Parked, Hidden, Put away,
+Desktop 2, Left display, Full screen. A running app without the layer's
+window says No window, and an entry with nothing running says Not open.
+Last, dimmed, come other layers' windows whose app kept them on screen
+when the switch tried to park them: Stayed.
+
+Cmd+Option+arrows move to the nearest layer that way on the pad, hopping
+the middle: from 4, right goes to 6. At the pad's edge the grid shows the
+layer you're on for a moment, its lit slot bumping the way you pushed.
+Cmd+Option+5, or a slot without a layer, shows the layer you're on too.
 
 ### Programmatic switching
 
@@ -346,46 +452,40 @@ await daemonCall('layer.switch', { index: 0 })
 await daemonCall('layer.switch', { name: 'hudson' })
 ```
 
-The `layer.switch` call focuses and tiles all windows in the target
-layer, just like the hotkey or command palette. A `layer.switched`
-event is broadcast to all connected clients.
+The `layer.switch` call switches as ⌘⌥ does: it puts away what the
+target layer doesn't use, brings its windows forward, and applies the
+layer's `layout`. Entry `tile` placements need `mode: "tile"`, and
+`mode: "launch"` also opens what isn't running. Its `index`
+counts layers in list order from 0, not pad slots. A
+`layer.switched` event is broadcast to all connected clients.
+`layers.list` also reports what switches have put away, under `stage`,
+and `layers.reveal` brings it all back.
 
 More methods in the [Agent API reference](/docs/api).
 
-## Rule-backed Studio layers
+## Entry rules
 
-Studio layers are live window rules stored in `~/.lattices/layers.json`.
-They are separate from `workspace.json` launch-and-tile layers: Studio
-layers do not launch projects. They resolve matching desktop windows,
-then recall or scope those windows in Studio and Screen Map.
-
-Each layer has a `match` array. A window joins the layer when it matches
-any clause in that array. Inside one clause, every present positive field
-must match, and every clause in `not` must fail.
+An entry finds its windows by `app` and `title`. For a sharper rule, give
+it a `match` clause instead; the layer holds a window when any of its
+entries matches it. Inside one clause, every field given must match, and
+every clause in `not` must fail.
 
 ```json
-[
-  {
-    "id": "review",
-    "name": "Review",
-    "match": [
-      {
+{
+  "id": "review",
+  "label": "Review",
+  "projects": [
+    {
+      "match": {
         "appEquals": "Google Chrome",
         "titleRegex": "(GitHub|Pull Request)",
-        "not": [
-          { "titleContains": "Actions" }
-        ]
-      },
-      {
-        "sessionContains": "lattices",
-        "isOnScreen": true
+        "not": [{ "titleContains": "Actions" }]
       }
-    ]
-  }
-]
+    },
+    { "match": { "sessionContains": "lattices" } }
+  ]
+}
 ```
-
-Supported clause fields:
 
 | Field | Match |
 |-------|-------|
@@ -401,9 +501,41 @@ Supported clause fields:
 | `spaceId` | Window belongs to this macOS Space id |
 | `not` | Exclusion clauses; any match rejects the window |
 
-`app` and `titleContains` are the original substring fields, so older
-`layers.json` files continue to work. New layers created from plucked
-windows use `appEquals` by default to avoid accidental substring matches.
+Hyperspace's layer piles write these clauses; Screen Map scopes its canvas
+to a layer's windows. `~/.lattices/layers.json`, the old Studio layer file,
+is no longer read.
+
+### One layer per window
+
+A window belongs to one layer at most. When entries in different layers
+match it, the strongest claim holds it: a pin, then a `match` clause, a
+tab group, a project, and last `app` and `title`, where a longer `title`
+beats a shorter one and a bare `app` comes last. Ties go to the earlier
+layer, then the earlier entry. An entry with only `launch` or `url` finds
+no windows.
+
+A window added to a layer by hand (⌘⌥T, the layer bezel, `layers.assign`)
+is saved as its `app` and `title`, with a pin:
+
+```json
+{ "app": "Safari", "title": "Docs", "saved": true, "pins": [{ "wid": 41027, "pid": 812, "app": "Safari", "title": "Docs" }] }
+```
+
+An entry saved this way (`"saved": true`) holds windows by its pins alone:
+a second window with the same title stays with the layer whose rule reads
+it. Its `app` and `title` find a pin's window again and launch one. An
+entry you write has no `saved` and holds what its `app` and `title` match,
+pins or not, so adding a window to it keeps it matching the rest, and it
+stays when that window's pin goes. Editing a saved entry's rule in
+Hyperspace makes it a written one.
+
+The pin holds the window while it lives, whatever its title turns to. A
+pin whose window closes while its app runs on is dropped, and a saved entry
+it leaves with no pins goes with it. Once the app quits, a pin whose window
+is gone takes the window with exactly its app and title, unless another
+layer's rule holds that window; a pin without a `pid`, saved before pins
+kept one, takes only a window no other layer reads. Adding a window to a
+layer takes the pins other layers had on it.
 
 ### Layer bar
 
@@ -492,7 +624,8 @@ No `tile` — just focuses the window wherever it is.
   optionally `title` or `url` to match the right window.
 - You can have up to 9 layers (Cmd+Option+1 through Cmd+Option+9).
 - Edit `workspace.json` by hand — the app re-reads it on launch. Use
-  the Refresh Projects button or restart the app to pick up changes.
+  Refresh Projects in the command bar, or restart the app, to pick up
+  changes.
 - The `tile` field is optional. Omit it if you just want the window
   focused without repositioning.
 - Tab groups and standalone projects can coexist in the same workspace.

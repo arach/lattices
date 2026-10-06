@@ -106,7 +106,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Create a note (optionally seeded with captured text) and open its panel.
-    func createNote(content: String = "") async {
+    func createNote(content: String = "", initialMode: String = "edit") async {
         do {
             var presentation = NotePresentation()
             presentation.workspace = workspaceScope.workspaceIDForNewNote
@@ -115,8 +115,9 @@ final class AppModel: ObservableObject {
                 presentation: presentation,
                 writer: "user"
             )
-            // New notes always open in edit — you just created it to type.
-            panelManager.openPanel(for: note, initialMode: "edit")
+            // New notes open in edit — you just created it to type — unless the
+            // caller is keeping text that was already being read.
+            panelManager.openPanel(for: note, initialMode: initialMode)
         } catch {
             log.error("[BLINK] create failed", metadata: ["error": "\(error)"])
         }

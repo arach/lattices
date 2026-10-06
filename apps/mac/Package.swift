@@ -5,13 +5,22 @@ import Foundation
 // HudsonKit source: a local sibling checkout for fast local iteration, or the
 // git dependency for CI/release builds that have no sibling repo. Set
 // LATTICES_HUDSON_SOURCE=git in CI (and rewrite git@ → token HTTPS for the
-// private repo). HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
+// private repo). LATTICES_HUDSON_PATH points the path build at another checkout
+// (a worktree); its directory must be named `hudson`. HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
 let hudsonSource = Context.environment["LATTICES_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
     ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
-    : .package(path: "../../../hudson")
+    : .package(path: Context.environment["LATTICES_HUDSON_PATH"] ?? "../../../hudson")
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
+
+// The bundle tier: LATTICES_BUNDLE=1 compiles Sources/Bundle and defines
+// LATTICES_BUNDLE. Without it the free build excludes that directory whole.
+let bundleEnabled = Context.environment["LATTICES_BUNDLE"] == "1"
+
+var latticesDefines: [SwiftSetting] = []
+if voiceEnabled { latticesDefines.append(.define("LATTICES_VOICE")) }
+if bundleEnabled { latticesDefines.append(.define("LATTICES_BUNDLE")) }
 
 // Vox is already a HudsonVoice transitive dep; Lattices also links VoxService
 // directly so it can host the live-session runtime in-process on boot.
@@ -57,18 +66,21 @@ let package = Package(
             name: "Lattices",
             dependencies: latticesDependencies,
             path: "Sources",
+            exclude: bundleEnabled ? [] : ["Bundle"],
             resources: [
                 .copy("../Resources/tap.wav"),
                 .copy("../Resources/Pets"),
                 .copy("../Resources/DeckBuilder"),
+                .copy("../Resources/Editor"),
             ],
-            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
+            swiftSettings: latticesDefines
         ),
         .testTarget(
             name: "LatticesTests",
             dependencies: testDependencies,
             path: "Tests",
-            swiftSettings: voiceEnabled ? [.define("LATTICES_VOICE")] : []
+            exclude: bundleEnabled ? [] : ["Bundle"],
+            swiftSettings: latticesDefines
         )
     ],
     // Stay in Swift 5 language mode: adopt macOS 26 / the 6.2 toolchain without

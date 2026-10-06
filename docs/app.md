@@ -86,6 +86,7 @@ Available when `layers` are configured in `~/.lattices/workspace.json`
 | Command                     | Description                              |
 |-----------------------------|------------------------------------------|
 | Switch to Layer: *label*    | Focus and tile the layer's project windows |
+| Show All Windows            | Put back what layer switches parked or hid |
 
 ### App commands
 
@@ -94,7 +95,7 @@ Available when `layers` are configured in `~/.lattices/workspace.json`
 | Settings          | Open preferences (terminal, scan root)   |
 | Update Lattices   | Download the latest release and relaunch |
 | Diagnostics       | View logs and debug info                 |
-| Refresh Projects  | Re-scan for .lattices.json configs        |
+| Refresh Projects  | Re-scan .lattices.json configs, reload workspace.json |
 | Quit Lattices      | Exit the menu bar app                    |
 
 ## Overlay actors and HUDs
@@ -334,7 +335,8 @@ from Settings > Shortcuts.
 | Ctrl+Option+mouse  | Aim HUD; release to tile, stay centered to cancel |
 | Ctrl+Option+1/2/3  | Tile thirds          |
 | Ctrl+Left/Right    | Instant Space switch |
-| Cmd+Option+1/2/3  | Switch workspace layer |
+| Cmd+Option+1–9    | Switch to the layer in that slot; 5 shows the current one |
+| Cmd+Option+arrows | Move across the layer pad |
 | Ctrl+B  D         | Detach from session  |
 | Ctrl+B  X         | Kill current pane    |
 | Ctrl+B  Left/Right| Move between panes   |
@@ -347,6 +349,13 @@ its miniature workspace map. The Scattered and Full HUD presets intentionally
 retain a faint, non-interactive ambient surface after dismissal. Neither UI is
 the read-only terminal [`lattices map`](/docs/workspace-map) command; see that
 page for exact side effects, full-teardown steps, and tab-stack cleanup.
+
+Studio's **Layers** panel lists the Cmd+Option layers in pad order. Picking
+one scopes the canvas to the layer's windows that are showing, and the
+inspector lists each of its entries with the windows it matched and where each
+one is: on another desktop or display, parked, hidden, or nothing, when no
+window matches. Picking a layer only looks; the inspector's Cmd+Option key
+switches to it.
 
 ### In-place window tools
 
@@ -375,6 +384,20 @@ labels distinguish immediate actions from staged actions before anything moves.
 without closing or changing Hyper+G, copies the PNG to the clipboard, and saves
 the same image as a Runs artifact. The command-line equivalent is
 `lattices capture display [index] --clipboard --delay 3`.
+
+### Agent screenshots
+
+When a screenshot is requested through the daemon socket (`lattices capture
+window|display`, or any `capture.screenshot*` call), Lattices draws a coral
+hairline around what was captured for about a second. A tag names the agent,
+where it called from (this Mac, or `ssh <ip>`) and its project. The cue appears
+after the shot and is excluded from screen capture, so it never shows up in an
+image. Screenshots Lattices takes for itself don't trigger it.
+
+Each one is also appended to `~/.lattices/audit/captures.jsonl` with the caller,
+target and artifact path. Read it with `lattices capture log [--limit N] [--json]`.
+The CLI detects Claude Code, Codex, opencode and Cursor from their environment.
+Set `LATTICES_AGENT` to name any other agent.
 
 ### Docs
 
