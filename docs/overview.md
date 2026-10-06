@@ -50,7 +50,7 @@ and you can reattach anytime.
 
 | Component | Description |
 |-----------|-------------|
-| **CLI** | The `lattices` command. Tile windows, manage sessions, scan screen text, control the workspace from your terminal |
+| **CLI**     | The `lats` command. Tile windows, manage sessions, scan screen text, control the workspace from your terminal |
 | **Menu bar app** | Native macOS companion. Command palette, window tiling, project discovery, screen text indexing |
 | **Agent API** | WebSocket server on `ws://127.0.0.1:9399`. 35+ methods, 5 real-time events |
 | **Screen scanner** | Reads text from visible windows using Accessibility API (60s) and Apple Vision OCR (2h), indexes with FTS5 |
@@ -60,7 +60,7 @@ and you can reattach anytime.
 ## Example
 
 ```bash
-cd ~/my-project && lattices start
+cd ~/my-project && lats start
 ```
 
 Agents get the same control programmatically:

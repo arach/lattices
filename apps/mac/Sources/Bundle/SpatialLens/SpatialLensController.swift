@@ -87,7 +87,8 @@ final class SpatialLensController {
     private func begin(generation: UInt64) {
         cancelSession(reason: "new hold")
         guard Preferences.shared.spatialLensEnabled,
-              PermissionChecker.shared.accessibility else {
+              PermissionChecker.shared.accessibility,
+              !WindowQuickMenu.shared.isActive else {
             return
         }
 

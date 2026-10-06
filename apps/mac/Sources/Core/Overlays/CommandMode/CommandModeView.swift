@@ -1441,7 +1441,10 @@ struct CommandModeView: View {
             clicked: .init(wid: window.id, pid: window.pid),
             selection: selectedWindows.map { .init(wid: $0.id, pid: $0.pid) }
         )
-        let moveModel = WindowMovementService.menuModel(windowFrame: window.frame, targets: moveTargets)
+        let moveModel = WindowMovementService.menuModel(
+            windowFrame: window.frame, targets: moveTargets, anchorWid: window.id,
+            hostScreen: CommandModeWindow.shared.panelWindow?.screen
+        )
 
         if multiSelected {
             // Multi-select context menu
@@ -1468,7 +1471,8 @@ struct CommandModeView: View {
 
                 WindowMovementMenuSection(
                     model: moveModel,
-                    onMove: { display in moveSelection(moveModel.targets, to: display) }
+                    onMove: { display in moveSelection(moveModel.targets, to: display) },
+                    onMoveDesktop: { desktop in moveSelection(moveModel.targets, to: desktop) }
                 )
             }
 
@@ -1536,6 +1540,7 @@ struct CommandModeView: View {
                 WindowMovementMenuSection(
                     model: moveModel,
                     onMove: { display in moveSelection(moveModel.targets, to: display) },
+                    onMoveDesktop: { desktop in moveSelection(moveModel.targets, to: desktop) },
                     onPlace: { display, slot in placeWindow(moveModel.targets, on: display, slot: slot) }
                 )
 
@@ -1579,6 +1584,13 @@ struct CommandModeView: View {
     /// the selection (tracked by wid) survives the reload.
     private func moveSelection(_ targets: [WindowMoveMenuModel.Target], to display: WindowMoveMenuModel.Display) {
         WindowMovementService.moveTargets(targets, to: display) { outcome in
+            state.flash(outcome.message)
+            state.refreshDesktopInventory()
+        }
+    }
+
+    private func moveSelection(_ targets: [WindowMoveMenuModel.Target], to desktop: WindowMoveMenuModel.Desktop) {
+        WindowMovementService.moveTargets(targets, to: desktop) { outcome in
             state.flash(outcome.message)
             state.refreshDesktopInventory()
         }

@@ -125,6 +125,7 @@ function holdMsFor(action: RuntimeAction): number | undefined {
 function clickPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
   return pointFromInput(action.target?.point)
     ?? pointFromInput(action.input?.point)
+    ?? target?.point
     ?? centerOfBounds(target?.bounds);
 }
 
@@ -266,7 +267,9 @@ export async function executeInteractionAction(
 
     const bundleId = targetBundleId(action, target, context);
     const label = targetLabel(action, target);
-    if (bundleId && label && !wantsHold) {
+    const hasCoordinateTarget = target?.mode === "coordinate"
+      || action.target?.point || action.input?.point || target?.point;
+    if (bundleId && label && !wantsHold && !hasCoordinateTarget) {
       const args = [
         "press-accessibility-element",
         "--bundle-id", bundleId,
@@ -293,6 +296,10 @@ export async function executeInteractionAction(
 
     if (wantsHold) {
       throw new Error("Press-and-hold requires a point (action.target.point or input.point)");
+    }
+
+    if (bundleId !== "com.apple.calculator" || target?.mode === "coordinate") {
+      throw new Error("Click requires a resolved point, bounds, or an accessibility target with an app bundle ID");
     }
 
     const buttonLabel = context.resolveCalculatorButton(
@@ -367,6 +374,7 @@ export async function executeInteractionAction(
     const point = action.target?.point
       ?? pointFromInput(action.input?.point)
       ?? pointFromInput(action.input?.at)
+      ?? pointFromInput(target?.point)
       ?? centerOfBounds(target?.bounds);
 
     if (!point) {

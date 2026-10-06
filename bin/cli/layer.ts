@@ -26,14 +26,14 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       const fromIdx = rest.indexOf("--from");
       const layer = fromIdx !== -1 ? rest[fromIdx + 1] : undefined;
       const wids = parseWids(rest.filter((_, i) => fromIdx === -1 || (i !== fromIdx && i !== fromIdx + 1)));
-      if (!wids.length) { console.log("Usage: lattices layer remove wid:123 [wid:456 ...] [--from <layer>]"); return; }
+      if (!wids.length) { console.log("Usage: lats layer remove wid:123 [wid:456 ...] [--from <layer>]"); return; }
       const result = await daemonCall("layers.unassign", { windowIds: wids, ...(layer ? { layer } : {}) }) as any;
       console.log(`Removed ${result.removed.length} window(s).`);
       if (result.held.length) console.log(`  Still held by an entry that matches other windows: ${result.held.map((w: number) => `wid:${w}`).join(" ")}. Edit workspace.json to narrow it.`);
       return;
     }
     if (sub === "rename") {
-      if (!rest[0] || !rest[1]) { console.log("Usage: lattices layer rename <layer> <new name>"); return; }
+      if (!rest[0] || !rest[1]) { console.log("Usage: lats layer rename <layer> <new name>"); return; }
       await daemonCall("layers.rename", { layer: rest[0], name: rest.slice(1).join(" ") });
       console.log(`Renamed layer "${rest[0]}" to "${rest.slice(1).join(" ")}".`);
       return;
@@ -51,7 +51,7 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       return;
     }
     if (sub === "delete" || sub === "rm") {
-      if (!rest[0]) { console.log("Usage: lattices layer delete <layer>"); return; }
+      if (!rest[0]) { console.log("Usage: lats layer delete <layer>"); return; }
       const result = await daemonCall("layers.delete", { layer: rest[0] }) as any;
       console.log(`Deleted layer "${result.label ?? rest[0]}" from workspace.json.`);
       return;
@@ -75,7 +75,7 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
         const parts = [];
         if (parked) parts.push(`${parked} window${parked === 1 ? "" : "s"} parked`);
         if (hidden.length) parts.push(`${hidden.join(", ")} hidden`);
-        console.log(`\n  ${parts.join(" · ")} — \`lattices layer reveal\` brings them back`);
+        console.log(`\n  ${parts.join(" · ")} — \`lats layer reveal\` brings them back`);
       }
       return;
     }
@@ -109,7 +109,7 @@ export type LayerTarget =
   | { name: string }
   | { error: string };
 
-/** What `lattices layer <arg>` switches to: a digit is a pad slot, as ⌘⌥
+/** What `lats layer <arg>` switches to: a digit is a pad slot, as ⌘⌥
  *  takes it; anything else is a layer id or label. */
 export function layerTarget(arg: string): LayerTarget {
   if (!/^\d+$/.test(arg)) return { name: arg };
@@ -130,7 +130,7 @@ export function layerWindowCounts(members: { layers?: Array<{ index: number; ent
   return counts;
 }
 
-/** The `lattices layer` list: each layer by its pad slot, with its window
+/** The `lats layer` list: each layer by its pad slot, with its window
  *  count, or its entry count when `counts` is missing. */
 export function layerListLines(
   layers: Array<{ index: number; label: string; projectCount?: number }>,
@@ -153,14 +153,14 @@ function countNote(count: number, one: string, many = `${one}s`): string {
 }
 
 // ── Layer create: save windows as a new ⌘⌥ layer in workspace.json ──
-// Usage: lattices layer create <name> [wid:123 wid:456 ...]
-//        lattices layer create <name> --json '[{"app":"Chrome","tile":"left"},...]'
+// Usage: lats layer create <name> [wid:123 wid:456 ...]
+//        lats layer create <name> --json '[{"app":"Chrome","tile":"left"},...]'
 // With no windows named, it saves the windows on screen.
 export async function layerCreateCommand(client: DaemonClient, args: string[]): Promise<void> {
   const { daemonCall } = client;
   const name = args[0];
   if (!name) {
-    console.log("Usage: lattices layer create <name> [wid:123 ...] [--json '<specs>']");
+    console.log("Usage: lats layer create <name> [wid:123 ...] [--json '<specs>']");
     return;
   }
 
@@ -220,14 +220,14 @@ export async function layerSnapCommand(client: DaemonClient, name?: string): Pro
 }
 
 // ── Layer add: put windows in a layer (default: the one you're on) ────
-// Usage: lattices layer add wid:123 [wid:456 ...] [--to <layer>]
+// Usage: lats layer add wid:123 [wid:456 ...] [--to <layer>]
 export async function layerAddCommand(client: DaemonClient, args: string[]): Promise<void> {
   const { daemonCall } = client;
   const toIdx = args.indexOf("--to");
   const layer = toIdx !== -1 ? args[toIdx + 1] : undefined;
   const wids = parseWids(args.filter((_, i) => toIdx === -1 || (i !== toIdx && i !== toIdx + 1)));
   if (!wids.length) {
-    console.log("Usage: lattices layer add wid:123 [wid:456 ...] [--to <layer>]");
+    console.log("Usage: lats layer add wid:123 [wid:456 ...] [--to <layer>]");
     return;
   }
   const result = await daemonCall("layers.assign", { windowIds: wids, ...(layer ? { layer } : {}) }) as any;

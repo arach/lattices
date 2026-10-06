@@ -21,7 +21,8 @@ struct OverviewCapsuleAnchorKey: PreferenceKey {
 /// room allows, each with its Desktops beneath its map. A monitor's map
 /// shows its focused Desktop, or the one it's showing. Tapping a Desktop
 /// focuses the list on it; tapping it again gives the whole list back.
-/// Clicking a window selects it; nothing here moves one.
+/// Clicking a window selects it; dragging it to a map or Desktop moves it
+/// through the same verified path as the window's Move menu.
 struct OverviewStage: View {
     @ObservedObject var model: OverviewModel
 
@@ -241,7 +242,9 @@ struct OverviewDisplayBlock: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(focused ? "\(space.title) on \(monitor.display.name) · click for every Desktop" : "\(space.title) on \(monitor.display.name), \(state)")
+        .modifier(OverviewWindowDropTarget(model: model, display: monitor.display, spaceId: space.spaceId, compact: true))
+        .help((focused ? "\(space.title) on \(monitor.display.name) · click for every Desktop" : "\(space.title) on \(monitor.display.name), \(state)")
+            + (space.desktop == nil ? "" : " · drop a window to move it here"))
         .accessibilityLabel("\(space.title) on \(monitor.display.name), \(state), \(count == 0 ? "nothing in scope" : "\(count) in scope")")
         .accessibilityHint(focused ? "Show every Desktop" : "Focus the list on this Desktop")
         .accessibilityAddTraits(focused ? .isSelected : [])
@@ -287,6 +290,7 @@ struct OverviewMap: View {
                     style: StrokeStyle(lineWidth: OverviewChrome.stroke, dash: space.isCurrent ? [] : [4, 3])
                 )
         )
+        .modifier(OverviewWindowDropTarget(model: model, display: display, spaceId: space.spaceId))
     }
 
     /// Why this Desktop's windows can't be acted on, and the way back.
@@ -393,7 +397,9 @@ struct OverviewMap: View {
         .contentShape(Rectangle())
         .onTapGesture { OverviewDeskRow.pick(wid, model: model) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.focus(wid) })
-        .help(tile.row.title.isEmpty ? tile.row.app : "\(tile.row.app) — \(tile.row.title)")
+        .modifier(OverviewWindowDragSource(model: model, row: tile.row))
+        .help((tile.row.title.isEmpty ? tile.row.app : "\(tile.row.app) — \(tile.row.title)")
+            + (model.projection.moveTargets(for: wid).isEmpty ? "" : " · drag to a map or Desktop to move"))
         .anchorPreference(key: OverviewCapsuleAnchorKey.self, value: .bounds) { anchor in
             model.focusedWid == wid ? [OverviewCapsuleAnchor(bounds: anchor, inTray: false)] : []
         }
@@ -501,7 +507,7 @@ struct OverviewHint: View {
         HStack(spacing: 14) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 14) {
-                    Text("Click to select · ⌘-click to add · double-click to focus")
+                    Text("Click to select · ⌘-click to add · double-click to focus · drag to a Desktop to move")
                     Text("T · D · / · ↵")
                 }
                 Text("T · D · / · ↵")
@@ -697,10 +703,12 @@ struct OverviewTray: View {
         .contentShape(Rectangle())
         .onTapGesture { OverviewDeskRow.pick(row.wid, model: model) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.focus(row.wid) })
+        .modifier(OverviewWindowDragSource(model: model, row: row))
         .anchorPreference(key: OverviewCapsuleAnchorKey.self, value: .bounds) { anchor in
             model.focusedWid == row.wid ? [OverviewCapsuleAnchor(bounds: anchor, inTray: true)] : []
         }
-        .help(row.title.isEmpty ? row.app : "\(row.app) — \(row.title)")
+        .help((row.title.isEmpty ? row.app : "\(row.app) — \(row.title)")
+            + (model.projection.moveTargets(for: row.wid).isEmpty ? "" : " · drag to a map or Desktop to move"))
         .accessibilityElement()
         .accessibilityLabel("\(row.app), \(row.title.isEmpty ? "Untitled" : row.title), \(model.projection.location(of: row))")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)

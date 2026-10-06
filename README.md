@@ -62,15 +62,17 @@ macOS. Node 18+ or [Bun](https://bun.sh). The published package is `@arach/latti
 
 ```sh
 npm install -g @arach/lattices
-lattices app            # build or download the menu bar companion
+lats app                # build or download the menu bar companion
 ```
+
+The package installs two names for the same command: `lats` and `lattices`. The docs use `lats`.
 
 From a checkout:
 
 ```sh
 git clone https://github.com/arach/lattices
 cd lattices && bun link
-lattices app
+lats app
 ```
 
 One-shot installer (Homebrew, tmux, Bun, CLI):
@@ -79,7 +81,7 @@ One-shot installer (Homebrew, tmux, Bun, CLI):
 curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
 ```
 
-`lattices app install` registers a user LaunchAgent so the companion starts at login.
+`lats app install` registers a user LaunchAgent so the companion starts at login.
 
 Grant **Accessibility** and **Screen Recording** under System Settings → Privacy & Security. Instant Space switching, window targeting, OCR, and mouse gestures need them.
 
@@ -87,12 +89,12 @@ Grant **Accessibility** and **Screen Recording** under System Settings → Priva
 
 ```sh
 cd ~/your-project
-lattices init           # writes .lattices.json
-lattices app            # daemon + palette
-lattices start          # create or attach (tmux); alias: lattices tmux
+lats init               # writes .lattices.json
+lats app                # daemon + palette
+lats start              # create or attach (tmux); alias: lats tmux
 ```
 
-Bare `lattices` is a status screen. It does not attach.
+Bare `lats` is a status screen. It does not attach.
 
 ```json
 {
@@ -107,10 +109,10 @@ Bare `lattices` is a status screen. It does not attach.
 No config: two panes, shell on the left, auto-detected `dev` / `start` / `serve` / `watch` on the right (bun > pnpm > yarn > npm).
 
 ```sh
-lattices search api --deep
-lattices place frontend left
-lattices tile right
-lattices map
+lats search api --deep
+lats place frontend left
+lats tile right
+lats map
 ```
 
 `--deep` and `--all` both search the index and live terminal tabs (cwd, titles, tmux, running commands).
@@ -196,7 +198,7 @@ The menu bar process binds `127.0.0.1` only. Any local process can connect. That
 import { daemonCall, isDaemonRunning } from '@arach/lattices'
 
 if (!(await isDaemonRunning())) {
-  throw new Error('start the app with: lattices app')
+  throw new Error('start the app with: lats app')
 }
 
 await daemonCall('session.launch', { path: '/Users/you/dev/api' })
@@ -205,12 +207,12 @@ const hits = await daemonCall('windows.search', { query: 'api' })
 ```
 
 ```sh
-lattices daemon status
-lattices call windows.search '{"query":"api"}'
-lattices call api.schema
+lats daemon status
+lats call windows.search '{"query":"api"}'
+lats call api.schema
 ```
 
-Do not guess session hashes. Read them from `lattices sessions --json` or `tmux.sessions`. Full catalog: [docs/api](https://lattices.dev/docs/api).
+Do not guess session hashes. Read them from `lats sessions --json` or `tmux.sessions`. Full catalog: [docs/api](https://lattices.dev/docs/api).
 
 ## Product family
 
@@ -223,7 +225,7 @@ This repository ships four products. [lattices.dev/family](https://lattices.dev/
 | **[Blink](https://lattices.dev/blink)** | Spatial notes as floating panels | [`products/blink`](products/blink) |
 | **[Speech](https://lattices.dev/speech)** | A voice for agents: background readouts, HUD readalong | [`skills/speech`](skills/speech) |
 
-Action and Blink stay separately signed. Do not fold them into the Lattices menu bar app. `lattices action` installs and talks to Action.app (`ws://127.0.0.1:4319`).
+Action and Blink stay separately signed. Do not fold them into the Lattices menu bar app. `lats action` installs and talks to Action.app (`ws://127.0.0.1:4319`).
 
 ## Skills
 
@@ -253,7 +255,7 @@ npx skills add arach/lattices --all --global --yes
 | [API](https://lattices.dev/docs/api) | Daemon RPC |
 | [Agents](https://lattices.dev/docs/agents) | Agent-facing artifacts |
 
-`lattices help` for the CLI. In-repo: `docs/`, `AGENTS.md`.
+`lats help` for the CLI. In-repo: `docs/`, `AGENTS.md`.
 
 ## Develop
 
@@ -261,7 +263,7 @@ npx skills add arach/lattices --all --global --yes
 bun link
 bun run check           # tsc + Swift app build
 bun run test            # CLI + dependency-free tests
-lattices app build      # rebuild the companion
+lats app build          # rebuild the companion
 ```
 
 App package: `apps/mac` (macOS 26+). CLI runs on Node 18+ or Bun.

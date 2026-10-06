@@ -16,6 +16,9 @@ final class ActionMenuBarController: NSObject, NSPopoverDelegate {
     private var isLive = false
     private var popover: NSPopover?
     private var contextMenu: NSMenu?
+    private var findCursorItem: NSMenuItem?
+    private var findCursorSeparator: NSMenuItem?
+    private var terminationObserver: NSObjectProtocol?
     private weak var model: ActionLauncherViewModel?
 
     var isPopoverShown: Bool {
@@ -42,6 +45,17 @@ final class ActionMenuBarController: NSObject, NSPopoverDelegate {
         CompanionMenuBarVisibility.shared.onChange = { [weak self] visible in self?.statusItem?.isVisible = visible }
         statusItem?.isVisible = CompanionMenuBarVisibility.shared.isVisible
         contextMenu = buildContextMenu()
+        // Tell the supervision overlay a launcher owns the menu bar, so it does
+        // not add a second mark while a drive runs.
+        let pid = ProcessInfo.processInfo.processIdentifier
+        ActionSupervisionRegistry.recordLauncherPID(pid)
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            ActionSupervisionRegistry.clearLauncherPID(ifOwnedBy: pid)
+        }
         startWatchingLiveState()
     }
 
@@ -65,6 +79,8 @@ final class ActionMenuBarController: NSObject, NSPopoverDelegate {
         isLive = live
         statusItem?.button?.image = ActionBrandMark.statusItemImage(live: live)
         statusItem?.button?.toolTip = live ? "Action — a drive is running" : "Action"
+        findCursorItem?.isHidden = !live
+        findCursorSeparator?.isHidden = !live
     }
 
     func dismissPopover() {
@@ -139,6 +155,17 @@ final class ActionMenuBarController: NSObject, NSPopoverDelegate {
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
 
+        // Only meaningful while a drive shows an agent cursor; hidden otherwise.
+        let findCursor = NSMenuItem(title: "Find Cursor", action: #selector(menuFindCursor), keyEquivalent: "")
+        findCursor.target = self
+        findCursor.isHidden = !isLive
+        menu.addItem(findCursor)
+        findCursorItem = findCursor
+        let separator = NSMenuItem.separator()
+        separator.isHidden = !isLive
+        menu.addItem(separator)
+        findCursorSeparator = separator
+
         addItem(to: menu, title: "Open Action", action: #selector(menuOpenHome), key: "")
         addItem(to: menu, title: "Scenarios", action: #selector(menuOpenScenarios), key: "")
         addItem(to: menu, title: "Runs", action: #selector(menuOpenRuns), key: "")
@@ -161,6 +188,7 @@ final class ActionMenuBarController: NSObject, NSPopoverDelegate {
     @objc private func menuOpenRuns() { reveal(.runs) }
     @objc private func menuOpenLibrary() { reveal(.library) }
     @objc private func menuOpenSettings() { reveal(.settings) }
+    @objc private func menuFindCursor() { ActionSupervisionRegistry.requestCursorLocate() }
 
     @objc
     private func menuQuit() {

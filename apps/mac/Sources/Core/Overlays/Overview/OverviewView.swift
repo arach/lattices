@@ -54,6 +54,27 @@ struct OverviewView: View {
                 Divider().overlay(Palette.border)
                 OverviewTray(model: model)
             }
+            .overlay(alignment: .topLeading) {
+                if let wid = model.moving.first, let row = model.projection.all[wid] {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Moving \(row.app)…").font(Typo.mono(10))
+                    }
+                    .padding(10)
+                    .background(Palette.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(10)
+                } else if let error = model.actionError {
+                    Text(error)
+                        .font(Typo.mono(10))
+                        .foregroundColor(Palette.kill)
+                        .padding(10)
+                        .background(Palette.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(10)
+                        .accessibilityLabel("Window move failed: \(error)")
+                }
+            }
             .overlayPreferenceValue(OverviewCapsuleAnchorKey.self) { anchors in
                 GeometryReader { geo in
                     if let anchor = anchors.first(where: { !$0.inTray }) ?? anchors.first {
@@ -88,6 +109,10 @@ struct OverviewView: View {
             model.attach(canvas: controller)
             controller.enter()
             canvasFocused = true
+            DispatchQueue.main.async { model.updateHostDisplay() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { _ in
+            if live { model.updateHostDisplay() }
         }
         .onDisappear {
             guard live else { return }
@@ -376,6 +401,13 @@ private struct OverviewCapsule: View {
                 .disabled(placeBlock != nil)
                 .accessibilityLabel("Place \(position.label.lowercased())")
             }
+            if let here = model.bringHereTarget(for: row.wid) {
+                iconButton("Move to \(here.title)", systemImage: "arrow.down.left.square", label: "Bring Here") {
+                    model.move(row.wid, toSpace: here.spaceId)
+                }
+                .disabled(!model.moving.isEmpty)
+                .accessibilityLabel("Bring Here — \(here.title)")
+            }
             moveMenu(row)
             divider
             layerMenu(row)
@@ -435,17 +467,21 @@ private struct OverviewCapsule: View {
             Text("Moving…").font(Typo.mono(9)).foregroundColor(Palette.textMuted).padding(.horizontal, 6)
         } else {
             Menu {
+                if let here = model.bringHereTarget(for: row.wid) {
+                    Button("Bring Here — \(here.title)") { model.move(row.wid, toSpace: here.spaceId) }
+                    Divider()
+                }
                 ForEach(targets, id: \.spaceId) { target in
-                    Button("Desktop \(target.desktop)") { model.move(row.wid, toSpace: target.spaceId) }
+                    Button(target.title) { model.move(row.wid, toSpace: target.spaceId) }
                 }
             } label: {
                 OverviewMenuLabel(title: "Move", selected: true)
             }
             .overviewMenu(quiet: true)
-            .disabled(targets.isEmpty)
+            .disabled(targets.isEmpty || !model.moving.isEmpty)
             .help(OverviewProjection.moveExclusion(row).map { "Can't move: \($0.label)" }
-                ?? "Carries the window to another Desktop through Mission Control; takes a few seconds")
-            .accessibilityLabel("Move to desktop")
+                ?? "Move to a chosen display and Desktop; verifies the destination")
+            .accessibilityLabel("Move to display and desktop")
         }
     }
 
@@ -752,6 +788,7 @@ struct OverviewWorkingList: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 4).fill(selected ? Palette.surfaceHov : Color.clear))
+        .modifier(OverviewWindowDragSource(model: model, row: model.projection.all[item.wid]))
         .id(item.wid)
     }
 
@@ -945,8 +982,8 @@ private struct OverviewSelectionPanel: View {
         return reason
     }
 
-    /// One window, in place: tile it on its monitor, or carry it to another
-    /// desktop there. Each says why when it can't.
+    /// Tile a window on its current monitor or move it to any display and
+    /// Desktop. Each says why when it can't.
     @ViewBuilder
     private func directActions(_ row: OverviewRow) -> some View {
         let placeBlock = model.projection.placeExclusion(row.wid)
@@ -974,15 +1011,20 @@ private struct OverviewSelectionPanel: View {
             Text("Moving…").font(Typo.mono(8)).foregroundColor(Palette.textMuted)
         } else if !targets.isEmpty {
             Menu {
+                if let here = model.bringHereTarget(for: row.wid) {
+                    Button("Bring Here — \(here.title)") { model.move(row.wid, toSpace: here.spaceId) }
+                    Divider()
+                }
                 ForEach(targets, id: \.spaceId) { target in
-                    Button("Desktop \(target.desktop)") { model.move(row.wid, toSpace: target.spaceId) }
+                    Button(target.title) { model.move(row.wid, toSpace: target.spaceId) }
                 }
             } label: {
                 OverviewMenuLabel(title: "Move", selected: true)
             }
             .overviewMenu()
-            .help("Carries the window to another Desktop through Mission Control; takes a few seconds")
-            .accessibilityLabel("Move to desktop")
+            .disabled(!model.moving.isEmpty)
+            .help("Move to a chosen display and Desktop; verifies the destination")
+            .accessibilityLabel("Move to display and desktop")
         } else if let block = OverviewProjection.moveExclusion(row) {
             Text("Can't move: \(block.label)")
                 .font(Typo.mono(8))

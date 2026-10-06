@@ -54,8 +54,6 @@ struct ActionHomeView: View {
     private var leasePanel: some View {
         if let lease {
             drivingPanel(lease)
-        } else {
-            idlePanel
         }
     }
 
@@ -130,47 +128,6 @@ struct ActionHomeView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .background(deepPanelBackground)
-    }
-
-    /// The state an operator actually looks at most of the time. It has to say
-    /// the reassuring thing plainly — nobody is driving — rather than leaving a
-    /// hole where the live panel was.
-    ///
-    /// Deliberately light, where `drivingPanel` is a dark slab. The weight of
-    /// this block is the signal: the dark treatment means something is happening
-    /// to this Mac right now, so spending it on "nothing is happening" would
-    /// both shout about calm and leave the live state nothing louder to escalate
-    /// to. Idle is a panel like any other on the page.
-    private var idlePanel: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 9) {
-                    Circle()
-                        .strokeBorder(StageHUDTheme.fieldInkMuted, lineWidth: 1)
-                        .frame(width: 14, height: 14)
-                    eyebrow("IDLE", tint: StageHUDTheme.fieldInkMuted)
-                }
-                // The lead slot answers one question — who has this Mac — and
-                // the driving panel answers it with the agent's name. So this
-                // one answers it the same way, with a word.
-                //
-                // "You", not "Nobody". The panel is not reporting a vacancy; it
-                // is naming whoever currently holds the machine, and when no
-                // lease is out that is the person reading the line. An absence
-                // where the driving state puts a name reads as the feature
-                // being off rather than as the machine being yours.
-                Text("You")
-                    .font(ActionType.panelLead)
-                    .foregroundStyle(StageHUDTheme.fieldInk)
-            }
-
-            Spacer(minLength: 8)
-
-            MiraSpriteView(state: "idle", width: 54, height: 58)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .background(consolePanelBackground)
     }
 
     private var liveDot: some View {

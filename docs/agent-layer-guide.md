@@ -6,27 +6,27 @@ How to create and manage Lattices workspace layers programmatically. This guide 
 
 ```bash
 # See what's on screen
-lattices windows --json
+lats windows --json
 
 # Create a layer with tiling
-lattices layer create "Design" --json '[
+lats layer create "Design" --json '[
   {"app": "Figma", "tile": "left"},
   {"app": "Google Chrome", "title": "Tailwind", "tile": "right"}
 ]'
 
 # Snapshot current windows as a layer
-lattices layer snap "my-context"
+lats layer snap "my-context"
 
 # Add a window to the layer you're on, or to a named one
-lattices layer add wid:1234
-lattices layer add wid:1234 --to "Design"
-lattices layer remove wid:1234 --from "Design"
+lats layer add wid:1234
+lats layer add wid:1234 --to "Design"
+lats layer remove wid:1234 --from "Design"
 
 # List / switch / rename / delete
-lattices layer
-lattices layer "Design"
-lattices layer rename "Design" "Figma work"
-lattices layer delete "Design"
+lats layer
+lats layer "Design"
+lats layer rename "Design" "Figma work"
+lats layer delete "Design"
 ```
 
 ## How It Works
@@ -40,7 +40,7 @@ Each window is saved as an entry of its app and its title at the time, which is 
 ### 1. Discover what's available
 
 ```bash
-lattices windows --json
+lats windows --json
 ```
 
 Returns an array of window objects:
@@ -96,7 +96,7 @@ Full position reference:
 
 **Option A: By window ID (most reliable)**
 ```bash
-lattices layer create "Coding" --json '[
+lats layer create "Coding" --json '[
   {"wid": 1234, "tile": "left"},
   {"wid": 5678, "tile": "right"}
 ]'
@@ -104,7 +104,7 @@ lattices layer create "Coding" --json '[
 
 **Option B: By app name** (picks the first open window that matches)
 ```bash
-lattices layer create "Research" --json '[
+lats layer create "Research" --json '[
   {"app": "Google Chrome", "title": "docs", "tile": "left"},
   {"app": "Notes", "tile": "right"}
 ]'
@@ -112,20 +112,20 @@ lattices layer create "Research" --json '[
 
 **Option C: Simple wid list (no tiling)**
 ```bash
-lattices layer create "Focus" wid:1234 wid:5678
+lats layer create "Focus" wid:1234 wid:5678
 ```
 
 **Option D: Snapshot everything visible** (also what `create` does with no windows named)
 ```bash
-lattices layer snap "Current Context"
+lats layer snap "Current Context"
 ```
 
 ### 4. Switch between layers
 
 ```bash
-lattices layer           # list layers
-lattices layer "Coding"  # switch to "Coding"
-lattices layer 1         # switch to the layer on ⌘⌥1
+lats layer           # list layers
+lats layer "Coding"  # switch to "Coding"
+lats layer 1         # switch to the layer on ⌘⌥1
 ```
 
 Or press ⌘⌥ and the layer's slot number.
@@ -136,26 +136,26 @@ For finer control, use raw daemon calls:
 
 ```bash
 # Create a layer from window IDs (omit windowIds to save what's on screen)
-lattices call layers.create '{"name":"Coding","windowIds":[1234,5678]}'
+lats call layers.create '{"name":"Coding","windowIds":[1234,5678]}'
 
 # Add windows to a layer (default: the active one)
-lattices call layers.assign '{"layer":"Coding","windowIds":[9012]}'
+lats call layers.assign '{"layer":"Coding","windowIds":[9012]}'
 
 # Take a window out (drops the entries that hold only it)
-lattices call layers.unassign '{"layer":"Coding","wid":9012}'
+lats call layers.unassign '{"layer":"Coding","wid":9012}'
 
 # Tile a specific window
-lattices call window.place '{"wid":1234,"placement":"left"}'
+lats call window.place '{"wid":1234,"placement":"left"}'
 
 # Switch layer
-lattices call layer.activate '{"name":"Coding","mode":"focus"}'
+lats call layer.activate '{"name":"Coding","mode":"focus"}'
 
 # List layers
-lattices call layers.list
+lats call layers.list
 
 # Rename / delete
-lattices call layers.rename '{"layer":"Coding","name":"Deep work"}'
-lattices call layers.delete '{"layer":"old-layer"}'
+lats call layers.rename '{"layer":"Coding","name":"Deep work"}'
+lats call layers.delete '{"layer":"old-layer"}'
 ```
 
 ## Composing Layers from Intent
@@ -208,5 +208,5 @@ Browser windows are chameleons — use `title` matching to assign them to the ri
 - Don't put more than 4-5 windows in a single layer — it gets cramped.
 - Background apps (music, etc.) usually don't need to be in any layer.
 - The `snap` command is great for "save what I have now" scenarios.
-- Layers are saved as soon as they're made; `lattices layer delete` removes one. The first save of each launch keeps the previous file as `workspace.json.bak`.
-- You can create multiple layers in sequence, then switch between them with `lattices layer <name>` or ⌘⌥ + slot.
+- Layers are saved as soon as they're made; `lats layer delete` removes one. The first save of each launch keeps the previous file as `workspace.json.bak`.
+- You can create multiple layers in sequence, then switch between them with `lats layer <name>` or ⌘⌥ + slot.

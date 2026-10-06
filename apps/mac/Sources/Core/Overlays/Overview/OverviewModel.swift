@@ -9,7 +9,7 @@ protocol OverviewActions {
     func focus(wid: UInt32, pid: Int32)
     /// Tiles one window to `position` on the monitor `displayId`.
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32)
-    /// Carries one window to `spaceId` on its own monitor. Slow: calls
+    /// Moves one window to an absolute Space on any display. Slow: calls
     /// `completion` on the main queue with nil, or why it failed.
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void)
     /// Writes the layer's layout and tucked lists. Never activates it.
@@ -105,12 +105,20 @@ struct LiveOverviewActions: OverviewActions {
     }
 
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {
-        // The carry drives Mission Control and blocks for seconds.
+        // Absolute Space identity resolves its display in the shared movement
+        // runtime. It handles inactive source desktops and verifies the landing.
         DispatchQueue.global(qos: .userInitiated).async {
-            let outcome = WindowSpaceCarry.carry(wid: wid, pid: pid, to: spaceId)
-            DispatchQueue.main.async {
-                if case .failed(let reason) = outcome { completion(reason) } else { completion(nil) }
+            let failure: String?
+            do {
+                let receipt = try ActionRuntime.shared.executeWindowMove(
+                    params: .object(["wid": .int(Int(wid)), "spaceId": .int(spaceId)]),
+                    source: "app.overview"
+                )
+                failure = WindowMovementService.failureMessage(for: receipt)
+            } catch {
+                failure = error.localizedDescription
             }
+            DispatchQueue.main.async { completion(failure) }
         }
     }
 
@@ -170,6 +178,8 @@ final class OverviewModel: ObservableObject {
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
     @Published private(set) var actionError: String?
+    /// Screen hosting Overview, captured before a move can focus another app.
+    @Published var hostDisplayId: UInt32?
     /// Windows with a Space move under way.
     @Published private(set) var moving: Set<UInt32> = []
     /// The last row the user picked, for the inspector.
@@ -244,6 +254,7 @@ final class OverviewModel: ObservableObject {
 
     /// Reads the desktop, layers and stage again.
     func refresh() {
+        updateHostDisplay()
         let stage = LayerStage.shared
         let windows = DesktopModel.shared.allWindows()
         var extras: [String: Set<UInt32>] = [:]
@@ -672,11 +683,28 @@ final class OverviewModel: ObservableObject {
         return true
     }
 
-    /// Carries one window to another desktop on its own monitor.
+    func updateHostDisplay() {
+        hostDisplayId = ScreenMapWindowController.shared.nsWindow?.screen.flatMap {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        }
+    }
+
+    func bringHereTarget(for wid: UInt32) -> OverviewMoveDestination? {
+        projection.bringHereTarget(for: wid, hostDisplayId: hostDisplayId)
+    }
+
+    /// Moves one window to an explicit Desktop on any display.
     @discardableResult
     func move(_ wid: UInt32, toSpace spaceId: Int) -> Bool {
-        guard !moving.contains(wid), let row = projection.all[wid],
-              projection.moveTargets(for: wid).contains(where: { $0.spaceId == spaceId }) else { return false }
+        guard moving.isEmpty else { return false }
+        guard let row = projection.all[wid] else {
+            actionError = "Couldn't move window: it is no longer available"
+            return false
+        }
+        guard projection.moveTargets(for: wid).contains(where: { $0.spaceId == spaceId }) else {
+            actionError = "Couldn't move \(row.app): the window or destination Desktop is no longer available"
+            return false
+        }
         actionError = nil
         moving.insert(wid)
         actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId) { [weak self] failure in

@@ -179,6 +179,35 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertEqual(differing, 0, "opening the list moved the stage at \(width)", file: file, line: line)
     }
 
+    /// Selecting a window on the right-hand map may paint its capsule, but
+    /// must not reserve a toolbar row and shift any other display map.
+    private func assertSelectionActionsOverlay(width: CGFloat, height: CGFloat,
+                                               file: StaticString = #filePath, line: UInt = #line) throws {
+        func pixels(selected: Bool) throws -> NSBitmapImageRep {
+            let (host, window, cleanup) = self.host(width: width, height: height, sidebar: false) { model in
+                if selected { model.select(15) }
+            }
+            defer { cleanup(); _ = window }
+            return try snapshot(host)
+        }
+        let unselected = try pixels(selected: false)
+        let selected = try pixels(selected: true)
+        // The left monitor and its Desktop strip, clear of the right map's
+        // capsule, scope bar and selection tray, must be pixel-identical.
+        let clearWidth = Int(width * 0.22)
+        let clearHeight = Int(height - OverviewTray.height - OverviewStage.hintHeight - 12)
+        var differing = 0
+        for y in stride(from: 55, to: clearHeight, by: 2) {
+            for x in stride(from: 24, to: clearWidth, by: 2) {
+                if unselected.colorAt(x: x, y: y) != selected.colorAt(x: x, y: y) { differing += 1 }
+            }
+        }
+        XCTAssertEqual(differing, 0, "selection actions shifted another display map", file: file, line: line)
+    }
+
+    func testSelectionActionsOverlayWide() throws { try assertSelectionActionsOverlay(width: 1590, height: 688) }
+    func testSelectionActionsOverlayLaptop() throws { try assertSelectionActionsOverlay(width: 1110, height: 648) }
+
     func testPanelOverlaysWide() throws { try assertPanelOverlays(width: 1590, height: 688) }
     func testPanelOverlaysLaptop() throws { try assertPanelOverlays(width: 1110, height: 648) }
 

@@ -2620,103 +2620,22 @@ final class LatticesApi {
                 Param(name: "display", type: "int", required: false, description: "Target display index (spaces.list displayIndex)"),
                 Param(name: "placement", type: "string|object", required: false, description: "Placement slot on the target display; omit to preserve the window's normalized frame"),
                 Param(name: "position", type: "string", required: false, description: "Alias for placement"),
-                Param(name: "spaceId", type: "int", required: false, description: "Target Space ID (exclusive with display/placement)"),
+                Param(name: "spaceId", type: "int", required: false, description: "Target Space ID; determines the display when omitted and must belong to an explicit display"),
                 Param(name: "dryRun", type: "bool", required: false, description: "Plan and verify inputs without moving the window"),
             ],
             returns: .custom("Execution receipt with before/target/after geometry, source/target display, and verification"),
             handler: { params in
-                let wid = params?["wid"]?.uint32Value
-                let session = params?["session"]?.stringValue
-                let spaceId = params?["spaceId"]?.intValue
-                let hasDisplay = params?["display"]?.intValue != nil
-                let hasPlacement = (params?["placement"] ?? params?["position"]) != nil
-
-                guard wid != nil || session != nil else {
+                guard params?["wid"]?.uint32Value != nil || params?["session"]?.stringValue != nil else {
                     throw RouterError.missingParam("wid or session")
                 }
-                if let spaceId {
-                    guard !hasDisplay, !hasPlacement else {
-                        throw RouterError.custom("spaceId cannot be combined with display or placement; move Spaces and geometry in separate calls")
-                    }
-                    if let wid {
-                        // wid → Space rides the same CGS primitive present()
-                        // and the legacy session path already use. When CGS is
-                        // unavailable we report that instead of pretending.
-                        guard DesktopModel.shared.windows[wid] != nil else {
-                            throw RouterError.notFound("window \(wid)")
-                        }
-                        let knownSpaces = WindowTiler.getDisplaySpaces().flatMap { $0.spaces.map(\.id) }
-                        guard knownSpaces.isEmpty || knownSpaces.contains(spaceId) else {
-                            throw RouterError.notFound("space \(spaceId)")
-                        }
-                        let dryRun = params?["dryRun"]?.boolValue == true
-                        let fromSpaces = WindowTiler.getSpacesForWindow(wid)
-                        if fromSpaces.contains(spaceId) {
-                            return .object([
-                                "ok": .bool(true),
-                                "wid": .int(Int(wid)),
-                                "spaceId": .int(spaceId),
-                                "moved": .bool(false),
-                                "method": .string("already-on-space"),
-                                "dryRun": .bool(dryRun),
-                                "targetResolution": .string("wid"),
-                            ])
-                        }
-                        if dryRun {
-                            return .object([
-                                "ok": .bool(true),
-                                "status": .string("planned"),
-                                "wid": .int(Int(wid)),
-                                "spaceId": .int(spaceId),
-                                "moved": .bool(false),
-                                "dryRun": .bool(true),
-                                "fromSpaceIds": .array(fromSpaces.map { .int($0) }),
-                                "targetResolution": .string("wid"),
-                            ])
-                        }
-                        // CGS first (instant, but refused for other apps'
-                        // windows since macOS 14.5), then carry the window
-                        // by its title bar across the switch.
-                        let result = Self.syncOnMain {
-                            WindowTiler.moveViaCGS(wid: wid, fromSpaces: fromSpaces, toSpace: spaceId, switchOnDenial: false)
-                        }
-                        var method = "CGS"
-                        if case .success = result {
-                        } else {
-                            guard let pid = DesktopModel.shared.windows[wid]?.pid else {
-                                throw RouterError.notFound("window \(wid)")
-                            }
-                            guard !Thread.isMainThread else {
-                                throw RouterError.custom("CGS refused the move and the carry can't run on the main thread")
-                            }
-                            if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: spaceId) {
-                                throw RouterError.custom("couldn't move window \(wid) to Space \(spaceId): \(reason)")
-                            }
-                            method = "carry"
-                        }
-                        return .object([
-                            "ok": .bool(true),
-                            "wid": .int(Int(wid)),
-                            "spaceId": .int(spaceId),
-                            "moved": .bool(true),
-                            "method": .string(method),
-                            "fromSpaceIds": .array(fromSpaces.map { .int($0) }),
-                            "targetResolution": .string("wid"),
-                        ])
-                    }
-                    if params?["dryRun"]?.boolValue == true {
-                        return .object(["ok": .bool(true), "status": .string("planned"), "dryRun": .bool(true)])
-                    }
-                    let terminal = Preferences.shared.terminal
-                    let result = Self.syncOnMain {
-                        WindowTiler.moveWindowToSpace(session: session!, terminal: terminal, spaceId: spaceId)
-                    }
-                    return Self.moveReceipt(result, spaceId: spaceId, session: session)
-                }
-
-                guard hasDisplay || hasPlacement else {
+                guard params?["display"]?.intValue != nil
+                    || params?["spaceId"]?.intValue != nil
+                    || (params?["placement"] ?? params?["position"]) != nil else {
                     throw RouterError.missingParam("display, placement, or spaceId")
                 }
+                // UI, CLI and daemon share the same relocation transaction:
+                // prepare an inactive source, move displays, carry to the exact
+                // desktop, and verify geometry plus Space membership.
                 return try ActionRuntime.shared.executeWindowMove(params: params)
             }
         ))

@@ -217,8 +217,8 @@ These are composed from multiple `tile_window` actions:
 
 CLI shortcuts compile into the same distributor:
 
-- `lattices tile family` → smart-grid the frontmost app's visible windows
-- `lattices distribute iTerm2 right` → smart-grid visible iTerm windows inside the right half
+- `lats tile family` → smart-grid the frontmost app's visible windows
+- `lats distribute iTerm2 right` → smart-grid visible iTerm windows inside the right half
 
 ## HandsOff Smart Distribution
 

@@ -21,7 +21,7 @@ family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/mai
 
 | Skill | Product |
 | --- | --- |
-| `lattices` | Workspace control, tiling, sessions, screen text |
+| `lats` | Workspace control, tiling, sessions, screen text |
 | `action` | Native observe / resolve / act / record |
 | `speech` | Spoken commands and voice intents |
 | `blink` | Spatial notes through the `blink` CLI |
@@ -63,7 +63,7 @@ Compatibility wrappers still exist:
 
 Agents should use these paths in order:
 
-1. **API schema**: `lattices call api.schema`
+1. **API schema**: `lats call api.schema`
 2. **Read-only workspace map and UI hygiene**: [/docs/workspace-map](/docs/workspace-map)
 3. **Daemon reference**: [/docs/api](/docs/api)
 4. **Agent guide**: [/docs/agents](/docs/agents)
@@ -73,23 +73,23 @@ Agents should use these paths in order:
 Useful CLI discovery commands:
 
 ```bash
-lattices help
-lattices call api.schema
-lattices call desktop.snapshot
-lattices map
-lattices call terminals.capture '{"session":"<live-session>","lines":40}'
-lattices voice intents
+lats help
+lats call api.schema
+lats call desktop.snapshot
+lats map
+lats call terminals.capture '{"session":"<live-session>","lines":40}'
+lats voice intents
 ```
 
 `desktop.snapshot` is the structured “what is in front of the user?” read.
-`lattices map` draws that same current-space view as ASCII. `terminals.capture`
+`lats map` draws that same current-space view as ASCII. `terminals.capture`
 is exact tmux pane text — not OCR.
 
 For window actions, resolve before mutating when target identity matters:
 
 ```bash
-lattices call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
-lattices call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
+lats call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
 ```
 
 `window.resolve` and `dryRun` return the resolved `wid`, app/title,
@@ -101,9 +101,9 @@ captured a concrete window id and previous frame. Agents can restore the
 latest undoable placement, or an entire request batch, through:
 
 ```bash
-lattices call actions.undo '{}'
-lattices call actions.undo '{"requestId":"req_..."}'
-lattices call actions.undo '{"receiptId":"exec_...","dryRun":true}'
+lats call actions.undo '{}'
+lats call actions.undo '{"requestId":"req_..."}'
+lats call actions.undo '{"receiptId":"exec_...","dryRun":true}'
 ```
 
 Undo checks that the window is still where the original receipt left it
@@ -186,7 +186,7 @@ Use the **CLI** when you need:
 
 - one-shot shell execution
 - quick discovery from inside an agent terminal
-- compatibility with environments that already have `lattices`
+- compatibility with environments that already have `lats`
 
 Use **docs URLs** when an agent needs:
 
@@ -218,12 +218,12 @@ await daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })
 CLI:
 
 ```bash
-lattices call api.schema
-lattices call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
-lattices call actions.execute '{"type":"window.place","target":{"kind":"frontmost"},"args":{"placement":"left"}}'
-lattices call window.place '{"session":"frontend-a1b2c3","placement":"left"}'
-lattices call layer.activate '{"name":"review","mode":"launch"}'
-lattices call space.optimize '{"scope":"visible","strategy":"balanced"}'
+lats call api.schema
+lats call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call actions.execute '{"type":"window.place","target":{"kind":"frontmost"},"args":{"placement":"left"}}'
+lats call window.place '{"session":"frontend-a1b2c3","placement":"left"}'
+lats call layer.activate '{"name":"review","mode":"launch"}'
+lats call space.optimize '{"scope":"visible","strategy":"balanced"}'
 ```
 
 ## Receipts and traceability
@@ -263,5 +263,5 @@ Assistant planning lives in TypeScript where possible:
 - Swift should remain the macOS execution layer: hotkeys, windows, AX/CG,
   SkyLight, panels, and visual feedback.
 
-Use `lattices assistant plan <text> --json` to inspect the TS planner without
+Use `lats assistant plan <text> --json` to inspect the TS planner without
 launching the app or mutating the desktop.

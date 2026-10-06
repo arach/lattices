@@ -49,7 +49,7 @@ export type CaptureDisplayArgs = {
   json: boolean;
 };
 
-/** Parse `lattices capture display` without the loose shared positional parser. */
+/** Parse `lats capture display` without the loose shared positional parser. */
 export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
   const flags = new Map<string, string | true>();
   const positional: string[] = [];
@@ -127,17 +127,17 @@ export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
 }
 
 export function captureUsage(): string {
-  return `lattices capture — capture run artifacts
+  return `lats capture — capture run artifacts
 
 Usage:
-  lattices capture window [wid] [--json]
-  lattices capture screenshot [wid] [--session name] [--app name]
-  lattices capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
-  lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
-  lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
-  lattices capture stop <run-id>
-  lattices capture log [--limit 20] [--json]   screenshots agents took (~/.lattices/audit)`;
+  lats capture window [wid] [--json]
+  lats capture screenshot [wid] [--session name] [--app name]
+  lats capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
+  lats capture record window [wid] [--app name] [--duration-ms 5000] [--json]
+  lats capture record region --x N --y N --width N --height N [--duration-ms 5000]
+  lats capture record-command --app Scout --filename demo.mov -- <command> [...args]
+  lats capture stop <run-id>
+  lats capture log [--limit 20] [--json]   screenshots agents took (~/.lattices/audit)`;
 }
 
 export async function captureCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
@@ -189,10 +189,10 @@ export async function captureCommand(subcommand?: string, ...rawArgs: string[]):
 
   if (isRecordCommand) {
     if (!childArgs.length) {
-      console.log(`lattices capture record-command — record while running a command
+      console.log(`lats capture record-command — record while running a command
 
 Usage:
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
+  lats capture record-command --app Scout --filename demo.mov -- <command> [...args]
 `);
       return;
     }
@@ -341,7 +341,7 @@ Usage:
       console.log(`  run: ${run.id || result.run?.id || "?"}`);
       console.log(`  artifact: ${artifact.path || "?"}`);
       if (!result.stopResult) {
-        console.log(`  stop: lattices capture stop ${result.run?.id || ""}`);
+        console.log(`  stop: lats capture stop ${result.run?.id || ""}`);
       }
     });
     return;

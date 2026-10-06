@@ -48,6 +48,18 @@ enum ActionSupervisionRegistry {
         baseDirectoryURL.appendingPathComponent("overlay.stop")
     }
 
+    /// PID of the launcher (the menu bar app). While it runs it owns the menu
+    /// bar presence; the supervision overlay puts up its own item otherwise.
+    static var launcherPIDURL: URL {
+        baseDirectoryURL.appendingPathComponent("launcher.pid")
+    }
+
+    /// Where the runtime writes agent-cursor state files, one per drive lease.
+    static var cursorsDirectoryURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Action/runtime/drive/cursors", isDirectory: true)
+    }
+
     static var notesURL: URL {
         baseDirectoryURL.appendingPathComponent("notes.jsonl")
     }
@@ -296,10 +308,82 @@ enum ActionSupervisionRegistry {
     }
 
     static func recordOverlayPID(_ pid: pid_t) {
+        recordPID(pid, at: overlayPIDURL)
+    }
+
+    static func recordLauncherPID(_ pid: pid_t) {
+        recordPID(pid, at: launcherPIDURL)
+    }
+
+    static func clearLauncherPID(ifOwnedBy ownerPID: pid_t) {
+        guard pid(at: launcherPIDURL) == ownerPID else {
+            return
+        }
+        try? FileManager.default.removeItem(at: launcherPIDURL)
+    }
+
+    static func launcherIsRunning() -> Bool {
+        guard let pid = pid(at: launcherPIDURL) else {
+            return false
+        }
+        return processIsAlive(pid)
+    }
+
+    /// Asks every live agent cursor to play its "find me" ripple. Returns how
+    /// many cursors were signalled; zero means no drive currently shows one.
+    @discardableResult
+    static func requestCursorLocate(now: Date = Date()) -> Int {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: cursorsDirectoryURL,
+            includingPropertiesForKeys: nil
+        ) else {
+            return 0
+        }
+
+        struct CursorExpiry: Decodable {
+            var expiresAt: String?
+        }
+
+        let decoder = JSONDecoder()
+        var count = 0
+        for url in urls where url.pathExtension == "json" {
+            // A stop marker means that overlay has already been told to leave.
+            let stopPath = url.path + ".stop"
+            guard !FileManager.default.fileExists(atPath: stopPath) else { continue }
+            guard let data = try? Data(contentsOf: url),
+                  let state = try? decoder.decode(CursorExpiry.self, from: data) else { continue }
+            if let expiresAt = state.expiresAt,
+               let deadline = parseISO8601Date(expiresAt),
+               deadline <= now {
+                continue
+            }
+            let marker = url.path + ".locate"
+            guard FileManager.default.createFile(atPath: marker, contents: Data("locate\n".utf8)) else { continue }
+            count += 1
+        }
+        return count
+    }
+
+    private static func recordPID(_ pid: pid_t, at url: URL) {
         do {
             try FileManager.default.createDirectory(at: baseDirectoryURL, withIntermediateDirectories: true)
-            try Data(String(pid).utf8).write(to: overlayPIDURL)
+            try Data(String(pid).utf8).write(to: url)
         } catch {}
+    }
+
+    private static func pid(at url: URL) -> pid_t? {
+        guard let raw = try? String(contentsOf: url, encoding: .utf8),
+              let pid = Int32(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+        return pid
+    }
+
+    private static func processIsAlive(_ pid: pid_t) -> Bool {
+        if kill(pid, 0) == 0 {
+            return true
+        }
+        return errno != ESRCH
     }
 
     static func clearOverlayPID(ifOwnedBy ownerPID: pid_t) {

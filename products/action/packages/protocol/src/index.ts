@@ -62,6 +62,8 @@ export interface TargetQuery {
 }
 
 export interface ResolvedTarget {
+  /** Global screen point retained by coordinate resolution. */
+  point?: Point;
   id: string;
   mode: TargetResolutionMode;
   confidence: number;

@@ -30,7 +30,7 @@ export async function withDaemon<T>(
   fn: (client: DaemonClient) => Promise<T>,
   opts?: { message?: string; exitCode?: number }
 ): Promise<T> {
-  const message = opts?.message ?? "Daemon not running. Start with: lattices app";
+  const message = opts?.message ?? "Daemon not running. Start with: lats app";
   const exitCode = opts?.exitCode ?? 1;
 
   const client = await loadDaemonClient();

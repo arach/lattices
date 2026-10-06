@@ -1,5 +1,7 @@
 # Action
 
+> **Action has moved into Lattices.** All ongoing development lives in [`arach/lattices`](https://github.com/arach/lattices), under [`products/action/`](https://github.com/arach/lattices/tree/main/products/action). The original Action `main` history was merged on August 27, 2026 ([import commit](https://github.com/arach/lattices/commit/b1ad511adf509c0c60d7f3edce7cd15257601db2)). The old `arach/action` repository is historical.
+
 Native macOS computer use: observe a surface, resolve a target, act, and record the result.
 
 Action gives agents and scripts a local runtime for working with apps through

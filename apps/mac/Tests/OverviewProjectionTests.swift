@@ -496,25 +496,61 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(model.projection.placeExclusion(99), .gone)
     }
 
-    func testMoveGoesToAnotherDesktopOfTheSameMonitor() {
+    func testMoveDestinationsDistinguishEveryDisplayAndDesktop() throws {
         let projection = project()
-        XCTAssertEqual(projection.moveTargets(for: 1).map(\.desktop), [2, 3])
-        XCTAssertEqual(projection.moveTargets(for: 2).map(\.desktop), [1, 2])
-        XCTAssertEqual(projection.moveTargets(for: 3).map(\.desktop), [1])
+        XCTAssertEqual(projection.moveTargets(for: 1).map(\.spaceId), [2, 3, 10, 11])
+        XCTAssertEqual(projection.moveTargets(for: 2).map(\.spaceId), [1, 2, 10, 11])
+        XCTAssertEqual(projection.moveTargets(for: 3).map(\.spaceId), [1, 2, 3, 10])
+        let desktop2 = projection.moveTargets(for: 2).filter { $0.desktop == 2 }
+        XCTAssertEqual(desktop2.map(\.title), ["Studio · Desktop 2", "Side · Desktop 2"])
+        XCTAssertEqual(desktop2.map(\.spaceId), [2, 11])
         for wid: UInt32 in [4, 5, 6, 7] { XCTAssertEqual(projection.moveTargets(for: wid).count, 0, "window \(wid)") }
         XCTAssertEqual(OverviewProjection.moveExclusion(projection.all[7]!), .fullScreen)
         XCTAssertEqual(OverviewProjection.moveExclusion(projection.all[5]!), .parked)
 
         let model = model()
-        XCTAssertFalse(model.move(1, toSpace: 11), "another monitor's desktop")
         XCTAssertFalse(model.move(1, toSpace: 1), "its own desktop")
-        XCTAssertTrue(model.move(1, toSpace: 3))
+        XCTAssertFalse(model.move(1, toSpace: 12), "full-screen Space is not a move destination")
+        XCTAssertTrue(model.move(1, toSpace: 11), "another monitor's explicit Desktop")
         XCTAssertEqual(model.moving, [1])
         XCTAssertFalse(model.move(1, toSpace: 2), "one move at a time")
+        XCTAssertFalse(model.move(2, toSpace: 2), "Mission Control moves serialize across windows")
         spy.finishMove?("Mission Control didn't open")
         XCTAssertEqual(model.moving, [])
         XCTAssertEqual(model.actionError, "Couldn't move Ghostty: Mission Control didn't open")
-        XCTAssertEqual(spy.calls, ["move 1 to 3"])
+        XCTAssertEqual(spy.calls, ["move 1 to 11"])
+    }
+
+    func testBringHereUsesHostShowingSpaceRegardlessOfBrowsedOrSourceDesktop() throws {
+        let model = model()
+        model.hostDisplayId = 1
+        model.chooseDesktop(10)
+        XCTAssertEqual(model.bringHereTarget(for: 3)?.title, "Studio · Desktop 1")
+        XCTAssertEqual(model.bringHereTarget(for: 3)?.spaceId, 1)
+        XCTAssertNil(model.bringHereTarget(for: 1), "already here")
+        model.hostDisplayId = 2
+        XCTAssertEqual(model.bringHereTarget(for: 2)?.spaceId, 11)
+        XCTAssertEqual(model.bringHereTarget(for: 2)?.displayIndex, 1)
+        model.hostDisplayId = nil
+        XCTAssertNil(model.bringHereTarget(for: 2), "unresolved host must not guess from selected window")
+        XCTAssertEqual(spy.calls, [], "computing a destination never moves or focuses a window")
+    }
+
+    func testInactiveVirtualWindowCanChoosePhysicalDesktopWithSameNumber() throws {
+        let virtual = OverviewDisplay(index: 2, name: "Action Agent Layer",
+            bounds: CGRect(x: 3440, y: 0, width: 1440, height: 900),
+            desktops: [1955, 1956, 2376, 2377], currentSpaceId: 1955, displayId: 20)
+        let physical = OverviewDisplay(index: 0, name: "DELL", bounds: main,
+            desktops: [1, 3], currentSpaceId: 3, displayId: 10)
+        let row = window(100, "Ghostty", "disposable", spaces: [2377], frame: virtual.bounds)
+        let projection = OverviewProjection.make(
+            .init(windows: [row], displays: [physical, virtual], main: main),
+            scope: .all, selection: [100]
+        )
+        let targets = projection.moveTargets(for: 100).filter { $0.desktop == 2 }
+        XCTAssertEqual(targets.map(\.title), ["DELL · Desktop 2", "Action Agent Layer · Desktop 2"])
+        XCTAssertEqual(targets.map(\.spaceId), [3, 1956])
+        XCTAssertEqual(projection.bringHereTarget(for: 100, hostDisplayId: 10)?.spaceId, 3)
     }
 
     // MARK: Edit layer (plan 23)
