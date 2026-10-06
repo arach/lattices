@@ -566,8 +566,10 @@ private enum CGS {
     // Use Int32 for CGS connection IDs (C `int`), UInt64 for space IDs
     typealias MainConnectionIDFunc = @convention(c) () -> Int32
     typealias GetActiveSpaceFunc = @convention(c) (Int32) -> UInt64
-    typealias CopyManagedDisplaySpacesFunc = @convention(c) (Int32) -> CFArray
-    typealias CopySpacesForWindowsFunc = @convention(c) (Int32, Int32, CFArray) -> CFArray
+    // The Copy functions return +1. Swift can't see that through a raw C
+    // function pointer, so they return Unmanaged and callers take the retain.
+    typealias CopyManagedDisplaySpacesFunc = @convention(c) (Int32) -> Unmanaged<CFArray>?
+    typealias CopySpacesForWindowsFunc = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
     typealias SetCurrentSpaceFunc = @convention(c) (Int32, CFString, UInt64) -> Void
 
     private static let handle = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
@@ -812,7 +814,7 @@ enum WindowTiler {
               let copyManaged = CGS.copyManagedDisplaySpaces else { return [] }
 
         let cid = mainConn()
-        guard let managed = copyManaged(cid) as? [[String: Any]] else { return [] }
+        guard let managed = copyManaged(cid)?.takeRetainedValue() as? [[String: Any]] else { return [] }
 
         var result: [DisplaySpaces] = []
         for (displayIdx, display) in managed.enumerated() {
@@ -1242,7 +1244,7 @@ enum WindowTiler {
               let copySpaces = CGS.copySpacesForWindows else { return [] }
         let cid = mainConn()
         let arr = [NSNumber(value: wid)] as CFArray
-        guard let result = copySpaces(cid, 0x7, arr) as? [NSNumber] else { return [] }
+        guard let result = copySpaces(cid, 0x7, arr)?.takeRetainedValue() as? [NSNumber] else { return [] }
         return result.map { $0.intValue }
     }
 
