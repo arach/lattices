@@ -5,6 +5,40 @@ import {
   parseOptionalNumber,
 } from "./helpers.ts";
 import { withDaemon } from "./daemon.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
+
+const CAPTURE_AUDIT_FILE = join(homedir(), ".lattices/audit/captures.jsonl");
+
+/** Print the screenshots agents took over the daemon socket, newest last. */
+function captureLog(args: string[]): void {
+  const limit = Number(parseFlagValue(args, "limit") || 20) || 20;
+  const lines = existsSync(CAPTURE_AUDIT_FILE)
+    ? readFileSync(CAPTURE_AUDIT_FILE, "utf8").split("\n").filter(Boolean)
+    : [];
+  const entries = lines.slice(-Math.max(1, limit)).flatMap((line) => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  });
+  if (hasFlag(args, "json")) {
+    console.log(JSON.stringify(entries, null, 2));
+    return;
+  }
+  if (entries.length === 0) {
+    console.log(`No agent screenshots logged yet (${CAPTURE_AUDIT_FILE}).`);
+    return;
+  }
+  for (const e of entries) {
+    const caller = e.caller ?? {};
+    const when = new Date(e.ts).toLocaleString();
+    const who = caller.agent || caller.client || "unknown";
+    const from = !caller.origin || caller.origin === "local" ? "local" : caller.origin;
+    const project = caller.cwd ? basename(caller.cwd) : "";
+    const what = [e.kind, e.target?.app, e.display].filter(Boolean).join(" · ");
+    console.log(`${when}  ${who}  ${from}${project ? `  ${project}` : ""}  ${what}`);
+    if (e.artifact) console.log(`  ${e.artifact}`);
+  }
+}
 
 export type CaptureDisplayArgs = {
   display?: number;
@@ -102,7 +136,8 @@ Usage:
   lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
   lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
   lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
-  lattices capture stop <run-id>`;
+  lattices capture stop <run-id>
+  lattices capture log [--limit 20] [--json]   screenshots agents took (~/.lattices/audit)`;
 }
 
 export async function captureCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
@@ -112,6 +147,11 @@ export async function captureCommand(subcommand?: string, ...rawArgs: string[]):
   const childArgs = dashIndex >= 0 ? rawArgs.slice(dashIndex + 1) : [];
   const jsonFlag = hasFlag(commandArgs, "json");
   const positional = nonFlagArgs(commandArgs);
+
+  if (sub === "log" || sub === "audit") {
+    captureLog(commandArgs);
+    return;
+  }
 
   if (["stop", "stop-recording", "stopRecording"].includes(sub)) {
     const params: Record<string, unknown> = {};
