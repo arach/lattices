@@ -377,6 +377,12 @@ export interface DriveLease {
   pointerControl?: boolean;
   stopFile: string;
   lastAxTier?: AxActionTier;
+  /** What the caller named itself, e.g. "Action MCP". */
+  client?: string;
+  /** The process the agent saw on the socket, e.g. "bun 41250 ← claude 41012". */
+  clientProcess?: string;
+  /** Acts recorded against this lease. */
+  actCount?: number;
 }
 
 export interface DriveStatusSnapshot {

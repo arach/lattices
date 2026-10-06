@@ -120,7 +120,7 @@ const actionRoot = resolve(process.env.ACTION_ROOT ?? defaultActionRoot);
 const nativeHostPath = resolve(
   process.env.ACTION_NATIVE_HOST ?? resolve(actionRoot, "native/engine/scripts/run-app-host.sh"),
 );
-const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath });
+const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath, clientName: "Action MCP" });
 const stageDirector = new StageDirector(nativeHostPath);
 const agentLayerDirector = new AgentLayerDirector(nativeHostPath);
 /** What the last layer snapshot showed, so primitives can read points in its pixels. */
@@ -295,8 +295,14 @@ function parseRuntimeAction(value: unknown): RuntimeAction {
   };
 }
 
+// The agent keeps the run ledger here (session.json, drive trace); what the
+// MCP captures for a session lands beside it, so a run is one folder.
+const sessionsRoot = resolve(
+  process.env.ACTION_SESSIONS_DIR ?? join(homedir(), "Library/Application Support/Action/sessions"),
+);
+
 function sessionOutputDir(sessionId: string): string {
-  return resolve(actionRoot, "artifacts", "sessions", sessionId);
+  return resolve(sessionsRoot, sessionId);
 }
 
 function defaultSessionId(mode: SessionMode): string {
@@ -366,45 +372,6 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function persistDriveSession(lease: DriveLease, events: TraceEvent[]): Promise<void> {
-  const outputDir = sessionOutputDir(lease.sessionId);
-  await writeJson(resolve(outputDir, "drive-lease.json"), lease);
-
-  if (events.length > 0) {
-    const tracePath = resolve(outputDir, "drive-trace.json");
-    const rawTrace = await readTextIfExists(tracePath);
-    let trace: TraceEvent[] = [];
-    try {
-      const parsed = rawTrace ? JSON.parse(rawTrace) : [];
-      trace = Array.isArray(parsed) ? parsed as TraceEvent[] : [];
-    } catch {
-      trace = [];
-    }
-    await writeJson(tracePath, [...trace, ...events]);
-  }
-
-  const sessionPath = resolve(outputDir, "session.json");
-  const rawSession = await readTextIfExists(sessionPath);
-  let session: JsonObject = {};
-  try {
-    session = rawSession ? JSON.parse(rawSession) as JsonObject : {};
-  } catch {
-    session = {};
-  }
-  await writeJson(sessionPath, {
-    ...session,
-    id: session.id ?? lease.sessionId,
-    mode: session.mode ?? "hybrid",
-    state: lease.status === "driving" ? "running" : "completed",
-    phase: lease.status === "driving" ? "acting" : "completed",
-    createdAt: session.createdAt ?? lease.startedAt,
-    outputDir: session.outputDir ?? outputDir,
-    updatedAt: lease.releasedAt ?? lease.lastActAt,
-    driveLeaseId: lease.leaseId,
-    drive: lease,
-  });
-}
-
 async function heartbeatDrive(input: {
   leaseId?: string;
   axTier: AxActionTier;
@@ -416,17 +383,11 @@ async function heartbeatDrive(input: {
   const lease = await driveClient.touch({
     leaseId: input.leaseId,
     axTier: input.axTier,
+    actionKind: input.actionKind,
   });
   if (!lease) {
     return undefined;
   }
-  await persistDriveSession(lease, [{
-    type: "drive.act_tier",
-    at: lease.lastActAt,
-    leaseId: lease.leaseId,
-    axTier: input.axTier,
-    actionKind: input.actionKind,
-  }]);
   await cursorPresenter.renew(lease);
   return lease;
 }
@@ -442,6 +403,7 @@ async function ensureDriveLeaseForAct(input: {
   let lease = await driveClient.touch({
     leaseId: input.leaseId,
     axTier: input.axTier,
+    actionKind: input.actionKind,
   });
 
   if (!lease) {
@@ -458,26 +420,10 @@ async function ensureDriveLeaseForAct(input: {
     lease = await driveClient.touch({
       leaseId: begun.lease.leaseId,
       axTier: input.axTier,
+      actionKind: input.actionKind,
     }) ?? begun.lease;
-    await persistDriveSession(lease, [{
-      type: "drive.lease_began",
-      at: lease.startedAt,
-      leaseId: lease.leaseId,
-      agent: lease.agent,
-      task: lease.task,
-      mode: lease.mode,
-      sessionId: lease.sessionId,
-      implicit: true,
-    }]);
   }
 
-  await persistDriveSession(lease, [{
-    type: "drive.act_tier",
-    at: lease.lastActAt,
-    leaseId: lease.leaseId,
-    axTier: input.axTier,
-    actionKind: input.actionKind,
-  }]);
   if (input.presentCursor === false) {
     await cursorPresenter.suspend(lease.leaseId);
   } else {
@@ -1372,15 +1318,6 @@ async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
   if (begun.status !== "granted") {
     return undefined;
   }
-  await persistDriveSession(begun.lease, [{
-    type: "drive.lease_began",
-    at: begun.lease.startedAt,
-    leaseId: begun.lease.leaseId,
-    agent: begun.lease.agent,
-    task: begun.lease.task,
-    mode: begun.lease.mode,
-    sessionId: begun.lease.sessionId,
-  }]);
   await cursorPresenter.suspend(begun.lease.leaseId);
   layerLease = { leaseId: begun.lease.leaseId, owned: true };
   return begun.lease.leaseId;
@@ -1537,16 +1474,6 @@ const handlers: Record<string, ToolHandler> = {
       };
     }
 
-    await persistDriveSession(result.lease, [{
-      type: "drive.lease_began",
-      at: result.lease.startedAt,
-      leaseId: result.lease.leaseId,
-      agent: result.lease.agent,
-      task: result.lease.task,
-      mode: result.lease.mode,
-      sessionId: result.lease.sessionId,
-      implicit: result.lease.implicit,
-    }]);
     cursorPresenter.recordStyle(result.lease.leaseId, parseDriveCursorStyle(args.cursorStyle));
     cursorPresenter.recordCues(result.lease.leaseId, optionalBoolean(args.cursorCues) ?? true);
     await cursorPresenter.ensure(result.lease);
@@ -1569,13 +1496,6 @@ const handlers: Record<string, ToolHandler> = {
       summary: optionalString(args.summary),
     });
     await cursorPresenter.release(lease.leaseId);
-    await persistDriveSession(lease, [{
-      type: "drive.lease_released",
-      at: lease.releasedAt ?? lease.lastActAt,
-      leaseId: lease.leaseId,
-      outcome: lease.outcome ?? "cancelled",
-      summary: lease.summary,
-    }]);
     return {
       ok: true,
       leaseId: lease.leaseId,
