@@ -98,7 +98,7 @@ enum CaptureAudit {
         var subject = kind
         if let app = target?["app"]?.stringValue, !app.isEmpty { subject += " · \(app)" }
         DispatchQueue.main.async {
-            CaptureCueOverlay.shared.show(cgRect: rect, caller: who, subject: subject)
+            CaptureCueOverlay.shared.show(cgRect: rect, caller: who, subject: subject, kind: kind)
         }
     }
 
@@ -148,7 +148,8 @@ final class CaptureCueOverlay {
     private var panel: NSPanel?
     private var generation = 0
 
-    func show(cgRect: CGRect, caller: CaptureCaller, subject: String) {
+    /// Window shots get a window's corner; region and display shots stay square.
+    func show(cgRect: CGRect, caller: CaptureCaller, subject: String, kind: String) {
         guard let primary = NSScreen.screens.first else { return }
         let appKitRect = CGRect(
             x: cgRect.minX,
@@ -157,29 +158,78 @@ final class CaptureCueOverlay {
             height: cgRect.height
         )
         let screen = NSScreen.screens.first { $0.frame.intersects(appKitRect) } ?? primary
-        let frame = appKitRect.intersection(screen.frame).insetBy(dx: -2, dy: -2)
-        guard !frame.isEmpty else { return }
+        let target = appKitRect.intersection(screen.frame)
+        guard !target.isEmpty else { return }
 
+        // Room around the target for the frame to settle in from.
+        let settle: CGFloat = 8
+        let frame = target.insetBy(dx: -settle, dy: -settle).intersection(screen.frame)
         let panel = self.panel ?? makePanel()
         self.panel = panel
         panel.setFrame(frame, display: false)
 
         let root = NSView(frame: CGRect(origin: .zero, size: frame.size))
         root.wantsLayer = true
+        guard let host = root.layer else { return }
+        let local = CGRect(
+            x: target.minX - frame.minX, y: target.minY - frame.minY,
+            width: target.width, height: target.height
+        )
+        let radius: CGFloat = kind == "window" ? 12 : 0
+        let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
 
-        let border = NSView(frame: root.bounds.insetBy(dx: 1, dy: 1))
-        border.wantsLayer = true
-        border.layer?.borderColor = Self.coral.cgColor
-        border.layer?.borderWidth = 1.5
-        border.layer?.cornerRadius = 10
-        root.addSubview(border)
+        // A faint flash over what was taken: the shutter, without the noise.
+        let flash = CALayer()
+        flash.frame = local
+        flash.cornerRadius = radius
+        flash.backgroundColor = Self.paper.withAlphaComponent(0.10).cgColor
+        flash.opacity = 0
+        host.addSublayer(flash)
+        let flashAnim = CAKeyframeAnimation(keyPath: "opacity")
+        flashAnim.values = [0, 1, 0]
+        flashAnim.keyTimes = [0, 0.15, 1]
+        flashAnim.duration = 0.45
+        flash.add(flashAnim, forKey: "flash")
+
+        // The hairline closes in from a few points out and settles on the edge.
+        let border = CAShapeLayer()
+        border.frame = host.bounds
+        border.fillColor = nil
+        border.strokeColor = Self.coral.cgColor
+        border.lineWidth = 1.5
+        let edge = local.insetBy(dx: 0.75, dy: 0.75)
+        let start = edge.insetBy(dx: -settle + 1, dy: -settle + 1)
+        border.path = CGPath(roundedRect: edge, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        host.addSublayer(border)
+        let pathAnim = CABasicAnimation(keyPath: "path")
+        pathAnim.fromValue = CGPath(roundedRect: start, cornerWidth: radius + settle, cornerHeight: radius + settle, transform: nil)
+        let borderFade = CABasicAnimation(keyPath: "opacity")
+        borderFade.fromValue = 0
+        let settleGroup = CAAnimationGroup()
+        settleGroup.animations = [pathAnim, borderFade]
+        settleGroup.duration = 0.32
+        settleGroup.timingFunction = ease
+        border.add(settleGroup, forKey: "settle")
 
         // Keep the tag clear of the menu bar on full-display shots.
-        let visibleTop = screen.visibleFrame.maxY - frame.minY
         let tag = makeTag(caller: caller, subject: subject)
-        let tagY = min(frame.height, visibleTop) - tag.frame.height - 10
-        tag.setFrameOrigin(CGPoint(x: 10, y: max(10, tagY)))
+        let visibleTop = screen.visibleFrame.maxY - frame.minY
+        let tagY = min(local.maxY, visibleTop) - tag.frame.height - 10
+        tag.setFrameOrigin(CGPoint(x: local.minX + 10, y: max(local.minY + 10, tagY)))
         root.addSubview(tag)
+        if let tagLayer = tag.layer {
+            let rise = CABasicAnimation(keyPath: "transform.translation.y")
+            rise.fromValue = -4
+            let fadeIn = CABasicAnimation(keyPath: "opacity")
+            fadeIn.fromValue = 0
+            let enter = CAAnimationGroup()
+            enter.animations = [rise, fadeIn]
+            enter.beginTime = CACurrentMediaTime() + 0.08
+            enter.duration = 0.28
+            enter.timingFunction = ease
+            enter.fillMode = .backwards
+            tagLayer.add(enter, forKey: "enter")
+        }
 
         panel.contentView = root
         panel.alphaValue = 1
@@ -187,10 +237,11 @@ final class CaptureCueOverlay {
 
         generation += 1
         let current = generation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
             guard let self, self.generation == current, let panel = self.panel else { return }
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.35
+                ctx.duration = 0.45
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 panel.animator().alphaValue = 0
             }, completionHandler: { [weak self] in
                 MainActor.assumeIsolated {
