@@ -9,7 +9,7 @@ protocol OverviewActions {
     func focus(wid: UInt32, pid: Int32)
     /// Tiles one window to `position` on the monitor `displayId`.
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32)
-    /// Carries one window to `spaceId` on its own monitor. Slow: calls
+    /// Moves one window to an absolute Space on any display. Slow: calls
     /// `completion` on the main queue with nil, or why it failed.
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void)
     /// Writes the layer's layout and tucked lists. Never activates it.
@@ -105,12 +105,20 @@ struct LiveOverviewActions: OverviewActions {
     }
 
     func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {
-        // The carry drives Mission Control and blocks for seconds.
+        // Absolute Space identity resolves its display in the shared movement
+        // runtime. It handles inactive source desktops and verifies the landing.
         DispatchQueue.global(qos: .userInitiated).async {
-            let outcome = WindowSpaceCarry.carry(wid: wid, pid: pid, to: spaceId)
-            DispatchQueue.main.async {
-                if case .failed(let reason) = outcome { completion(reason) } else { completion(nil) }
+            let failure: String?
+            do {
+                let receipt = try ActionRuntime.shared.executeWindowMove(
+                    params: .object(["wid": .int(Int(wid)), "spaceId": .int(spaceId)]),
+                    source: "app.overview"
+                )
+                failure = WindowMovementService.failureMessage(for: receipt)
+            } catch {
+                failure = error.localizedDescription
             }
+            DispatchQueue.main.async { completion(failure) }
         }
     }
 
@@ -156,6 +164,9 @@ final class OverviewModel: ObservableObject {
         didSet {
             guard scope != oldValue else { return }
             scope.save(to: defaults)
+            // Browsing a layer points the sidebar at it; clearing the layer
+            // or narrowing the monitor or Desktop never moves it.
+            if let id = scope.layerId, id != oldValue.layerId { rememberMembershipLayer(id) }
             recompute()
         }
     }
@@ -167,10 +178,22 @@ final class OverviewModel: ObservableObject {
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
     @Published private(set) var actionError: String?
+    /// Screen hosting Overview, captured before a move can focus another app.
+    @Published var hostDisplayId: UInt32?
     /// Windows with a Space move under way.
     @Published private(set) var moving: Set<UInt32> = []
     /// The last row the user picked, for the inspector.
     @Published private(set) var focusedWid: UInt32?
+
+    /// The membership sidebar, brought in on demand. Hiding it keeps its
+    /// layer, its membership and any open edit.
+    @Published var membershipShown = false
+    /// The layer the sidebar shows, as the user last chose or browsed it.
+    /// The monitor, Desktop, search and kind never change it.
+    @Published private(set) var membershipLayerId: String?
+    /// That layer's whole membership, from every window.
+    @Published private(set) var membership: OverviewMembership?
+    static let membershipLayerKey = "overview.membershipLayer.v1"
 
     let layerStore = LayerOverviewStore()
     private let defaults: UserDefaults
@@ -192,6 +215,7 @@ final class OverviewModel: ObservableObject {
         self.defaults = defaults
         self.actions = actions
         self.scope = OverviewScope.load(from: defaults)
+        self.membershipLayerId = defaults.string(forKey: Self.membershipLayerKey)
         self.inputs = inputs ?? OverviewProjection.Inputs(windows: [], displays: [], main: .zero)
         aliveWindows = Dictionary(self.inputs.windows.map { ($0.wid, $0) }, uniquingKeysWith: { a, _ in a })
         recompute()
@@ -230,6 +254,7 @@ final class OverviewModel: ObservableObject {
 
     /// Reads the desktop, layers and stage again.
     func refresh() {
+        updateHostDisplay()
         let stage = LayerStage.shared
         let windows = DesktopModel.shared.allWindows()
         var extras: [String: Set<UInt32>] = [:]
@@ -261,7 +286,109 @@ final class OverviewModel: ObservableObject {
     private func recompute() {
         let next = OverviewProjection.make(inputs, scope: scope, selection: selection)
         if next != projection { projection = next }
+        let members = membershipLayer.flatMap { OverviewMembership.make(layerId: $0, inputs: inputs, projection: next) }
+        if members != membership { membership = members }
         pushCanvasSelection()
+    }
+
+    // MARK: Membership sidebar
+
+    /// The layer the sidebar shows: the remembered one while it exists,
+    /// else the layer the scope browses, else the active layer, else the
+    /// first.
+    var membershipLayer: String? {
+        let exists: (String) -> Bool = { id in self.layers.contains { $0.id == id } }
+        if let id = membershipLayerId, exists(id) { return id }
+        if let id = scope.layerId, exists(id) { return id }
+        return layers.first(where: \.isActive)?.id ?? layers.first?.id
+    }
+
+    func chooseMembershipLayer(_ id: String) {
+        guard rememberMembershipLayer(id) else { return }
+        recompute()
+    }
+
+    @discardableResult
+    private func rememberMembershipLayer(_ id: String) -> Bool {
+        guard id != membershipLayerId else { return false }
+        membershipLayerId = id
+        defaults.set(id, forKey: Self.membershipLayerKey)
+        return true
+    }
+
+    func toggleMembership() { membershipShown.toggle() }
+
+    // MARK: Layer and Desktop
+
+    /// Scope one: a layer, or every window. It always opens whole: any
+    /// Desktop subset belonged to the list it narrowed, so it goes.
+    func chooseLayer(_ id: String?) {
+        var next = scope
+        next.layerId = id
+        next.display = nil
+        next.spaceId = nil
+        scope = next
+    }
+
+    /// Scope two: one Desktop of the chosen list, nil (or the same Desktop
+    /// again) for all of them. Its monitor comes with it.
+    func chooseDesktop(_ spaceId: Int?) {
+        var next = scope
+        if let spaceId, spaceId != scope.spaceId,
+           let display = displays.first(where: { $0.owns(spaceId) }) {
+            next.display = display.index
+            next.spaceId = spaceId
+        } else {
+            next.display = nil
+            next.spaceId = nil
+        }
+        scope = next
+    }
+
+    /// Every Desktop left to right as the strip shows them, after All
+    /// desktops: monitor by monitor, then each one's full-screen Spaces.
+    var desktopOrder: [Int] {
+        projection.desk.flatMap { $0.spaces.map(\.spaceId) }
+    }
+
+    /// ← → walk the Desktop subset through the strip, wrapping through All
+    /// desktops.
+    func stepDesktop(_ delta: Int) {
+        let order: [Int?] = [nil] + desktopOrder.map { Optional($0) }
+        guard order.count > 1 else { return }
+        let at = order.firstIndex(of: scope.spaceId) ?? 0
+        chooseDesktop(order[((at + delta) % order.count + order.count) % order.count])
+    }
+
+    /// The working list the sidebar acts on: the chosen layer's whole
+    /// membership, or its part on the chosen Desktop. Nil for every window.
+    /// Search and kind never narrow it.
+    var workingMembership: OverviewMembership? {
+        guard let whole = layerMembership else { return nil }
+        guard let spaceId = scope.spaceId else { return whole }
+        return whole.on(space: spaceId)
+    }
+
+    /// The chosen layer's whole membership, whatever Desktop is chosen.
+    var layerMembership: OverviewMembership? {
+        guard let id = scope.layerId else { return nil }
+        if let membership, membership.layerId == id { return membership }
+        return OverviewMembership.make(layerId: id, inputs: inputs, projection: projection)
+    }
+
+    /// Every window's working list: the matched rows in the Desktop subset.
+    var workingRows: [OverviewRow] { projection.inScopeRows }
+
+    /// Selects a window and brings its row into view. Browsing only: the
+    /// scope and the desktop don't change.
+    func reveal(_ wid: UInt32) {
+        select(wid)
+        revealRequest = RevealRequest(wid: wid, serial: revealRequest.serial + 1)
+    }
+
+    /// Whether `wid` has a row in the desk now.
+    func isListed(_ wid: UInt32) -> Bool {
+        projection.rows.contains { $0.wid == wid }
     }
 
     /// The windows drawn live on the canvas: all it can select or act on.
@@ -314,7 +441,7 @@ final class OverviewModel: ObservableObject {
 
     /// Extends the selection over the rows from the focused one to `wid`.
     func extend(to wid: UInt32) {
-        let rows = projection.rows.map(\.wid)
+        let rows = workingRows.map(\.wid)
         guard let anchor = focusedWid, let a = rows.firstIndex(of: anchor), let b = rows.firstIndex(of: wid) else {
             toggle(wid); return
         }
@@ -324,7 +451,7 @@ final class OverviewModel: ObservableObject {
     /// Arrow keys in the list: moves to the next or previous row, or with
     /// shift adds it to the selection.
     func step(_ delta: Int, extend: Bool) {
-        let rows = projection.rows.map(\.wid)
+        let rows = workingRows.map(\.wid)
         guard !rows.isEmpty else { return }
         let next: UInt32
         if let current = focusedWid, let at = rows.firstIndex(of: current) {
@@ -536,11 +663,28 @@ final class OverviewModel: ObservableObject {
         return true
     }
 
-    /// Carries one window to another desktop on its own monitor.
+    func updateHostDisplay() {
+        hostDisplayId = ScreenMapWindowController.shared.nsWindow?.screen.flatMap {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        }
+    }
+
+    func bringHereTarget(for wid: UInt32) -> OverviewMoveDestination? {
+        projection.bringHereTarget(for: wid, hostDisplayId: hostDisplayId)
+    }
+
+    /// Moves one window to an explicit Desktop on any display.
     @discardableResult
     func move(_ wid: UInt32, toSpace spaceId: Int) -> Bool {
-        guard !moving.contains(wid), let row = projection.all[wid],
-              projection.moveTargets(for: wid).contains(where: { $0.spaceId == spaceId }) else { return false }
+        guard moving.isEmpty else { return false }
+        guard let row = projection.all[wid] else {
+            actionError = "Couldn't move window: it is no longer available"
+            return false
+        }
+        guard projection.moveTargets(for: wid).contains(where: { $0.spaceId == spaceId }) else {
+            actionError = "Couldn't move \(row.app): the window or destination Desktop is no longer available"
+            return false
+        }
         actionError = nil
         moving.insert(wid)
         actions.moveToSpace(wid: wid, pid: row.pid, spaceId: spaceId) { [weak self] failure in

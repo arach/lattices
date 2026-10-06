@@ -496,25 +496,61 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(model.projection.placeExclusion(99), .gone)
     }
 
-    func testMoveGoesToAnotherDesktopOfTheSameMonitor() {
+    func testMoveDestinationsDistinguishEveryDisplayAndDesktop() throws {
         let projection = project()
-        XCTAssertEqual(projection.moveTargets(for: 1).map(\.desktop), [2, 3])
-        XCTAssertEqual(projection.moveTargets(for: 2).map(\.desktop), [1, 2])
-        XCTAssertEqual(projection.moveTargets(for: 3).map(\.desktop), [1])
+        XCTAssertEqual(projection.moveTargets(for: 1).map(\.spaceId), [2, 3, 10, 11])
+        XCTAssertEqual(projection.moveTargets(for: 2).map(\.spaceId), [1, 2, 10, 11])
+        XCTAssertEqual(projection.moveTargets(for: 3).map(\.spaceId), [1, 2, 3, 10])
+        let desktop2 = projection.moveTargets(for: 2).filter { $0.desktop == 2 }
+        XCTAssertEqual(desktop2.map(\.title), ["Studio · Desktop 2", "Side · Desktop 2"])
+        XCTAssertEqual(desktop2.map(\.spaceId), [2, 11])
         for wid: UInt32 in [4, 5, 6, 7] { XCTAssertEqual(projection.moveTargets(for: wid).count, 0, "window \(wid)") }
         XCTAssertEqual(OverviewProjection.moveExclusion(projection.all[7]!), .fullScreen)
         XCTAssertEqual(OverviewProjection.moveExclusion(projection.all[5]!), .parked)
 
         let model = model()
-        XCTAssertFalse(model.move(1, toSpace: 11), "another monitor's desktop")
         XCTAssertFalse(model.move(1, toSpace: 1), "its own desktop")
-        XCTAssertTrue(model.move(1, toSpace: 3))
+        XCTAssertFalse(model.move(1, toSpace: 12), "full-screen Space is not a move destination")
+        XCTAssertTrue(model.move(1, toSpace: 11), "another monitor's explicit Desktop")
         XCTAssertEqual(model.moving, [1])
         XCTAssertFalse(model.move(1, toSpace: 2), "one move at a time")
+        XCTAssertFalse(model.move(2, toSpace: 2), "Mission Control moves serialize across windows")
         spy.finishMove?("Mission Control didn't open")
         XCTAssertEqual(model.moving, [])
         XCTAssertEqual(model.actionError, "Couldn't move Ghostty: Mission Control didn't open")
-        XCTAssertEqual(spy.calls, ["move 1 to 3"])
+        XCTAssertEqual(spy.calls, ["move 1 to 11"])
+    }
+
+    func testBringHereUsesHostShowingSpaceRegardlessOfBrowsedOrSourceDesktop() throws {
+        let model = model()
+        model.hostDisplayId = 1
+        model.chooseDesktop(10)
+        XCTAssertEqual(model.bringHereTarget(for: 3)?.title, "Studio · Desktop 1")
+        XCTAssertEqual(model.bringHereTarget(for: 3)?.spaceId, 1)
+        XCTAssertNil(model.bringHereTarget(for: 1), "already here")
+        model.hostDisplayId = 2
+        XCTAssertEqual(model.bringHereTarget(for: 2)?.spaceId, 11)
+        XCTAssertEqual(model.bringHereTarget(for: 2)?.displayIndex, 1)
+        model.hostDisplayId = nil
+        XCTAssertNil(model.bringHereTarget(for: 2), "unresolved host must not guess from selected window")
+        XCTAssertEqual(spy.calls, [], "computing a destination never moves or focuses a window")
+    }
+
+    func testInactiveVirtualWindowCanChoosePhysicalDesktopWithSameNumber() throws {
+        let virtual = OverviewDisplay(index: 2, name: "Action Agent Layer",
+            bounds: CGRect(x: 3440, y: 0, width: 1440, height: 900),
+            desktops: [1955, 1956, 2376, 2377], currentSpaceId: 1955, displayId: 20)
+        let physical = OverviewDisplay(index: 0, name: "DELL", bounds: main,
+            desktops: [1, 3], currentSpaceId: 3, displayId: 10)
+        let row = window(100, "Ghostty", "disposable", spaces: [2377], frame: virtual.bounds)
+        let projection = OverviewProjection.make(
+            .init(windows: [row], displays: [physical, virtual], main: main),
+            scope: .all, selection: [100]
+        )
+        let targets = projection.moveTargets(for: 100).filter { $0.desktop == 2 }
+        XCTAssertEqual(targets.map(\.title), ["DELL · Desktop 2", "Action Agent Layer · Desktop 2"])
+        XCTAssertEqual(targets.map(\.spaceId), [3, 1956])
+        XCTAssertEqual(projection.bringHereTarget(for: 100, hostDisplayId: 10)?.spaceId, 3)
     }
 
     // MARK: Edit layer (plan 23)
@@ -608,6 +644,208 @@ final class OverviewProjectionTests: XCTestCase {
         reordered.layers = Array(reordered.layers.reversed())
         model.update(reordered)
         XCTAssertEqual(model.editing?.savePlan().layerId, "mail")
+    }
+
+    // MARK: Desk
+
+    func testTheDeskListsEveryMonitorAndDesktopEmptyOnesToo() {
+        let desk = project().desk
+        XCTAssertEqual(desk.map(\.display.name), ["Studio", "Side"], "left to right")
+        XCTAssertEqual(desk[0].spaces.map(\.spaceId), [1, 2, 3])
+        XCTAssertEqual(desk[1].spaces.map(\.spaceId), [10, 11, 12], "the full-screen Space holds a window")
+        XCTAssertEqual(desk[1].spaces[0].rows, [], "an empty Desktop still shows")
+        XCTAssertEqual(desk[1].spaces[2].title, "Full screen")
+        XCTAssertTrue(desk[0].spaces[2].rows.contains { $0.wid == 2 })
+        XCTAssertTrue(desk[1].spaces[1].isCurrent)
+    }
+
+    func testTheDeskRowsAreTheKeyOrderAndUnplacedComeLast() {
+        let projection = project()
+        XCTAssertTrue(projection.unplaced.contains { $0.wid == 6 })
+        XCTAssertEqual(projection.rows.suffix(projection.unplaced.count).map(\.wid), projection.unplaced.map(\.wid))
+        XCTAssertEqual(Set(projection.rows.map(\.wid)), Set(projection.desk.flatMap { $0.spaces.flatMap(\.rows) }.map(\.wid) + projection.unplaced.map(\.wid)))
+    }
+
+    func testScopeMarksTheDeskWithoutHidingAnyOfIt() {
+        let desk = project(OverviewScope(display: 1, spaceId: 11)).desk
+        XCTAssertEqual(desk.count, 2)
+        XCTAssertFalse(desk[0].inScope)
+        XCTAssertEqual(desk[0].spaces.map(\.inScope), [false, false, false])
+        XCTAssertEqual(desk[1].spaces.map(\.inScope), [false, true, false])
+    }
+
+    func testOnlyTheShowingSpaceDrawsLive() {
+        let desk = project().desk
+        let showing = desk[0].spaces[0]
+        XCTAssertNil(showing.mapNote)
+        XCTAssertTrue(showing.drawsLive(project().all[1]!))
+
+        let desktop3 = desk[0].spaces[2]
+        let zed = desktop3.rows.first { $0.wid == 2 }!
+        XCTAssertFalse(desktop3.drawsLive(zed))
+        XCTAssertNotNil(desktop3.mapNote, "a Desktop that isn't showing says its frames aren't live")
+
+        let fullScreen = desk[1].spaces[2]
+        XCTAssertFalse(fullScreen.isCurrent)
+        XCTAssertFalse(fullScreen.drawsLive(fullScreen.rows[0]), "a full-screen Space not showing isn't drawn live")
+        XCTAssertEqual(fullScreen.mapNote, "not showing")
+    }
+
+    // MARK: Membership sidebar
+
+    func testMembershipHoldsMembersTuckedAndUnclaimedApart() throws {
+        let m = try XCTUnwrap(OverviewMembership.make(layerId: "tideline", inputs: inputs(), projection: project()))
+        XCTAssertEqual(m.members.map(\.wid), [1, 2, 3, 6])
+        XCTAssertEqual(m.members.map(\.entry), ["Ghostty", "Zed", "Zed", "Zed"])
+        XCTAssertEqual(m.members.last?.location, "Minimized or closed")
+        XCTAssertEqual(m.tucked.map(\.wid), [5])
+        XCTAssertEqual(m.unclaimed.map(\.wid), [8], "4 is Mail's now, so it isn't unclaimed")
+        XCTAssertNil(m.unclaimed[0].entry)
+        XCTAssertEqual(m.missing, [])
+        XCTAssertEqual(m.total, 5, "unclaimed windows aren't configured membership")
+    }
+
+    func testAConfiguredEntryWithNoWindowSitsApartFromAnUnclaimedWindow() throws {
+        var layers = layers()
+        layers[0] = LayerOverview(index: 0, id: "tideline", label: "Tideline", layout: "auto", isActive: true,
+                                  entries: layers[0].entries + [
+                                      .init(index: 2, name: "Chrome", pattern: "chrome", windows: [], missing: nil),
+                                  ])
+        var input = inputs()
+        input.layers = layers
+        let projection = OverviewProjection.make(input, scope: .all, selection: [])
+        let m = try XCTUnwrap(OverviewMembership.make(layerId: "tideline", inputs: input, projection: projection))
+        XCTAssertEqual(m.missing.map(\.name), ["Chrome"])
+        XCTAssertEqual(m.missing.first?.note, "No window")
+        XCTAssertEqual(m.missing.first?.pattern, "chrome")
+        XCTAssertEqual(m.unclaimed.map(\.wid), [8])
+        XCTAssertFalse(m.members.contains { $0.wid == 8 })
+    }
+
+    func testBrowsingNeverShrinksTheMembership() throws {
+        let model = model()
+        let whole = try XCTUnwrap(model.membership)
+        model.scope.display = 1
+        model.scope.spaceId = 10
+        model.scope.search = "nothing matches"
+        model.scope.preset = "Browsers"
+        XCTAssertEqual(model.membership, whole)
+        XCTAssertEqual(model.membershipLayer, "tideline")
+        XCTAssertEqual(spy.calls, [])
+    }
+
+    func testFirstOpenShowsTheScopedLayerBeforeTheActiveOne() {
+        // Scoped to Mail while Tideline is active, no sidebar choice yet.
+        OverviewScope(layerId: "mail").save(to: defaults)
+        XCTAssertNil(defaults.string(forKey: OverviewModel.membershipLayerKey))
+        let first = model()
+        XCTAssertEqual(first.membershipLayer, "mail")
+        XCTAssertEqual(first.membership?.layerId, "mail")
+
+        first.chooseMembershipLayer("tideline")
+        XCTAssertEqual(model().membershipLayer, "tideline", "a remembered choice outlasts the scoped layer")
+    }
+
+    func testWithNoScopedLayerTheActiveOneShows() {
+        XCTAssertEqual(model().membershipLayer, "tideline")
+        XCTAssertEqual(model(inputs(tidelineActive: false)).membershipLayer, "mail")
+    }
+
+    func testTheSidebarLayerSurvivesMonitorScopeAndHiding() throws {
+        let model = model()
+        model.chooseMembershipLayer("mail")
+        model.membershipShown = true
+        let shown = try XCTUnwrap(model.membership)
+        model.stepMonitor(1)
+        model.scope.spaceId = 3
+        model.toggleMembership()
+        XCTAssertFalse(model.membershipShown)
+        model.toggleMembership()
+        XCTAssertEqual(model.membershipLayer, "mail")
+        XCTAssertEqual(model.membership, shown)
+    }
+
+    func testBrowsingALayerPointsTheSidebarAtIt() {
+        let model = model()
+        model.chooseMembershipLayer("tideline")
+        model.scope.layerId = "mail"
+        XCTAssertEqual(model.membershipLayer, "mail")
+        model.scope.layerId = nil
+        XCTAssertEqual(model.membershipLayer, "mail", "clearing the layer scope keeps the sidebar where it is")
+    }
+
+    func testRevealSelectsWithoutMovingTheScopeOrAWindow() {
+        let model = model()
+        model.scope.display = 0
+        model.reveal(3)
+        XCTAssertEqual(model.selection, [3])
+        XCTAssertEqual(model.scope.display, 0)
+        XCTAssertEqual(model.revealRequest, .init(wid: 3, serial: 1))
+        XCTAssertTrue(model.isListed(3), "dimmed, not hidden: another monitor's rows stay on the desk")
+        XCTAssertEqual(spy.calls, [])
+    }
+
+    // MARK: Layer, then Desktop
+
+    func testADesktopNarrowsTheLayerAndAllDesktopsRestoresIt() throws {
+        let model = model()
+        model.chooseLayer("tideline")
+        let whole = try XCTUnwrap(model.workingMembership)
+        XCTAssertEqual(whole.count, 6)
+
+        model.chooseDesktop(1)
+        XCTAssertEqual(model.scope.display, 0, "the Desktop brings its monitor")
+        let here = try XCTUnwrap(model.workingMembership)
+        XCTAssertEqual(here.members.map(\.wid), [1])
+        XCTAssertEqual(here.tucked.map(\.wid), [5])
+        XCTAssertEqual(here.unclaimed, [], "8 is on Desktop 2")
+        XCTAssertEqual(model.layerMembership, whole, "the layer itself stays whole")
+
+        model.chooseDesktop(1)
+        XCTAssertNil(model.scope.spaceId, "the same Desktop again gives the whole list back")
+        model.chooseDesktop(2)
+        XCTAssertEqual(model.workingMembership?.unclaimed.map(\.wid), [8])
+        model.chooseDesktop(nil)
+        XCTAssertNil(model.scope.display)
+        XCTAssertEqual(model.workingMembership, whole, "All desktops brings back the unknown and tucked ones")
+        XCTAssertEqual(spy.calls, [])
+    }
+
+    func testSwitchingLayersDropsTheDesktop() {
+        let model = model()
+        model.chooseLayer("tideline")
+        model.chooseDesktop(3)
+        model.chooseLayer("mail")
+        XCTAssertNil(model.scope.spaceId)
+        XCTAssertNil(model.scope.display)
+        XCTAssertEqual(model.workingMembership?.members.map(\.wid), [4])
+        model.chooseLayer(nil)
+        XCTAssertNil(model.workingMembership)
+    }
+
+    func testSearchAndKindNeverNarrowTheLayersList() throws {
+        let model = model()
+        model.chooseLayer("tideline")
+        let whole = try XCTUnwrap(model.workingMembership)
+        model.scope.search = "nothing matches"
+        model.scope.preset = "Browsers"
+        XCTAssertEqual(model.workingMembership, whole)
+        XCTAssertEqual(model.scope.layerId, "tideline")
+    }
+
+    func testDesktopStepsWalkTheStripAndWrapThroughAllDesktops() {
+        let model = model()
+        XCTAssertEqual(model.desktopOrder, [1, 2, 3, 10, 11, 12])
+        model.stepDesktop(1)
+        XCTAssertEqual(model.scope.spaceId, 1)
+        model.stepDesktop(-1)
+        XCTAssertNil(model.scope.spaceId)
+        model.stepDesktop(-1)
+        XCTAssertEqual(model.scope.spaceId, 12)
+        XCTAssertEqual(model.scope.display, 1)
+        model.chooseDesktop(11)
+        XCTAssertEqual(model.workingRows.map(\.wid), [3], "every window's list narrows the same way")
+        XCTAssertEqual(spy.calls, [])
     }
 }
 
