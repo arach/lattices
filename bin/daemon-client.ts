@@ -29,6 +29,33 @@ function voiceTokenHeader(method: string): string[] {
   }
 }
 
+// Who is calling. The daemon logs and shows agent screenshots, so it needs to
+// know which agent asked and from where. Header values stay ASCII, one line.
+const CALLER_HEADER = "x-lattices-caller";
+
+function detectAgent(env: NodeJS.ProcessEnv): string {
+  if (env.LATTICES_AGENT) return env.LATTICES_AGENT;
+  if (env.CLAUDECODE || env.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  if (Object.keys(env).some((k) => k.startsWith("CODEX_"))) return "codex";
+  if (env.OPENCODE || env.OPENCODE_BIN_PATH) return "opencode";
+  if (env.CURSOR_AGENT || env.CURSOR_TRACE_ID) return "cursor";
+  return "";
+}
+
+function callerHeader(): string[] {
+  const env = process.env;
+  const ssh = (env.SSH_CONNECTION || env.SSH_CLIENT || "").split(" ")[0];
+  const caller = {
+    agent: detectAgent(env),
+    client: env.LATTICES_CLIENT || "cli",
+    origin: ssh ? `ssh ${ssh}` : "local",
+    cwd: process.cwd(),
+    pid: process.pid,
+  };
+  const value = Buffer.from(JSON.stringify(caller)).toString("base64");
+  return [`${CALLER_HEADER}: ${value}`];
+}
+
 interface ParsedFrame {
   payload: string;
   rest: Buffer<ArrayBuffer>;
@@ -83,6 +110,7 @@ export async function daemonCall(
         `Sec-WebSocket-Key: ${key}`,
         `Sec-WebSocket-Version: 13`,
         ...voiceTokenHeader(method),
+        ...callerHeader(),
         ``,
         ``,
       ].join("\r\n");
