@@ -68,6 +68,12 @@ struct ActionDriveLease: Codable, Equatable, Sendable {
     var consumedCapabilities: [String]?
     var lastOperationId: String?
     var operationStopFile: String?
+    /// What the caller says it is, e.g. "Action MCP". Self-reported, like `agent`.
+    var client: String? = nil
+    /// What the agent saw on the other end of the socket, e.g. `bun 41250 ← claude 41012`.
+    var clientProcess: String? = nil
+    /// Acts recorded against this lease.
+    var actCount: Int? = nil
 }
 
 struct ActionDriveBeginResult: Sendable {
@@ -105,6 +111,7 @@ actor ActionDriveLeaseStore {
     private let terminalRetention: TimeInterval
     private let now: @Sendable () -> Date
     private let publishesPresence: Bool
+    private let sessionArchive: ActionSessionArchive?
     private var records: [String: ActionStoredDriveLease]
     private var disconnectedOwners: [String: Date] = [:]
 
@@ -114,9 +121,11 @@ actor ActionDriveLeaseStore {
         maximumDuration: TimeInterval = ActionDriveLeaseStore.maximumDuration,
         terminalRetention: TimeInterval = ActionDriveLeaseStore.terminalRetention,
         publishesPresence: Bool = true,
+        sessionArchive: ActionSessionArchive? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.rootURL = rootURL
+        self.sessionArchive = sessionArchive
         self.idleExpiry = idleExpiry
         self.maximumDuration = maximumDuration
         self.terminalRetention = terminalRetention
@@ -132,6 +141,7 @@ actor ActionDriveLeaseStore {
             record.lease.summary = "Lease owner was disconnected when the Action agent restarted"
             loaded[leaseID] = record
             try? Self.persist(record, rootURL: rootURL)
+            sessionArchive?.record(record.lease, event: Self.event("drive.lease_ended", record.lease))
             Self.signalStop(for: record.lease)
             Self.signalOperationStop(for: record.lease)
             if publishesPresence {
@@ -154,7 +164,9 @@ actor ActionDriveLeaseStore {
         capability: String? = nil,
         resource: String? = nil,
         workflowRunID rawWorkflowRunID: String? = nil,
-        workspaceID rawWorkspaceID: String? = nil
+        workspaceID rawWorkspaceID: String? = nil,
+        client rawClient: String? = nil,
+        clientProcess: String? = nil
     ) throws -> ActionDriveBeginResult {
         let at = now()
         try sweep(at: at)
@@ -226,7 +238,10 @@ actor ActionDriveLeaseStore {
             resources: grantedResources,
             consumedCapabilities: nil,
             lastOperationId: nil,
-            operationStopFile: nil
+            operationStopFile: nil,
+            client: rawClient?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            clientProcess: clientProcess,
+            actCount: 0
         )
         let record = ActionStoredDriveLease(ownerID: ownerID, lease: lease)
         records[leaseID] = record
@@ -241,6 +256,12 @@ actor ActionDriveLeaseStore {
             }
             throw error
         }
+        var began = Self.event("drive.lease_began", lease)
+        began["agent"] = lease.agent
+        began["task"] = lease.task
+        began["mode"] = lease.mode
+        began["implicit"] = implicit
+        sessionArchive?.record(lease, event: began)
         return ActionDriveBeginResult(status: "granted", lease: lease, reason: nil)
     }
 
@@ -309,7 +330,8 @@ actor ActionDriveLeaseStore {
     func touch(
         ownerID: String,
         leaseID: String?,
-        axTier: String?
+        axTier: String?,
+        actionKind: String? = nil
     ) throws -> ActionDriveLease? {
         let at = now()
         try sweep(at: at)
@@ -325,9 +347,16 @@ actor ActionDriveLeaseStore {
         record.lease.lastActAt = actionDriveISO8601(at)
         if let axTier, !axTier.isEmpty {
             record.lease.lastAxTier = axTier
+            record.lease.actCount = (record.lease.actCount ?? 0) + 1
         }
         records[record.lease.leaseId] = record
         try persist(record)
+        if let axTier, !axTier.isEmpty {
+            var act = Self.event("drive.act_tier", record.lease)
+            act["axTier"] = axTier
+            act["actionKind"] = actionKind
+            sessionArchive?.record(record.lease, event: act)
+        }
         do {
             try publishPresence(for: record.lease, at: at)
         } catch {
@@ -376,6 +405,7 @@ actor ActionDriveLeaseStore {
             ?? record.lease.summary
         records[leaseID] = record
         try persist(record)
+        sessionArchive?.record(record.lease, event: Self.event("drive.lease_ended", record.lease))
         Self.signalStop(for: record.lease)
         Self.signalOperationStop(for: record.lease)
         try publishPresence(for: record.lease, at: at)
@@ -394,10 +424,38 @@ actor ActionDriveLeaseStore {
             record.lease.summary = summary
             records[leaseID] = record
             try? persist(record)
+            sessionArchive?.record(record.lease, event: Self.event("drive.lease_ended", record.lease))
             Self.signalStop(for: record.lease)
             Self.signalOperationStop(for: record.lease)
             try? publishPresence(for: record.lease, at: at)
         }
+    }
+
+    /// Applies the archive's age and size caps, sparing sessions still driving.
+    func pruneSessions() -> ActionSessionPruneResult? {
+        sessionArchive?.prune(keeping: activeSessionIDs, now: now())
+    }
+
+    func clearSessions() -> ActionSessionPruneResult? {
+        sessionArchive?.clear(keeping: activeSessionIDs)
+    }
+
+    private var activeSessionIDs: Set<String> {
+        Set(records.values.filter { $0.lease.status == "driving" }.map(\.lease.sessionId))
+    }
+
+    private static func event(_ type: String, _ lease: ActionDriveLease) -> [String: Any] {
+        var event: [String: Any] = [
+            "type": type,
+            "at": lease.releasedAt ?? lease.lastActAt,
+            "leaseId": lease.leaseId,
+            "sessionId": lease.sessionId,
+        ]
+        if type == "drive.lease_ended" {
+            event["outcome"] = lease.outcome ?? lease.status
+            event["summary"] = lease.summary
+        }
+        return event
     }
 
     func status() throws -> ActionDriveStatusSnapshot {
@@ -447,6 +505,7 @@ actor ActionDriveLeaseStore {
                         : (reason == "idle" ? "Lease expired after idle silence" : "Lease exceeded maximum duration")
                     records[leaseID] = record
                     try persist(record)
+                    sessionArchive?.record(record.lease, event: Self.event("drive.lease_ended", record.lease))
                     Self.signalStop(for: record.lease)
                     Self.signalOperationStop(for: record.lease)
                     try publishPresence(for: record.lease, at: at)

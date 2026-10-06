@@ -28,6 +28,8 @@ export interface DriveAgentClientOptions {
   port?: number;
   requestTimeoutMs?: number;
   startupTimeoutMs?: number;
+  /** How this client names itself on the leases it begins, e.g. "Action MCP". */
+  clientName?: string;
 }
 
 export interface DriveBeginInput {
@@ -60,6 +62,7 @@ export class DriveAgentClient {
   private readonly port: number;
   private readonly requestTimeoutMs: number;
   private readonly startupTimeoutMs: number;
+  private readonly clientName?: string;
   private socket?: WebSocket;
   private connectPromise?: Promise<WebSocket>;
   private readonly pending = new Map<string, PendingRequest>();
@@ -70,6 +73,7 @@ export class DriveAgentClient {
     this.port = options.port ?? 4319;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 20_000;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 120_000;
+    this.clientName = options.clientName;
   }
 
   get isConnected(): boolean {
@@ -85,6 +89,7 @@ export class DriveAgentClient {
       implicit: input.implicit === true ? "true" : undefined,
       showSupervisionLabel: input.showSupervisionLabel === false ? "false" : "true",
       pointerControl: input.pointerControl === true ? "true" : "false",
+      client: this.clientName,
     });
     return {
       status: result.status === "denied" ? "denied" : "granted",
@@ -96,12 +101,14 @@ export class DriveAgentClient {
   async touch(input: {
     leaseId?: string;
     axTier?: AxActionTier;
+    actionKind?: string;
   } = {}): Promise<DriveLease | undefined> {
     let result: Record<string, string>;
     try {
       result = await this.request("drive.touch", {
         leaseId: input.leaseId,
         axTier: input.axTier,
+        actionKind: input.actionKind,
       });
     } catch (error) {
       if (isDriveLeaseInactiveError(error)) {

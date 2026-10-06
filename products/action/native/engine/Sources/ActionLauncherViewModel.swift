@@ -143,6 +143,10 @@ struct ActionSessionSummary: Identifiable {
     /// Driving agent identity, kept separate from `subtitle` so the Runs row can
     /// rank it below the task instead of inheriting a pre-joined string.
     let agent: String
+    /// How the driver reached the agent: the client it named plus the process
+    /// the agent saw on the socket. Empty for runs recorded before the agent
+    /// kept the ledger.
+    let client: String
     let outcome: ActionRunOutcome
 
     var agentFeedbackMarkdownURL: URL {
@@ -217,6 +221,8 @@ private struct PersistedDriveRecord: Decodable {
     let status: String?
     let startedAt: String?
     let releasedAt: String?
+    let client: String?
+    let clientProcess: String?
 }
 
 private extension String {
@@ -717,6 +723,31 @@ final class ActionLauncherViewModel: ObservableObject {
     }
 
     /// Permanently removes a session's artifact directory from disk.
+    /// Clears the run ledger through the agent, which owns it and knows which
+    /// sessions are still driving.
+    func clearSessions() async {
+        do {
+            let response = try await agentClient.send(method: .sessionsClear)
+            if !response.ok {
+                logger.error("Clear runs failed: \(response.error ?? "unknown", privacy: .public)")
+            }
+        } catch {
+            logger.error("Clear runs failed: \(error.localizedDescription, privacy: .public)")
+        }
+        // Runs from before the agent kept the ledger sit in the checkout's
+        // artifacts folder; nothing writes there any more, so a finished one
+        // goes with the rest.
+        let legacyRoot = artifactsSessionsDirectoryURL().standardizedFileURL.path
+        for session in recentSessions
+            where session.artifactDirectoryURL.standardizedFileURL.path.hasPrefix(legacyRoot + "/")
+                && session.state != "driving" {
+            try? FileManager.default.removeItem(at: session.artifactDirectoryURL)
+        }
+        selectedSessionID = nil
+        focusedFeedbackItemID = nil
+        refreshSessions()
+    }
+
     func deleteSession(_ session: ActionSessionSummary) throws {
         try FileManager.default.removeItem(at: session.artifactDirectoryURL)
         if selectedSessionID == session.id {
@@ -980,6 +1011,9 @@ final class ActionLauncherViewModel: ObservableObject {
             if !session.agent.isEmpty {
                 row["agent"] = session.agent
             }
+            if !session.client.isEmpty {
+                row["client"] = session.client
+            }
             if !session.subtitle.isEmpty {
                 row["subtitle"] = session.subtitle
             }
@@ -1054,6 +1088,7 @@ final class ActionLauncherViewModel: ObservableObject {
             subtitle: trace.actualResult.isEmpty ? "Capture" : "= \(trace.actualResult)",
             state: "completed",
             agent: "",
+            client: "",
             outcome: .ok
         )
     }
@@ -1146,6 +1181,9 @@ final class ActionLauncherViewModel: ObservableObject {
             subtitle: subtitle,
             state: resolvedState,
             agent: agentName,
+            client: [record.drive?.client, record.drive?.clientProcess]
+                .compactMap { $0?.nilIfEmpty }
+                .joined(separator: " · "),
             // `finishedAt` is a release for a closed run and the last heartbeat
             // for an open one — either way it is the freshest thing the run said.
             outcome: ActionRunOutcome(state: resolvedState, lastActivity: finishedAt ?? startedAt)

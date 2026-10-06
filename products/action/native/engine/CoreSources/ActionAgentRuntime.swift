@@ -40,6 +40,30 @@ final class ActionAgentRequestScheduler: @unchecked Sendable {
     }
 }
 
+/// Who is on the other end of each connection, resolved at most once.
+actor ActionAgentPeerRegistry {
+    private var ports: [String: UInt16] = [:]
+    private var resolved: [String: String?] = [:]
+
+    func register(ownerID: String, port: UInt16) {
+        ports[ownerID] = port
+    }
+
+    func forget(ownerID: String) {
+        ports.removeValue(forKey: ownerID)
+        resolved.removeValue(forKey: ownerID)
+    }
+
+    func describe(ownerID: String) -> String? {
+        if let cached = resolved[ownerID] {
+            return cached
+        }
+        let label = ports[ownerID].flatMap(ActionAgentPeer.describe(localPort:))
+        resolved[ownerID] = label
+        return label
+    }
+}
+
 final class ActionAgentRuntimeServer: @unchecked Sendable {
     private static let protocolVersion = "2"
     private let listener: NWListener
@@ -53,6 +77,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
     private let idleExitSeconds: TimeInterval?
     private var parentWatchTimer: DispatchSourceTimer?
     private var driveSweepTimer: DispatchSourceTimer?
+    private var sessionPruneTimer: DispatchSourceTimer?
+    private let peers = ActionAgentPeerRegistry()
     private var idleExitTimer: DispatchSourceTimer?
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
     private var lastConnectionActivityAt = Date()
@@ -60,7 +86,7 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
     init(port: UInt16, parentProcessID: pid_t?, idleExitSeconds: TimeInterval?) throws {
         self.parentProcessID = parentProcessID
         self.idleExitSeconds = idleExitSeconds
-        let driveStore = ActionDriveLeaseStore()
+        let driveStore = ActionDriveLeaseStore(sessionArchive: ActionSessionArchive())
         self.driveStore = driveStore
         self.workspaceDragFileOperation = ActionWorkspaceDragFileOperation(driveStore: driveStore)
         self.authentication = try ActionAgentAuthentication.create()
@@ -108,6 +134,7 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         listener.start(queue: queue)
         startParentWatchIfNeeded()
         startDriveSweep()
+        startSessionPrune()
         startIdleExitIfNeeded()
         NSApplication.shared.run()
         exit(0)
@@ -118,6 +145,9 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         let ownerID = UUID().uuidString
         activeConnections[identifier] = connection
         lastConnectionActivityAt = Date()
+        if case .hostPort(_, let port) = connection.endpoint {
+            Task { [peers] in await peers.register(ownerID: ownerID, port: port.rawValue) }
+        }
 
         connection.stateUpdateHandler = { state in
             switch state {
@@ -386,7 +416,9 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 capability: request.params["capability"],
                 resource: request.params["resource"],
                 workflowRunID: request.params["workflowRunId"],
-                workspaceID: request.params["workspaceId"]
+                workspaceID: request.params["workspaceId"],
+                client: request.params["client"],
+                clientProcess: await peers.describe(ownerID: ownerID)
             )
             var response = [
                 "status": result.status,
@@ -400,7 +432,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             let lease = try await driveStore.touch(
                 ownerID: ownerID,
                 leaseID: request.params["leaseId"],
-                axTier: request.params["axTier"]
+                axTier: request.params["axTier"],
+                actionKind: request.params["actionKind"]
             )
             guard let lease else {
                 return ["status": "idle"]
@@ -426,6 +459,12 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         case .driveStatus:
             let snapshot = try await driveStore.status()
             return ["snapshot": try actionAgentJSONString(snapshot)]
+        case .sessionsPrune:
+            let result = await driveStore.pruneSessions()
+            return ["result": try actionAgentJSONString(result)]
+        case .sessionsClear:
+            let result = await driveStore.clearSessions()
+            return ["result": try actionAgentJSONString(result)]
         case .workspaceDragFile:
             try authenticatePrivileged(request)
             let semanticRequest = try ActionWorkspaceDragFileRequest(params: request.params)
@@ -570,6 +609,7 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             return
         }
         lastConnectionActivityAt = Date()
+        Task { [peers] in await peers.forget(ownerID: ownerID) }
         Task {
             await driveStore.disconnectOwner(
                 by: ownerID,
@@ -604,6 +644,19 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         }
         timer.resume()
         driveSweepTimer = timer
+    }
+
+    /// Holds the run ledger to its age and size caps: once at launch, then hourly.
+    private func startSessionPrune() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .seconds(5), repeating: .seconds(60 * 60))
+        timer.setEventHandler { [driveStore] in
+            Task {
+                _ = await driveStore.pruneSessions()
+            }
+        }
+        timer.resume()
+        sessionPruneTimer = timer
     }
 
     private func startIdleExitIfNeeded() {
