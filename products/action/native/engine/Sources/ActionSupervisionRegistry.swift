@@ -497,7 +497,8 @@ enum ActionSupervisionOverlayLauncher {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-n", bundleURL.path, "--args", "supervision-overlay", "--reply-file", replyFile.path]
+        // -g: a lease beginning must not take focus from the operator, even for a frame.
+        process.arguments = ["-n", "-g", bundleURL.path, "--args", "supervision-overlay", "--reply-file", replyFile.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.standardError
         try process.run()

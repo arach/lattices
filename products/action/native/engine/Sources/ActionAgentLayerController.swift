@@ -30,12 +30,28 @@ final class ActionAgentLayerController: NSObject {
         let bundleId: String?
         let title: String?
         let original: CGRect
+        /// Opened for or by the agent after the layer went up. It never sat on the
+        /// operator's screen, so the layer closes it instead of putting it back.
+        let born: Bool
     }
 
     private let size: CGSize
     private var showsPiP: Bool
     private let startedAt = Date()
-    private let target: NSRunningApplication?
+    /// The subject app. Nil until launched when the layer was asked for a bundle id
+    /// that isn't running.
+    private var target: NSRunningApplication?
+    /// The subject's bundle id, launched in the background when it isn't running.
+    private let targetBundleId: String?
+    /// Opened in the subject without activating it, once its windows are on the layer.
+    private let openURL: URL?
+    /// The caller brings its own window (a browser making one on the layer through
+    /// DevTools), so an app with nothing to move isn't asked for one.
+    private let windowless: Bool
+    /// The open request already carried the URL or the reopen; don't send it twice.
+    private var openedOnLaunch = false
+    /// Windows found after the first look at the subject were opened for the agent.
+    private var adoptsBornWindows = false
     private let stopFile: String?
     private let stateFile: String?
     private let parentProcessID: pid_t?
@@ -63,6 +79,8 @@ final class ActionAgentLayerController: NSObject {
     private var pollTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
     private var shuttingDown = false
+    /// Start finished: the display is up and the open's windows are placed. Ticks adopt after that.
+    private var layerReady = false
     /// The operator paused the agent from the viewer; the director refuses its acts.
     private var paused = false
     private var actObserver: NSObjectProtocol?
@@ -84,9 +102,17 @@ final class ActionAgentLayerController: NSObject {
         self.idleLimit = parentProcessID == nil && idleSeconds > 0 ? idleSeconds : nil
         self.windowID = options.options["window-id"].flatMap { CGWindowID($0) }
         self.windowTitle = options.options["window-title"].flatMap { $0.isEmpty ? nil : $0.lowercased() }
-        if options.options["pid"] != nil || options.options["bundle-id"] != nil || options.options["bundle-path"] != nil {
+        self.openURL = ActionBackgroundOpen.url(from: options.options["url"])
+        self.windowless = options.options["windowless"] == "1"
+        if options.options["pid"] != nil || options.options["bundle-path"] != nil {
+            self.targetBundleId = nil
             self.target = try resolveTargetApplication(from: options)
+        } else if let bundleId = options.options["bundle-id"], !bundleId.isEmpty {
+            self.targetBundleId = bundleId
+            // Not running is fine: start() launches it in the background.
+            self.target = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first
         } else {
+            self.targetBundleId = nil
             self.target = nil
         }
     }
@@ -148,8 +174,13 @@ final class ActionAgentLayerController: NSObject {
         bounds = CGDisplayBounds(displayID)
         logger.log("agent-layer: display \(displayID) at \(bounds)")
 
+        if target == nil, let targetBundleId {
+            target = try await ActionBackgroundOpen.open(bundleId: targetBundleId, url: openURL)
+            openedOnLaunch = true
+            logger.log("agent-layer: launched \(targetBundleId) in the background")
+        }
         if let target {
-            await moveWindows(of: target)
+            await takeWindows(of: target)
         }
         let feed = ActionAgentLayerFeed(
             displayID: displayID,
@@ -165,6 +196,7 @@ final class ActionAgentLayerController: NSObject {
             logger.log("agent-layer: feed failed: \(error.localizedDescription)")
         }
         try writeState()
+        layerReady = true
         try writer.write(
             ActionHostResponse(
                 status: "agent-layer-running",
@@ -178,16 +210,10 @@ final class ActionAgentLayerController: NSObject {
         actObserver = DistributedNotificationCenter.default().addObserver(
             forName: ActionAgentLayerDisplay.actNotification, object: nil, queue: .main
         ) { [weak self] note in
-            let info = note.userInfo ?? [:]
-            func number(_ key: String) -> CGFloat? { (info[key] as? NSNumber).map { CGFloat($0.doubleValue) } }
-            let point = number("x").flatMap { x in number("y").map { CGPoint(x: x, y: $0) } }
-            let frame: CGRect? = {
-                guard let x = number("fx"), let y = number("fy"), let w = number("fw"), let h = number("fh") else { return nil }
-                return CGRect(x: x, y: y, width: w, height: h)
-            }()
+            let act = ActionAgentLayerAct(info: note.userInfo ?? [:])
             Task { @MainActor in
                 self?.lastActivity = Date()
-                self?.pip?.mark(point: point, frame: frame)
+                self?.pip?.mark(act)
             }
         }
 
@@ -331,32 +357,63 @@ final class ActionAgentLayerController: NSObject {
 
     // MARK: Windows
 
-    private func moveWindows(of app: NSRunningApplication) async {
-        let application = AXUIElementCreateApplication(app.processIdentifier)
-        // A freshly launched host can read an empty window list for a moment.
-        var windows: [AXUIElement] = []
-        for attempt in 0..<20 {
-            windows = (copyAttribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter(isSelected)
-            if !windows.isEmpty {
-                if attempt > 0 { logger.log("agent-layer: windows visible after \(attempt) retries") }
-                break
+    /// The subject's windows onto the layer at open. A URL, or an app with nothing to
+    /// move, is opened in the background next, and the window that brings is waited
+    /// for, so the open returns with the window the agent is about to drive.
+    private func takeWindows(of app: NSRunningApplication) async {
+        if !openedOnLaunch {
+            adoptWindows(of: app)
+        }
+        adoptsBornWindows = true
+        let asksForWindow = openURL != nil || (moved.isEmpty && windowID == nil && !windowless)
+        if asksForWindow, !openedOnLaunch {
+            // Not awaited: an app can take seconds to acknowledge an open (Safari with
+            // a URL), and the window poll below is what the layer actually waits for.
+            let url = openURL
+            let logger = logger
+            Task { @MainActor in
+                do {
+                    _ = try await ActionBackgroundOpen.open(app, url: url)
+                    logger.log("agent-layer: opened \(url?.absoluteString ?? "a window") in \(targetLabel(for: app))")
+                } catch {
+                    logger.log("agent-layer: background open failed: \(error.localizedDescription)")
+                }
             }
+        }
+        // A freshly launched app, or one asked for a window, shows it a moment later.
+        for attempt in 1...50 where moved.isEmpty && !windowless {
             try? await Task.sleep(for: .milliseconds(100))
+            if adoptWindows(of: app) > 0 {
+                logger.log("agent-layer: windows visible after \(attempt) retries")
+            }
         }
-        guard !windows.isEmpty else {
+        if moved.isEmpty {
             logger.log("agent-layer: \(targetLabel(for: app)) exposes no matching windows")
-            return
         }
+    }
+
+    /// Moves the subject's windows that aren't on the layer yet: at open, and on every
+    /// tick after, so a window the agent opens (a new window, a popup) lands on the layer
+    /// instead of the operator's screen. A layer that borrowed one window by id adopts
+    /// nothing more. Returns how many moved.
+    @discardableResult
+    private func adoptWindows(of app: NSRunningApplication) -> Int {
+        guard !app.isTerminated else { return 0 }
+        let application = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        let windows = (copyAttribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter(isSelected)
 
         // Clear of the layer's menu bar, cascaded so every window stays reachable.
         let inset = CGPoint(x: bounds.minX + 24, y: bounds.minY + 48)
         let room = CGSize(width: bounds.width - 48, height: bounds.height - 72)
-        for (index, window) in windows.enumerated() {
+        var count = 0
+        for window in windows {
+            if moved.contains(where: { CFEqual($0.element, window) }) { continue }
             if (copyAttribute(window, kAXMinimizedAttribute) as? Bool) == true { continue }
             guard let origin = axPoint(copyAttribute(window, kAXPositionAttribute)),
                   let extent = axSize(copyAttribute(window, kAXSizeAttribute)) else { continue }
             let original = CGRect(origin: origin, size: extent)
-            let step = CGFloat(index) * 28
+            let step = CGFloat(moved.count % 8) * 28
             var frame = CGRect(
                 x: inset.x + step,
                 y: inset.y + step,
@@ -372,11 +429,16 @@ final class ActionAgentLayerController: NSObject {
                     pid: app.processIdentifier,
                     bundleId: app.bundleIdentifier,
                     title: copyAttribute(window, kAXTitleAttribute) as? String,
-                    original: original
+                    original: original,
+                    born: adoptsBornWindows
                 )
             )
+            count += 1
         }
-        logger.log("agent-layer: moved \(moved.count) window(s) of \(targetLabel(for: app))")
+        if count > 0 {
+            logger.log("agent-layer: moved \(count) window(s) of \(targetLabel(for: app)), \(moved.count) on the layer")
+        }
+        return count
     }
 
     private func isSelected(_ window: AXUIElement) -> Bool {
@@ -389,11 +451,36 @@ final class ActionAgentLayerController: NSObject {
     }
 
     private func restoreWindows() {
+        var closed = 0
         for window in moved.reversed() {
-            setFrame(window.element, window.original)
+            if window.born {
+                // Opened for the agent: it never belonged on the operator's screens.
+                // One that asks before closing (several tabs, unsaved changes) goes to
+                // the Dock instead of landing on their desktop.
+                if close(window.element) {
+                    closed += 1
+                } else {
+                    AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
+                }
+            } else {
+                setFrame(window.element, window.original)
+            }
         }
-        logger.log("agent-layer: restored \(moved.count) window(s)")
+        logger.log("agent-layer: restored \(moved.count(where: { !$0.born })) window(s), closed \(closed) opened on the layer")
         moved.removeAll()
+    }
+
+    /// Presses the window's close button and waits out the close animation. A window
+    /// that asks first stays open.
+    private func close(_ window: AXUIElement) -> Bool {
+        guard let button = copyAttribute(window, kAXCloseButtonAttribute),
+              CFGetTypeID(button) == AXUIElementGetTypeID(),
+              AXUIElementPerformAction(button as! AXUIElement, kAXPressAction as CFString) == .success else { return false }
+        for _ in 0..<50 {
+            if copyAttribute(window, kAXRoleAttribute) == nil { return true }
+            usleep(20_000)
+        }
+        return false
     }
 
     /// Size, then position, then size again: a window that doesn't fit where it's going
@@ -429,6 +516,7 @@ final class ActionAgentLayerController: NSObject {
                     "bundleId": window.bundleId ?? NSNull(),
                     "title": window.title ?? NSNull(),
                     "original": rectJSON(window.original),
+                    "born": window.born,
                 ] as [String: Any]
             },
             "startedAt": ISO8601DateFormatter().string(from: startedAt),
@@ -457,7 +545,12 @@ final class ActionAgentLayerController: NSObject {
         }
         lastActivity = Date()
         var reply: [String: Any]
-        if let feed {
+        if json["op"] as? String == "mark" {
+            // An act the director ran itself (DevTools input into a browser on the
+            // layer): show it on the viewer the way a blink's notification would.
+            pip?.mark(ActionAgentLayerAct(info: json))
+            reply = ["ok": true]
+        } else if let feed {
             switch json["op"] as? String {
             case "snapshot":
                 reply = ActionAgentLayerSnapshotRequest(json: json).map(feed.snapshot)
@@ -517,6 +610,9 @@ final class ActionAgentLayerController: NSObject {
             logger.log("agent-layer: parent \(parentProcessID) is gone, closing")
             shutdown()
             return
+        }
+        if layerReady, windowID == nil, let target, adoptWindows(of: target) > 0 {
+            try? writeState()
         }
         guard parentProcessID == nil else { return }
         if !liveOwnerPIDs.isEmpty, liveOwnerPIDs.allSatisfy({ kill($0, 0) != 0 }) {
@@ -937,6 +1033,8 @@ final class ActionAgentLayerPiP {
     private static let cropPadding: CGFloat = 12
     /// How long a drive note stays on the viewer.
     private static let noteLifetime: TimeInterval = 12
+    /// Operator input borrows the pointer, so it runs in order and off the main thread.
+    private static let operatorQueue = DispatchQueue(label: "action.agent-layer.operator")
 
     private let feed: ActionAgentLayerFeed
     private let logger: DebugLogger
@@ -1024,16 +1122,20 @@ final class ActionAgentLayerPiP {
         set { viewer?.state = newValue }
     }
 
-    /// Ring the spot an act landed on: a point for a click, a frame for a field.
+    /// Show an act on the viewer: the pointer setting off for it, or where it landed.
     /// Global top-left coordinates, as the blink reported them.
-    func mark(point: CGPoint?, frame: CGRect?) {
+    func mark(_ act: ActionAgentLayerAct) {
         let bounds = feed.displayBounds
-        guard point.map(bounds.contains) ?? frame.map(bounds.intersects) ?? false else { return }
+        guard act.point.map(bounds.contains) ?? act.frame.map(bounds.intersects) ?? false else { return }
         let origin = bounds.origin
-        viewer?.mark(
-            point: point.map { CGPoint(x: $0.x - origin.x, y: $0.y - origin.y) },
-            frame: frame.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) }
-        )
+        func local(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x - origin.x, y: point.y - origin.y) }
+        viewer?.mark(ActionAgentLayerAct(
+            kind: act.kind,
+            point: act.point.map(local),
+            from: act.from.map(local),
+            frame: act.frame.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) },
+            deltaY: act.deltaY
+        ))
     }
 
     private func dismiss() {
@@ -1093,6 +1195,28 @@ final class ActionAgentLayerPiP {
         let content = ActionAgentLayerViewerView(frame: CGRect(origin: .zero, size: frame.size), displaySize: feed.displayBounds.size)
         content.crop = crop
         content.onDoubleClick = { [weak self] in self?.toggleEnlarged() }
+        let origin = feed.displayBounds.origin
+        content.onOperatorInput = { [logger] input in
+            Self.operatorQueue.async {
+                func global(_ p: CGPoint) -> CGPoint { CGPoint(x: origin.x + p.x, y: origin.y + p.y) }
+                do {
+                    // A real click: the layer's app keeps the focus it takes, so the
+                    // operator's typing follows. No accessibility press, no hand-back.
+                    let detail: String
+                    switch input {
+                    case let .click(p):
+                        detail = try ActionBlinkInput.click(at: global(p), holdMs: 40, accessibilityFirst: false, anyDisplay: false, pointerEventLogPath: nil, handBack: false)
+                    case let .drag(a, b, ms):
+                        detail = try ActionBlinkInput.drag(from: global(a), to: global(b), durationMs: ms, anyDisplay: false, pointerEventLogPath: nil, handBack: false)
+                    case let .scroll(p, dx, dy):
+                        detail = try ActionBlinkInput.scroll(at: global(p), deltaX: dx, deltaY: dy, durationMs: 16, anyDisplay: false)
+                    }
+                    logger.log("agent-layer: operator \(detail)")
+                } catch {
+                    logger.log("agent-layer: operator failed: \(error)")
+                }
+            }
+        }
         content.addControl(symbol: "person.crop.circle", label: "Go to the agent's session", enabled: hasOwner) { [weak self] in
             self?.onGoToOwner?()
         }
@@ -1218,6 +1342,12 @@ private extension ISO8601DateFormatter {
 /// with the dot, act marks, the drive note, and the hover controls on top. Cropping is
 /// layout, not a stream reconfiguration, so the frame can follow the windows without
 /// the stream restarting.
+enum ActionAgentLayerOperatorInput {
+    case click(CGPoint)
+    case drag(CGPoint, CGPoint, Int)
+    case scroll(CGPoint, Double, Double)
+}
+
 private final class ActionAgentLayerViewerView: NSView {
     private static let ink = NSColor(srgbRed: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255, alpha: 1)
     private static let coral = NSColor(srgbRed: 0xEF / 255, green: 0x6A / 255, blue: 0x47 / 255, alpha: 1)
@@ -1225,11 +1355,21 @@ private final class ActionAgentLayerViewerView: NSView {
     let videoLayer = AVSampleBufferDisplayLayer()
     private let displaySize: CGSize
     private let marks = CALayer()
+    /// The agent's pointer at viewer scale: it glides to each point act and rests there
+    /// until the layer goes quiet.
+    private let pointer = CAShapeLayer()
+    private var pointerAt: CGPoint?
+    private var pointerHide: DispatchWorkItem?
+    private var pointerArrives: CFTimeInterval = 0
     private let dot = CALayer()
     private let controls = NSStackView()
     private let note = NSTextField(labelWithString: "")
     private var noteHide: DispatchWorkItem?
     var onDoubleClick: (() -> Void)?
+    /// The operator clicking, dragging or scrolling in the picture, in display-local points.
+    var onOperatorInput: ((ActionAgentLayerOperatorInput) -> Void)? {
+        didSet { window?.invalidateCursorRects(for: self) }
+    }
     var crop: CGRect = .zero { didSet { needsLayout = true } }
     var state: ActionAgentLayerLiveState = .live { didSet { applyState() } }
 
@@ -1249,6 +1389,20 @@ private final class ActionAgentLayerViewerView: NSView {
         root.addSublayer(videoLayer)
         marks.zPosition = 1
         root.addSublayer(marks)
+        pointer.path = ActionCursorGlyph.path(scale: 0.44)
+        pointer.fillColor = NSColor(white: 0.98, alpha: 1).cgColor
+        pointer.strokeColor = Self.ink.cgColor
+        pointer.lineWidth = 0.9
+        pointer.lineJoin = .round
+        pointer.shadowColor = NSColor.black.cgColor
+        pointer.shadowOpacity = 0.3
+        pointer.shadowRadius = 1.5
+        pointer.shadowOffset = CGSize(width: 0.5, height: -0.5)
+        pointer.opacity = 0
+        pointer.zPosition = 1.5
+        // A slight lean, as the operator overlay draws it.
+        pointer.setAffineTransform(CGAffineTransform(rotationAngle: 18 * .pi / 180))
+        root.addSublayer(pointer)
 
         // Bottom-right: the top-left corner is where the subject's traffic lights land.
         dot.frame = CGRect(x: frame.width - 16, y: 10, width: 6, height: 6)
@@ -1290,12 +1444,69 @@ private final class ActionAgentLayerViewerView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// The strip along the top that still moves the panel; ⌘ moves it from anywhere.
+    private static let grabStrip: CGFloat = 26
+    private var operatorPress: (at: CGPoint, time: TimeInterval)?
+    private var scrollPending = CGVector.zero
+    private var scrollAt: CGPoint?
+    private var scrollFlush: DispatchWorkItem?
+
     override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let grabs = onOperatorInput == nil
+            || event.modifierFlags.contains(.command)
+            || point.y > bounds.height - Self.grabStrip
+        guard grabs else {
+            operatorPress = (point, event.timestamp)
+            return
+        }
+        operatorPress = nil
         if event.clickCount == 2 {
             onDoubleClick?()
         } else {
             window?.performDrag(with: event)
         }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let start = operatorPress, let onOperatorInput else { return }
+        operatorPress = nil
+        let end = convert(event.locationInWindow, from: nil)
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if hypot(end.x - start.at.x, end.y - start.at.y) < 4 {
+            ring(at: start.at, reduce: reduce, size: 18)
+            onOperatorInput(.click(layerPoint(start.at)))
+        } else {
+            let ms = min(max(Int((event.timestamp - start.time) * 1000), 120), 900)
+            fadeOut(trail(from: start.at, to: end, duration: 0), after: 0.4)
+            onOperatorInput(.drag(layerPoint(start.at), layerPoint(end), ms))
+        }
+    }
+
+    /// Wheel deltas gather for a beat and go over as one scroll, so a trackpad flick is a
+    /// handful of borrows rather than one per frame.
+    override func scrollWheel(with event: NSEvent) {
+        guard onOperatorInput != nil else { return super.scrollWheel(with: event) }
+        let k: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
+        scrollPending.dx += event.scrollingDeltaX * k / scale
+        scrollPending.dy += event.scrollingDeltaY * k / scale
+        scrollAt = layerPoint(convert(event.locationInWindow, from: nil))
+        guard scrollFlush == nil else { return }
+        let flush = DispatchWorkItem { [weak self] in
+            guard let self, let at = self.scrollAt else { return }
+            let delta = self.scrollPending
+            self.scrollPending = .zero
+            self.scrollFlush = nil
+            guard abs(delta.dx) >= 1 || abs(delta.dy) >= 1 else { return }
+            self.onOperatorInput?(.scroll(at, delta.dx, delta.dy))
+        }
+        scrollFlush = flush
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: flush)
+    }
+
+    override func resetCursorRects() {
+        guard onOperatorInput != nil else { return }
+        addCursorRect(CGRect(x: 0, y: bounds.height - Self.grabStrip, width: bounds.width, height: Self.grabStrip), cursor: .openHand)
     }
 
     override func mouseEntered(with event: NSEvent) { fadeControls(to: 1) }
@@ -1337,6 +1548,11 @@ private final class ActionAgentLayerViewerView: NSView {
         CGPoint(x: (point.x - crop.minX) * scale, y: bounds.height - (point.y - crop.minY) * scale)
     }
 
+    /// Our bottom-up coordinates back to a display-local top-left point.
+    private func layerPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x / scale + crop.minX, y: (bounds.height - point.y) / scale + crop.minY)
+    }
+
     private func applyState() {
         dot.removeAnimation(forKey: "breathe")
         switch state {
@@ -1363,41 +1579,230 @@ private final class ActionAgentLayerViewerView: NSView {
         }
     }
 
-    /// A coral ring that opens and fades where an act landed.
-    func mark(point: CGPoint?, frame: CGRect?) {
+    /// Sends the pointer to `target` along a shallow arc, quicker for short hops, and
+    /// returns when it gets there (as a media time).
+    @discardableResult
+    private func movePointer(to target: CGPoint, reduceMotion: Bool, straight: Bool = false, duration fixed: CFTimeInterval? = nil) -> CFTimeInterval {
+        let from = pointer.presentation()?.position ?? pointerAt ?? target
+        let wasShown = pointerAt != nil && pointer.opacity > 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pointer.position = target
+        pointer.opacity = 1
+        CATransaction.commit()
+        let now = CACurrentMediaTime()
+        var arrives = now
+        let distance = hypot(target.x - from.x, target.y - from.y)
+        if reduceMotion || distance < 1 {
+            pointerArrives = now
+        } else if !wasShown {
+            // Appears where it's going, settling in from a touch further out.
+            let appear = CAAnimationGroup()
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            let settle = CABasicAnimation(keyPath: "position")
+            settle.fromValue = NSValue(point: CGPoint(x: target.x + 14, y: target.y - 14))
+            settle.toValue = NSValue(point: target)
+            appear.animations = [fade, settle]
+            appear.duration = 0.26
+            appear.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            pointer.add(appear, forKey: "glide")
+            arrives = now + appear.duration
+        } else {
+            let duration = fixed ?? min(0.62, max(0.26, 0.2 + Double(distance) / 700))
+            let path = CGMutablePath()
+            path.move(to: from)
+            if straight {
+                path.addLine(to: target)
+            } else {
+                // Bow to the left of travel by a fraction of the hop, the way a hand swings.
+                let mid = CGPoint(x: (from.x + target.x) / 2, y: (from.y + target.y) / 2)
+                let bow = min(distance * 0.16, 36) / distance
+                let control = CGPoint(x: mid.x - (target.y - from.y) * bow, y: mid.y + (target.x - from.x) * bow)
+                path.addQuadCurve(to: target, control: control)
+            }
+            let glide = CAKeyframeAnimation(keyPath: "position")
+            glide.path = path
+            glide.duration = duration
+            glide.timingFunction = straight
+                ? CAMediaTimingFunction(name: .easeInEaseOut)
+                : CAMediaTimingFunction(controlPoints: 0.5, 0, 0.15, 1)
+            glide.calculationMode = .paced
+            pointer.add(glide, forKey: "glide")
+            arrives = now + duration
+        }
+        pointerAt = target
+        pointerArrives = arrives
+        pointerHide?.cancel()
+        let hide = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.5)
+            self.pointer.opacity = 0
+            CATransaction.commit()
+        }
+        pointerHide = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + (arrives - now) + 3.5, execute: hide)
+        return arrives
+    }
+
+    /// Runs `body` once the pointer has arrived.
+    private func onArrival(_ body: @escaping () -> Void) {
+        let wait = pointerArrives - CACurrentMediaTime()
+        if wait > 0.01 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: body)
+        } else {
+            body()
+        }
+    }
+
+    /// A press: the pointer dips and springs back.
+    private func press() {
+        let dip = CAKeyframeAnimation(keyPath: "transform.scale")
+        dip.values = [1, 0.78, 1.06, 1]
+        dip.keyTimes = [0, 0.3, 0.7, 1]
+        dip.duration = 0.26
+        dip.timingFunctions = [
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeOut),
+        ]
+        pointer.add(dip, forKey: "press")
+    }
+
+    func mark(_ act: ActionAgentLayerAct) {
         guard crop.width > 0 else { return }
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if let frame = act.frame {
+            // Typing and keys: the pointer drifts to the field's leading edge and the
+            // field lights up.
+            let a = viewPoint(frame.origin)
+            let b = viewPoint(CGPoint(x: frame.maxX, y: frame.maxY))
+            movePointer(to: CGPoint(x: a.x + min(14, (b.x - a.x) / 2), y: (a.y + b.y) / 2 - 2), reduceMotion: reduce)
+            onArrival { [weak self] in self?.markField(from: a, to: b) }
+            return
+        }
+        guard let point = act.point else { return }
+        let center = viewPoint(point)
+        switch act.kind {
+        case "aim":
+            movePointer(to: center, reduceMotion: reduce)
+        case "drag":
+            let start = act.from.map(viewPoint) ?? center
+            if pointerAt.map({ hypot($0.x - start.x, $0.y - start.y) > 2 }) ?? true {
+                movePointer(to: start, reduceMotion: reduce)
+            }
+            onArrival { [weak self] in
+                guard let self else { return }
+                self.press()
+                let trail = self.trail(from: start, to: center, duration: reduce ? 0 : 0.5)
+                self.movePointer(to: center, reduceMotion: reduce, straight: true, duration: 0.5)
+                self.onArrival { [weak self] in
+                    self?.ring(at: center, reduce: reduce, size: 16)
+                    self?.fadeOut(trail, after: 0.15)
+                }
+            }
+        case "scroll":
+            if pointerAt.map({ hypot($0.x - center.x, $0.y - center.y) > 2 }) ?? true {
+                movePointer(to: center, reduceMotion: reduce)
+            }
+            onArrival { [weak self] in self?.nudge(down: act.deltaY < 0, reduce: reduce) }
+        default:
+            if pointerAt.map({ hypot($0.x - center.x, $0.y - center.y) > 2 }) ?? true {
+                movePointer(to: center, reduceMotion: reduce)
+            }
+            onArrival { [weak self] in
+                self?.press()
+                self?.ring(at: center, reduce: reduce, size: 24)
+            }
+        }
+    }
+
+    /// A coral ring that opens and fades where a click landed.
+    private func ring(at center: CGPoint, reduce: Bool, size: CGFloat) {
         let shape = CAShapeLayer()
         shape.fillColor = nil
         shape.strokeColor = Self.coral.cgColor
-        shape.lineWidth = 2
-        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        if let frame {
-            let a = viewPoint(frame.origin)
-            let b = viewPoint(CGPoint(x: frame.maxX, y: frame.maxY))
-            let rect = CGRect(x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y).insetBy(dx: -2, dy: -2)
-            shape.path = CGPath(roundedRect: rect, cornerWidth: 4, cornerHeight: 4, transform: nil)
-        } else if let point {
-            let center = viewPoint(point)
-            shape.frame = CGRect(x: center.x - 12, y: center.y - 12, width: 24, height: 24)
-            shape.path = CGPath(ellipseIn: CGRect(x: 0, y: 0, width: 24, height: 24), transform: nil)
-            if !reduce {
-                let grow = CABasicAnimation(keyPath: "transform.scale")
-                grow.fromValue = 0.5
-                grow.toValue = 1.3
-                grow.duration = 0.7
-                grow.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
-                shape.add(grow, forKey: "grow")
-            }
-        } else {
-            return
+        shape.lineWidth = 1.75
+        shape.frame = CGRect(x: center.x - size / 2, y: center.y - size / 2, width: size, height: size)
+        shape.path = CGPath(ellipseIn: CGRect(x: 0, y: 0, width: size, height: size), transform: nil)
+        if !reduce {
+            let grow = CABasicAnimation(keyPath: "transform.scale")
+            grow.fromValue = 0.4
+            grow.toValue = 1.3
+            grow.duration = 0.7
+            grow.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+            shape.add(grow, forKey: "grow")
         }
         marks.addSublayer(shape)
+        fadeOut(shape, after: 0.25)
+    }
+
+    /// The field typing went into: its own edges, snapped to pixels, rounded like the pill
+    /// or box it most likely sits in, with a tint so it reads at PiP scale.
+    private func markField(from a: CGPoint, to b: CGPoint) {
+        let pixel = 1 / max(window?.backingScaleFactor ?? 2, 1)
+        func snap(_ value: CGFloat) -> CGFloat { (value / pixel).rounded() * pixel }
+        let rect = CGRect(x: snap(a.x), y: snap(b.y), width: snap(b.x - a.x), height: snap(a.y - b.y))
+        guard rect.width >= 4, rect.height >= 4 else { return }
+        let shape = CAShapeLayer()
+        let radius = min(rect.height / 2, 6)
+        shape.lineWidth = 1.25
+        shape.strokeColor = Self.coral.cgColor
+        shape.fillColor = Self.coral.withAlphaComponent(0.14).cgColor
+        shape.path = CGPath(
+            roundedRect: rect.insetBy(dx: shape.lineWidth / 2, dy: shape.lineWidth / 2),
+            cornerWidth: radius, cornerHeight: radius, transform: nil
+        )
+        marks.addSublayer(shape)
+        fadeOut(shape, after: 0.6)
+    }
+
+    /// The line a drag draws, laid down behind the pointer.
+    private func trail(from start: CGPoint, to end: CGPoint, duration: CFTimeInterval) -> CAShapeLayer {
+        let line = CAShapeLayer()
+        let path = CGMutablePath()
+        path.move(to: start)
+        path.addLine(to: end)
+        line.path = path
+        line.strokeColor = Self.coral.withAlphaComponent(0.85).cgColor
+        line.lineWidth = 1.5
+        line.lineCap = .round
+        line.lineDashPattern = [1, 4]
+        line.fillColor = nil
+        marks.addSublayer(line)
+        if duration > 0 {
+            let draw = CABasicAnimation(keyPath: "strokeEnd")
+            draw.fromValue = 0
+            draw.toValue = 1
+            draw.duration = duration
+            draw.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            line.add(draw, forKey: "draw")
+        }
+        return line
+    }
+
+    /// A scroll: the pointer rolls a couple of notches the way the content went.
+    private func nudge(down: Bool, reduce: Bool) {
+        guard !reduce else { return }
+        let travel: CGFloat = down ? -7 : 7
+        let roll = CAKeyframeAnimation(keyPath: "transform.translation.y")
+        roll.values = [0, travel, 0, travel, 0]
+        roll.keyTimes = [0, 0.25, 0.5, 0.75, 1]
+        roll.duration = 0.5
+        roll.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        roll.isAdditive = true
+        pointer.add(roll, forKey: "roll")
+    }
+
+    private func fadeOut(_ shape: CALayer, after delay: CFTimeInterval) {
         CATransaction.begin()
         CATransaction.setCompletionBlock { shape.removeFromSuperlayer() }
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1
         fade.toValue = 0
-        fade.beginTime = CACurrentMediaTime() + (frame != nil ? 0.5 : 0.25)
+        fade.beginTime = CACurrentMediaTime() + delay
         fade.duration = 0.5
         fade.fillMode = .both
         shape.opacity = 0
@@ -1600,5 +2005,40 @@ private final class ActionAgentLayerControlButton: NSView {
         guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
         let size = image.size
         image.draw(in: CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
+    }
+}
+
+/// What the host told the layer about an act: `aim` before a pointer act sets off,
+/// then `click`, `drag` (with `from`), `scroll` (with its wheel delta) or `field`.
+struct ActionAgentLayerAct: Sendable {
+    let kind: String
+    let point: CGPoint?
+    let from: CGPoint?
+    let frame: CGRect?
+    let deltaY: CGFloat
+}
+
+extension ActionAgentLayerAct {
+    /// From an act notification's userInfo or a `mark` control request: `kind`, `x`/`y`,
+    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh` and `dy`, in global top-left points.
+    init<Key: Hashable>(info: [Key: Any]) {
+        func number(_ key: String) -> CGFloat? {
+            guard let key = key as? Key else { return nil }
+            return (info[key] as? NSNumber).map { CGFloat($0.doubleValue) }
+        }
+        func point(_ x: String, _ y: String) -> CGPoint? {
+            number(x).flatMap { x in number(y).map { CGPoint(x: x, y: $0) } }
+        }
+        let frame: CGRect? = {
+            guard let x = number("fx"), let y = number("fy"), let w = number("fw"), let h = number("fh") else { return nil }
+            return CGRect(x: x, y: y, width: w, height: h)
+        }()
+        self.init(
+            kind: ("kind" as? Key).flatMap { info[$0] as? String } ?? "click",
+            point: point("x", "y"),
+            from: point("fromX", "fromY"),
+            frame: frame,
+            deltaY: number("dy") ?? 0
+        )
     }
 }

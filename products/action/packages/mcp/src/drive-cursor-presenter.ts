@@ -164,6 +164,22 @@ export class DriveCursorPresenter {
   }
 
   /** Stop the overlay and clear the lease's recorded style and policies. */
+  /**
+   * Takes the overlay down but keeps the lease's style and cue settings, so the next
+   * act on the operator's screen brings it back. Used while an agent layer is up:
+   * that work happens off-screen and shows in the layer's viewer instead.
+   */
+  async suspend(leaseId: string): Promise<void> {
+    if (!this.presenting.delete(leaseId)) {
+      return;
+    }
+    try {
+      await this.io.stop(leaseId);
+    } catch {
+      // The native lease stop marker is the independent shutdown path.
+    }
+  }
+
   async release(leaseId: string): Promise<void> {
     this.presenting.delete(leaseId);
     this.styles.delete(leaseId);

@@ -1,5 +1,7 @@
 import type { Bounds, ResolvedTarget, RuntimeAction } from "@action/protocol";
 
+import { parseKeyChord } from "./keys.js";
+
 interface CalculatorButtonDescriptor {
   text?: string;
   semanticId?: string;
@@ -25,7 +27,7 @@ export interface InteractionExecutionContext {
   agentLayer?: AgentLayerRouting;
 }
 
-export type BlinkRoute = "blink-click" | "blink-type" | "blink-key";
+export type BlinkRoute = "blink-click" | "blink-type" | "blink-key" | "blink-drag" | "blink-scroll";
 
 type RoutingContext = Pick<InteractionExecutionContext, "resolveBundleId" | "agentLayer">;
 
@@ -78,14 +80,6 @@ function centerOfBounds(input: unknown): { x: number; y: number } | undefined {
     x: x + width / 2,
     y: y + height / 2,
   };
-}
-
-function stringArray(input: unknown): string[] {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  return input.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function stringValue(input: unknown): string | undefined {
@@ -162,6 +156,55 @@ function blinkAppArgs(action: RuntimeAction, layer: AgentLayerRouting): string[]
   return undefined;
 }
 
+/** A drag's start and end: from/source/start/fromX+fromY, and to/destination/end/toX+toY or the target's centre. */
+function dragPoints(action: RuntimeAction, target: ResolvedTarget | undefined): { from: { x: number; y: number }; to: { x: number; y: number } } | undefined {
+  const fromFromCoordinates = (() => {
+    const x = numberFromInput(action.input?.fromX);
+    const y = numberFromInput(action.input?.fromY);
+
+    if (x === undefined || y === undefined) {
+      return undefined;
+    }
+
+    return { x, y };
+  })();
+
+  const sourcePoint = pointFromInput(action.input?.from)
+    ?? pointFromInput(action.input?.source)
+    ?? pointFromInput(action.input?.start)
+    ?? fromFromCoordinates;
+
+  const toFromCoordinates = (() => {
+    const x = numberFromInput(action.input?.toX);
+    const y = numberFromInput(action.input?.toY);
+
+    if (x === undefined || y === undefined) {
+      return undefined;
+    }
+
+    return { x, y };
+  })();
+
+  const targetPoint = pointFromInput(action.input?.to)
+    || pointFromInput(action.input?.destination)
+    || pointFromInput(action.input?.targetPoint)
+    || pointFromInput(action.input?.end)
+    || toFromCoordinates
+    || centerOfBounds(target?.bounds)
+    || centerOfBounds(action.target);
+
+  return sourcePoint && targetPoint ? { from: sourcePoint, to: targetPoint } : undefined;
+}
+
+/** Where a scroll lands: the target point, input.point or input.at, or the target's centre. */
+function scrollPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
+  return action.target?.point
+    ?? pointFromInput(action.input?.point)
+    ?? pointFromInput(action.input?.at)
+    ?? pointFromInput(target?.point)
+    ?? centerOfBounds(target?.bounds);
+}
+
 /**
  * Which blink command, if any, `executeInteractionAction` will use for this act.
  * Undefined means the act takes its ordinary path. Accessibility paths
@@ -198,6 +241,19 @@ export function blinkRouteFor(
 
   if (action.kind === "press-key") {
     return blinkAppArgs(action, layer) ? "blink-key" : undefined;
+  }
+
+  // A file drag carries a pasteboard the blink gesture doesn't; it takes the ordinary path.
+  if (action.kind === "drag" && !stringValue(action.input?.filePath)) {
+    const points = dragPoints(action, target);
+    return points && pointInBounds(points.from, layer.bounds) && pointInBounds(points.to, layer.bounds)
+      ? "blink-drag"
+      : undefined;
+  }
+
+  if (action.kind === "scroll") {
+    const point = scrollPoint(action, target);
+    return point && pointInBounds(point, layer.bounds) ? "blink-scroll" : undefined;
   }
 
   return undefined;
@@ -243,14 +299,11 @@ export async function executeInteractionAction(
   }
 
   if (action.kind === "press-key") {
-    const keys = stringArray(action.input?.keys);
-    const modifiers = stringArray(action.input?.modifiers);
-    const key = stringValue(action.input?.key) ?? keys.at(-1) ?? "";
-    const normalizedModifiers = keys.length > 1 ? keys.slice(0, -1) : modifiers;
+    const { key, modifiers } = parseKeyChord(action.input ?? {});
     const appArgs = blink === "blink-key" && layer ? blinkAppArgs(action, layer) : undefined;
     const args = [appArgs ? "blink-key" : "press-key", "--key", key];
-    if (normalizedModifiers.length > 0) {
-      args.push("--modifiers", normalizedModifiers.join(","));
+    if (modifiers.length > 0) {
+      args.push("--modifiers", modifiers.join(","));
     }
     if (appArgs) {
       args.push(...appArgs);
@@ -310,50 +363,17 @@ export async function executeInteractionAction(
   }
 
   if (action.kind === "drag") {
-    const fromFromCoordinates = (() => {
-      const x = numberFromInput(action.input?.fromX);
-      const y = numberFromInput(action.input?.fromY);
-
-      if (x === undefined || y === undefined) {
-        return undefined;
-      }
-
-      return { x, y };
-    })();
-
-    const sourcePoint = pointFromInput(action.input?.from)
-      ?? pointFromInput(action.input?.source)
-      ?? pointFromInput(action.input?.start)
-      ?? fromFromCoordinates;
-
-    const toFromCoordinates = (() => {
-      const x = numberFromInput(action.input?.toX);
-      const y = numberFromInput(action.input?.toY);
-
-      if (x === undefined || y === undefined) {
-        return undefined;
-      }
-
-      return { x, y };
-    })();
-
-    const targetPoint = pointFromInput(action.input?.to)
-      || pointFromInput(action.input?.destination)
-      || pointFromInput(action.input?.targetPoint)
-      || pointFromInput(action.input?.end)
-      || toFromCoordinates
-      || centerOfBounds(target?.bounds)
-      || centerOfBounds(action.target);
-
-    if (!sourcePoint || !targetPoint) {
+    const points = dragPoints(action, target);
+    if (!points) {
       throw new Error("Drag action requires both from and to points");
     }
+    const { from: sourcePoint, to: targetPoint } = points;
 
     const durationMs = numberFromInput(action.input?.durationMs) ?? numberValue(action.input?.duration) ?? 0;
     const filePath = stringValue(action.input?.filePath);
 
     const args = [
-      "drag",
+      blink === "blink-drag" ? "blink-drag" : "drag",
       "--from-x", String(sourcePoint.x),
       "--from-y", String(sourcePoint.y),
       "--to-x", String(targetPoint.x),
@@ -371,11 +391,7 @@ export async function executeInteractionAction(
   }
 
   if (action.kind === "scroll") {
-    const point = action.target?.point
-      ?? pointFromInput(action.input?.point)
-      ?? pointFromInput(action.input?.at)
-      ?? pointFromInput(target?.point)
-      ?? centerOfBounds(target?.bounds);
+    const point = scrollPoint(action, target);
 
     if (!point) {
       throw new Error("Scroll action requires a point (action.target.point or input.point)");
@@ -390,7 +406,7 @@ export async function executeInteractionAction(
     const durationMs = numberFromInput(action.input?.durationMs) ?? numberValue(action.input?.duration) ?? 0;
 
     const args = [
-      "scroll",
+      blink === "blink-scroll" ? "blink-scroll" : "scroll",
       "--x", String(point.x),
       "--y", String(point.y),
       "--delta-x", String(deltaX),
@@ -411,6 +427,16 @@ export async function executeInteractionAction(
     }
 
     const args = ["launch-app", "--bundle-id", bundleId];
+    // The layer's own app opens without activating: it can't come to the front from a
+    // background lease, and the window it brings is adopted onto the layer.
+    const background = action.input?.background === true || (layer?.bundleId !== undefined && layer.bundleId === bundleId);
+    if (background) {
+      args.push("--background");
+    }
+    const url = stringValue(action.input?.url);
+    if (url) {
+      args.push("--url", url);
+    }
     const timeoutMs = numberFromInput(action.input?.timeoutMs);
     if (timeoutMs !== undefined && timeoutMs > 0) {
       args.push("--timeout-ms", String(Math.round(timeoutMs)));

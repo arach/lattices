@@ -953,16 +953,7 @@ final class AgentCursorOverlayView: NSView {
     }
 
     private func drawTriangle(at point: CGPoint, lean: CGFloat) {
-        // A stemless wedge. The origin remains the exact action hotspot.
-        let path = NSBezierPath()
-        path.move(to: CGPoint(x: 0.3, y: -2.5))
-        path.curve(to: CGPoint(x: 3, y: -24.5), controlPoint1: CGPoint(x: 0.8, y: -7), controlPoint2: CGPoint(x: 1.6, y: -21))
-        path.curve(to: CGPoint(x: 7, y: -24), controlPoint1: CGPoint(x: 3.8, y: -28), controlPoint2: CGPoint(x: 5.6, y: -27))
-        path.curve(to: CGPoint(x: 19, y: -15.2), controlPoint1: CGPoint(x: 9.4, y: -18), controlPoint2: CGPoint(x: 13.5, y: -15.6))
-        path.curve(to: CGPoint(x: 19.8, y: -12), controlPoint1: CGPoint(x: 22.5, y: -15), controlPoint2: CGPoint(x: 22.4, y: -13.6))
-        path.line(to: CGPoint(x: 2.5, y: -0.8))
-        path.curve(to: CGPoint(x: 0.3, y: -2.5), controlPoint1: CGPoint(x: 0.3, y: 0.7), controlPoint2: CGPoint(x: -0.1, y: -0.1))
-        path.close()
+        let path = NSBezierPath(cgPath: ActionCursorGlyph.path(scale: ActionCursorGlyph.overlayScale))
         path.lineJoinStyle = .round
         var transform = AffineTransform(translationByX: point.x, byY: point.y)
         transform.rotate(byRadians: lean + 18 * .pi / 180)
@@ -980,15 +971,15 @@ final class AgentCursorOverlayView: NSView {
         let glowColor = neutralShadow.blended(withFraction: blend, of: accent.withAlphaComponent(0.8)) ?? neutralShadow
         NSGraphicsContext.saveGraphicsState()
         let glow = NSShadow()
-        glow.shadowBlurRadius = 7 + 5 * blend
-        glow.shadowOffset = CGSize(width: 1, height: -2)
+        glow.shadowBlurRadius = 3 + 4 * blend
+        glow.shadowOffset = CGSize(width: 0.5, height: -1)
         glow.shadowColor = glowColor
         glow.set()
         body.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
         rim.setStroke()
-        path.lineWidth = 1.5
+        path.lineWidth = 1.1
         path.stroke()
         // Fine inset illumination preserves the silhouette at recording scale.
         // Neutral on light scenes for the same reason as the shadow: no cast.
@@ -997,7 +988,7 @@ final class AgentCursorOverlayView: NSView {
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
         inset.setStroke()
-        path.lineWidth = 3
+        path.lineWidth = 2
         path.stroke()
         NSGraphicsContext.restoreGraphicsState()
     }
@@ -1024,7 +1015,7 @@ final class AgentCursorOverlayView: NSView {
         let inset: CGFloat = 10
         let height: CGFloat = 28
         let width = min(text.size().width + 20, min(360, max(0, bounds.width - inset * 2)))
-        var origin = CGPoint(x: point.x + 22, y: point.y - height - 24)
+        var origin = CGPoint(x: point.x + 15, y: point.y - height - 17)
         if origin.x + width > bounds.maxX - inset { origin.x = point.x - width - 18 }
         if origin.y < bounds.minY + inset { origin.y = point.y + 18 }
         origin.x = max(bounds.minX + inset, min(origin.x, bounds.maxX - width - inset))
@@ -1044,5 +1035,27 @@ final class AgentCursorOverlayView: NSView {
         text.draw(with: CGRect(x: rect.minX + 10, y: rect.midY - text.size().height / 2,
                                width: max(0, width - 20), height: text.size().height),
                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+    }
+}
+
+/// The agent's pointer: a stemless wedge whose origin is the exact action hotspot,
+/// pointing down and to the right in a y-up space. Shared by the operator overlay and
+/// the agent layer's viewer so the agent has one shape wherever it shows.
+enum ActionCursorGlyph {
+    /// About the size of the system arrow's body: present, not imposing.
+    static let overlayScale: CGFloat = 0.62
+
+    static func path(scale: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * scale, y: y * scale) }
+        path.move(to: p(0.3, -2.5))
+        path.addCurve(to: p(3, -24.5), control1: p(0.8, -7), control2: p(1.6, -21))
+        path.addCurve(to: p(7, -24), control1: p(3.8, -28), control2: p(5.6, -27))
+        path.addCurve(to: p(19, -15.2), control1: p(9.4, -18), control2: p(13.5, -15.6))
+        path.addCurve(to: p(19.8, -12), control1: p(22.5, -15), control2: p(22.4, -13.6))
+        path.addLine(to: p(2.5, -0.8))
+        path.addCurve(to: p(0.3, -2.5), control1: p(0.3, 0.7), control2: p(-0.1, -0.1))
+        path.closeSubpath()
+        return path
     }
 }

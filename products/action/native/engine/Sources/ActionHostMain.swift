@@ -46,6 +46,8 @@ enum ActionHostCommand: String {
     case blinkClick = "blink-click"
     case blinkType = "blink-type"
     case blinkKey = "blink-key"
+    case blinkDrag = "blink-drag"
+    case blinkScroll = "blink-scroll"
     case raiseWindow = "raise-window"
     case windowOrder = "window-order"
     case demoCursorOverlay = "demo-cursor-overlay"
@@ -541,6 +543,9 @@ let keyCodes: [String: UInt16] = [
     "return": 0x24, "enter": 0x24, "tab": 0x30, "space": 0x31, "delete": 0x33, "backspace": 0x33,
     "escape": 0x35, "esc": 0x35,
     "up": 0x7E, "down": 0x7D, "left": 0x7B, "right": 0x7C,
+    "home": 0x73, "end": 0x77, "pageup": 0x74, "pagedown": 0x79, "forwarddelete": 0x75,
+    "f1": 0x7A, "f2": 0x78, "f3": 0x63, "f4": 0x76, "f5": 0x60, "f6": 0x61,
+    "f7": 0x62, "f8": 0x64, "f9": 0x65, "f10": 0x6D, "f11": 0x67, "f12": 0x6F,
 ]
 
 let keySymbols: [String: String] = [
@@ -555,6 +560,7 @@ let keySymbols: [String: String] = [
     "delete": "⌫", "backspace": "⌫",
     "escape": "⎋", "esc": "⎋",
     "up": "↑", "down": "↓", "left": "←", "right": "→",
+    "home": "↖", "end": "↘", "pageup": "⇞", "pagedown": "⇟", "forwarddelete": "⌦",
 ]
 
 func keyOverlayLabel(_ key: String) -> String {
@@ -4186,6 +4192,21 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
     case .launchApp:
         let bundleId = try options.required("bundle-id")
         let timeoutMilliseconds = options.double("timeout-ms", default: 10_000)
+        // Background: launch or reopen without activating, so an agent layer can take
+        // the window. No wait for frontmost, since nothing comes to the front.
+        let url = ActionBackgroundOpen.url(from: options.options["url"])
+        if options.bool("background", default: false) || url != nil {
+            let app = try await ActionBackgroundOpen.open(bundleId: bundleId, url: url)
+            if !options.bool("background", default: false) {
+                try await activateApplicationAndWait(
+                    bundleId: bundleId,
+                    timeoutMilliseconds: timeoutMilliseconds,
+                    logger: logger
+                )
+            }
+            try writer.write(ActionHostResponse(status: "launched", outputPath: nil, detail: "\(bundleId) pid \(app.processIdentifier)"))
+            break
+        }
         if NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty {
             try await MainActor.run {
                 try ActionNativeAutomation.launchApplication(bundleId: bundleId)
@@ -4273,6 +4294,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         // A requested hold is a HID gesture AXPress can't express; `--pointer` forces the
         // pointer for elements whose press action misbehaves.
         let wantsPointer = options.options["hold-ms"] != nil || options.bool("pointer", default: false)
+        ActionAgentLayerDisplay.announceAim(at: CGPoint(x: x, y: y))
         let detail = try ActionBlinkInput.click(
             at: CGPoint(x: x, y: y),
             holdMs: Int(options.double("hold-ms", default: Double(ActionBlinkInput.clickHoldMilliseconds))),
@@ -4309,6 +4331,37 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         )
         ActionAgentLayerDisplay.announceAct(focusedIn: app)
         try writer.write(ActionHostResponse(status: "blink-key-pressed", outputPath: nil, detail: detail))
+    case .blinkDrag:
+        let from = CGPoint(x: options.double("from-x", default: .nan), y: options.double("from-y", default: .nan))
+        let to = CGPoint(x: options.double("to-x", default: .nan), y: options.double("to-y", default: .nan))
+        guard from.x.isFinite, from.y.isFinite, to.x.isFinite, to.y.isFinite else {
+            throw ActionHostError.missingOption("--from-x --from-y --to-x --to-y")
+        }
+        ActionAgentLayerDisplay.announceAim(at: from)
+        let detail = try ActionBlinkInput.drag(
+            from: from,
+            to: to,
+            durationMs: Int(options.double("duration-ms", default: 200)),
+            anyDisplay: options.bool("any-display", default: false),
+            pointerEventLogPath: options.options["pointer-event-log"]
+        )
+        ActionAgentLayerDisplay.announceAct("drag", at: to, from: from)
+        try writer.write(ActionHostResponse(status: "blink-dragged", outputPath: nil, detail: detail))
+    case .blinkScroll:
+        let point = CGPoint(x: options.double("x", default: .nan), y: options.double("y", default: .nan))
+        guard point.x.isFinite, point.y.isFinite else {
+            throw ActionHostError.missingOption("--x/--y")
+        }
+        ActionAgentLayerDisplay.announceAim(at: point)
+        let detail = try ActionBlinkInput.scroll(
+            at: point,
+            deltaX: options.double("delta-x", default: 0),
+            deltaY: options.double("delta-y", default: 0),
+            durationMs: Int(options.double("duration-ms", default: 0)),
+            anyDisplay: options.bool("any-display", default: false)
+        )
+        ActionAgentLayerDisplay.announceAct("scroll", at: point, deltaY: options.double("delta-y", default: 0))
+        try writer.write(ActionHostResponse(status: "blink-scrolled", outputPath: nil, detail: detail))
     case .pointerEventLogInit:
         // Written natively so the header's monotonic reference comes from the same clock the
         // click processes will stamp against. A JS caller cannot produce a comparable reading.

@@ -106,6 +106,16 @@ describe("parseAgentLayerOpen", () => {
     assert.throws(() => parseAgentLayerOpen({ windowId: 0 }), /positive integer/);
   });
 
+  test("takes a url for the subject app, and only with one", () => {
+    assert.deepEqual(parseAgentLayerOpen({ bundleId: "com.apple.Safari", url: " news.ycombinator.com " }), {
+      bundleId: "com.apple.Safari",
+      url: "news.ycombinator.com",
+      owner: "caller",
+    });
+    assert.throws(() => parseAgentLayerOpen({ url: "example.com" }), /pass bundleId too/);
+    assert.throws(() => parseAgentLayerOpen({ bundleId: "com.apple.Safari", url: "example.com", windowId: 9 }), /can't be combined/);
+  });
+
   test("rejects half a size and a doubled subject", () => {
     assert.throws(() => parseAgentLayerOpen({ width: 1280 }), /width and height go together/);
     assert.throws(() => parseAgentLayerOpen({ bundleId: "a", pid: 3 }), /bundleId or pid/);

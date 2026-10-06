@@ -45,7 +45,11 @@ function describeError(error: unknown): string {
  * when it exits non-zero.
  */
 function hostFailureDetail(error: unknown): string | undefined {
-  const stdout = (error as { stdout?: unknown } | undefined)?.stdout;
+  return hostDetail((error as { stdout?: unknown } | undefined)?.stdout);
+}
+
+/** The `detail` of a host JSON reply, such as "Safari cmd+n via=ax menu=\"New Window\"". */
+function hostDetail(stdout: unknown): string | undefined {
   if (typeof stdout !== "string" || stdout.trim().length === 0) {
     return undefined;
   }
@@ -734,14 +738,25 @@ export class MacOSCommandEngine implements CaptureEngine {
 
   /**
    * Pass `agentLayer` when an agent layer is up: coordinate clicks on it and keyboard acts
-   * then run as blink acts (see `blinkRouteFor`).
+   * then run as blink acts (see `blinkRouteFor`). Resolves to the host's detail for the
+   * last command it ran, which says how the act landed (`via=ax`, `via=keys`, ...).
    */
   async performAction(
     action: RuntimeAction,
     target?: ResolvedTarget,
     options: { agentLayer?: AgentLayerRouting } = {},
-  ): Promise<void> {
-    await executeInteractionAction(action, target, this.interactionContext(options.agentLayer));
+  ): Promise<string | undefined> {
+    const context = this.interactionContext(options.agentLayer);
+    let detail: string | undefined;
+    await executeInteractionAction(action, target, {
+      ...context,
+      runHost: async (command, ...args) => {
+        const reply = await context.runHost(command, ...args);
+        detail = hostDetail(reply.stdout) ?? detail;
+        return reply;
+      },
+    });
+    return detail;
   }
 
   /** The blink command `performAction` would use for this act, if any. Drives tier inference. */
