@@ -13,12 +13,14 @@ git clone https://github.com/arach/lattices
 cd lattices && bun link
 ```
 
-Verify: `lattices help` should print usage info.
+This installs the CLI as `lats`, with `lattices` as a long-form alias.
+
+Verify: `lats help` should print usage info.
 
 ## 2. Launch the menu bar app
 
 ```bash
-lattices app
+lats app
 ```
 
 This builds (or downloads) and launches the native macOS companion.
@@ -28,7 +30,7 @@ any project, tile windows, or switch workspace layers.
 To also open Lattices automatically when you log in:
 
 ```bash
-lattices app install
+lats app install
 ```
 
 ## 3. Add a project config
@@ -37,7 +39,7 @@ Drop a `.lattices.json` in your project root:
 
 ```bash
 cd ~/your-project
-lattices init
+lats init
 ```
 
 This generates a config like:
@@ -62,13 +64,13 @@ your pane layout:
 ```bash
 brew install tmux
 cd ~/your-project
-lattices          # home screen: status only, does not attach
-lattices start    # create or reattach the session
+lats              # home screen: status only, does not attach
+lats start        # create or reattach the session
 ```
 
 This creates a tmux session with your configured panes side by side.
 The session persists in the background — close your terminal, reopen it,
-run `lattices start` again, and everything is still there.
+run `lats start` again, and everything is still there.
 
 > **Without tmux**, you still get the menu bar app, command palette,
 > window tiling, workspace layers, OCR, and the full agent API.

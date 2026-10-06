@@ -118,8 +118,8 @@ type Toolset = {
 for that toolset's own tools, so a call into one toolset does not reset another's
 idle timer.
 
-`lattices mcp --toolsets browser` narrows to a subset; the default is all of
-them. `lattices mcp --list` prints the registry without speaking the protocol.
+`lats mcp --toolsets browser` narrows to a subset; the default is all of
+them. `lats mcp --list` prints the registry without speaking the protocol.
 
 ### Tool names are not namespaced
 

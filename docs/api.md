@@ -8,7 +8,7 @@ The lattices menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`
 (agent API). The same process also hosts the voice live-session runtime on
 `ws://127.0.0.1:9398` (see [Voice](/docs/voice) — deterministic Lattices ports).
 ~120 RPC methods and real-time events. Prefer `desktop.snapshot` when you
-need to know what is in front of the user, and `lattices map` when you want
+need to know what is in front of the user, and `lats map` when you want
 that same state drawn as ASCII.
 
 ## Quick start
@@ -16,13 +16,13 @@ that same state drawn as ASCII.
 1. Launch the server (it starts with the menu bar app):
 
 ```bash
-lattices app
+lats app
 ```
 
 2. Check that it's running:
 
 ```bash
-lattices daemon status
+lats daemon status
 ```
 
 3. Call a method from Node.js:
@@ -92,7 +92,7 @@ lattices uses a JSON-RPC-style protocol over WebSocket on port **9399**.
 - The Node.js `daemonCall()` client opens a fresh connection per call and
   closes it when the response arrives. For event subscriptions, hold the
   connection open (see [Reactive event pattern](#agent-integration)).
-- If the server restarts (e.g. after `lattices app restart`), existing
+- If the server restarts (e.g. after `lats app restart`), existing
   connections are dropped. Clients should reconnect and treat it as
   stateless. There is no session resumption.
 
@@ -303,7 +303,7 @@ and copies the PNG only when `--clipboard` is present. `--delay` is a CLI-side
 wait measured in seconds; it is not an RPC parameter.
 
 ```bash
-lattices capture display 0 --clipboard --delay 3 --filename hyper-g-layout.png
+lats capture display 0 --clipboard --delay 3 --filename hyper-g-layout.png
 ```
 
 #### `capture.screenshotRegion`
@@ -384,35 +384,35 @@ await daemonCall('vision.analyzeWindow', {
 CLI:
 
 ```bash
-lattices capture window
-lattices capture display 0 --clipboard --delay 3
-lattices runs
-lattices runs run_20260617-120000_a1b2c3
-lattices terminals
-lattices terminals --refresh
-lattices computer prepare --text "# hello" --treatment stage
-lattices call computer.windowState '{"app":"Finder","maxDepth":4}'
-lattices call computer.pressKey '{"app":"Finder","key":"escape","treatment":"stage"}'
-lattices call computer.hotkey '{"app":"Xcode","shortcut":"command+b","treatment":"stage"}'
-lattices computer focus-window --wid 7258 --treatment present
-lattices computer cursor --style marker --shape chevron --angle-deg -8 --label typing
-lattices computer launch-app Scout
-lattices computer scout --treatment present
-lattices computer scout "Draft memo text" --execute
-lattices computer type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
-lattices computer click --app Scout --x-ratio .5 --y-ratio .86 --execute
-lattices cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
-lattices call computer.scroll '{"app":"Safari","direction":"down","amount":420,"treatment":"stage"}'
-lattices call computer.drag '{"app":"Finder","fromXRatio":0.2,"fromYRatio":0.2,"toXRatio":0.7,"toYRatio":0.7,"treatment":"stage"}'
-lattices call computer.doubleClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
-lattices call computer.rightClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
-lattices call computer.verify '{"app":"Safari","mode":"ocr","contains":"Docs"}'
-lattices call capture.screenshotRegion '{"app":"Safari","filename":"safari-region.png"}'
-lattices call vision.analyzeWindow '{"app":"Safari","instruction":"Read visible text"}'
-lattices call browser.getText '{"app":"Safari"}'
-lattices call browser.queryDom '{"app":"Safari","selector":"h1","allowAutomation":true}'
-lattices computer type-text --text "# hello from lattices"
-lattices computer demo-terminal --dry-run
+lats capture window
+lats capture display 0 --clipboard --delay 3
+lats runs
+lats runs run_20260617-120000_a1b2c3
+lats terminals
+lats terminals --refresh
+lats computer prepare --text "# hello" --treatment stage
+lats call computer.windowState '{"app":"Finder","maxDepth":4}'
+lats call computer.pressKey '{"app":"Finder","key":"escape","treatment":"stage"}'
+lats call computer.hotkey '{"app":"Xcode","shortcut":"command+b","treatment":"stage"}'
+lats computer focus-window --wid 7258 --treatment present
+lats computer cursor --style marker --shape chevron --angle-deg -8 --label typing
+lats computer launch-app Scout
+lats computer scout --treatment present
+lats computer scout "Draft memo text" --execute
+lats computer type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
+lats computer click --app Scout --x-ratio .5 --y-ratio .86 --execute
+lats cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+lats call computer.scroll '{"app":"Safari","direction":"down","amount":420,"treatment":"stage"}'
+lats call computer.drag '{"app":"Finder","fromXRatio":0.2,"fromYRatio":0.2,"toXRatio":0.7,"toYRatio":0.7,"treatment":"stage"}'
+lats call computer.doubleClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
+lats call computer.rightClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
+lats call computer.verify '{"app":"Safari","mode":"ocr","contains":"Docs"}'
+lats call capture.screenshotRegion '{"app":"Safari","filename":"safari-region.png"}'
+lats call vision.analyzeWindow '{"app":"Safari","instruction":"Read visible text"}'
+lats call browser.getText '{"app":"Safari"}'
+lats call browser.queryDom '{"app":"Safari","selector":"h1","allowAutomation":true}'
+lats computer type-text --text "# hello from lattices"
+lats computer demo-terminal --dry-run
 ```
 
 ---
@@ -1280,10 +1280,10 @@ runtime location, and the custom HUD renderer decides how to present them.
 Useful commands:
 
 ```bash
-lattices hud register .lattices/hud/manifest.json --publish
-lattices hud publish talkie
-lattices hud sync
-lattices hud discover ~/dev --register
+lats hud register .lattices/hud/manifest.json --publish
+lats hud publish talkie
+lats hud sync
+lats hud discover ~/dev --register
 ```
 
 For packaged apps, keep the renderer files in the app bundle and point mutable
@@ -1365,9 +1365,9 @@ and command palette. `focus.enter` targets the currently frontmost window;
 `focus.exit` restores the exact frame captured on entry.
 
 ```bash
-lattices call focus.enter
-lattices call focus.status
-lattices call focus.exit
+lats call focus.enter
+lats call focus.status
+lats call focus.exit
 ```
 
 Each method returns the resulting `active` state. Mutating methods also return
@@ -1407,7 +1407,7 @@ Useful for agent self-discovery.
 CLI shortcut:
 
 ```bash
-lattices call api.schema
+lats call api.schema
 ```
 
 #### `diagnostics.list`
@@ -1505,7 +1505,7 @@ Supported action types:
 #### `desktop.snapshot`
 
 One call for “what is in front of the user?” Structured state — not a drawing.
-`lattices map` is the ASCII render of this same current-space view (it now
+`lats map` is the ASCII render of this same current-space view (it now
 reads `desktop.snapshot` when the app is new enough).
 
 **Params**:
@@ -1545,8 +1545,8 @@ Window frames are top-left global, same as `windows.list`. Does not recapture
 windows or run OCR.
 
 ```bash
-lattices call desktop.snapshot
-lattices map
+lats call desktop.snapshot
+lats map
 ```
 
 #### `windows.list`
@@ -1622,20 +1622,20 @@ Search windows by text query across title, app name, session tags, and OCR conte
 
 ```bash
 # Basic search (uses windows.search)
-lattices search vox
+lats search vox
 
 # Deep search — adds terminal tab/process inspection for ranking
-lattices search vox --deep
+lats search vox --deep
 
 # Same as --deep (all search sources)
-lattices search vox --all
+lats search vox --all
 
 # Pipeable output
-lattices search vox --wid
-lattices search vox --json
+lats search vox --wid
+lats search vox --json
 
 # Search + focus + tile in one step
-lattices place vox right
+lats place vox right
 ```
 
 #### `windows.preview`
@@ -1760,7 +1760,7 @@ Focus a window — bring it to front and switch Spaces if needed.
 | Field     | Type   | Required | Description                     |
 |-----------|--------|----------|---------------------------------|
 | `wid`     | number | no       | CGWindowID (any window)         |
-| `session` | string | no       | Session name (lattices windows)  |
+| `session` | string | no       | Session name (lats windows)  |
 
 Provide either `wid` or `session`. If `wid` is given, it takes priority.
 
@@ -2230,11 +2230,11 @@ Lattices run. If `windowIds` is omitted, create/add uses the latest multi-window
 selection from Hyperspace.
 
 ```bash
-lattices call tabStacks.create '{"name":"Research","placement":"top-left"}'
-lattices call tabStacks.layout '{"mode":"grid"}'
-lattices call tabStacks.select '{"index":1}'
-lattices call tabStacks.layout '{"mode":"tabs"}'
-lattices call tabStacks.delete '{}'
+lats call tabStacks.create '{"name":"Research","placement":"top-left"}'
+lats call tabStacks.layout '{"mode":"grid"}'
+lats call tabStacks.select '{"index":1}'
+lats call tabStacks.layout '{"mode":"tabs"}'
+lats call tabStacks.delete '{}'
 ```
 
 `tabStacks.create` needs at least two live windows. You may instead pass
@@ -2328,7 +2328,7 @@ Ambiguous targets return an error listing candidates. Missing tmux returns a
 clear error. Never falls back to pixels.
 
 ```bash
-lattices call terminals.capture '{"session":"lattices-c36f74","lines":40}'
+lats call terminals.capture '{"session":"lattices-c36f74","lines":40}'
 ```
 
 #### `terminals.list`
@@ -2518,7 +2518,7 @@ is available at ws://127.0.0.1:9399.
 - Search by content: `daemonCall('windows.search', { query: 'myproject' })`
   Returns windows with `matchSource` ("title", "app", "session", "ocr") and `ocrSnippet`
 - Search terminals: `daemonCall('terminals.search', {})` — tabs, cwds, processes
-- CLI: `lattices search myproject`, `lattices search myproject --deep`, or `lattices search myproject --all` (same as `--deep`)
+- CLI: `lats search myproject`, `lats search myproject --deep`, or `lats search myproject --all` (same as `--deep`)
 
 ### Actions
 - Focus a window: `daemonCall('window.focus', { wid: 1234 })`
@@ -2526,7 +2526,7 @@ is available at ws://127.0.0.1:9399.
 - Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
 - Switch layers: `daemonCall('layer.activate', { name: 'web' })`; add `mode: 'launch'` to start what isn't running
 - Optimize the workspace: `daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })`
-- CLI: `lattices place myproject left` (search + focus + tile in one step)
+- CLI: `lats place myproject left` (search + focus + tile in one step)
 
 ### Import
 \```js
@@ -2596,7 +2596,7 @@ Always verify the daemon is running before making calls:
 import { isDaemonRunning, daemonCall } from '@lattices/cli'
 
 if (!(await isDaemonRunning())) {
-  console.error('lattices daemon is not running — start it with: lattices app')
+  console.error('lats daemon is not running — start it with: lats app')
   process.exit(1)
 }
 
@@ -2611,7 +2611,7 @@ Pi users can install the `@arach/pi-lattices` package in
 
 ```bash
 pi install ./packages/pi-lattices --local
-lattices app
+lats app
 ```
 
 The extension wraps the existing daemon and keeps Lattices' macOS-native

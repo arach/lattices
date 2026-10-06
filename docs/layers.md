@@ -53,7 +53,7 @@ App tabs are matched by app name and optional window-title substring.
 - The HUD shows a Lattices tab strip for the active layer's first group
 - The split button arranges members inside the group's configured tile; press
   it again to collapse the windows back into their shared slot
-- You can still launch projects independently: `cd vox-ios && lattices start`
+- You can still launch projects independently: `cd vox-ios && lats start`
   creates its own standalone session as before
 
 ### Tab group fields
@@ -75,17 +75,17 @@ Each tab needs either `path` or `app`.
 ### CLI commands
 
 ```bash
-lattices groups             # List all groups with status
-lattices group <id>         # Launch or attach to a group
-lattices tab <group> [tab]  # Switch tab by label or index
+lats groups                 # List all groups with status
+lats group <id>             # Launch or attach to a group
+lats tab <group> [tab]      # Switch tab by label or index
 ```
 
 Examples:
 
 ```bash
-lattices group vox       # Launch all Vox terminal and app tabs
-lattices tab vox Editor  # Open the editor tab
-lattices tab vox 0       # Switch to first tab (by index)
+lats group vox           # Launch all Vox terminal and app tabs
+lats tab vox Editor      # Open the editor tab
+lats tab vox 0           # Switch to first tab (by index)
 ```
 
 ### Menu bar app
@@ -314,7 +314,7 @@ Four ways to switch:
 | **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Cmd+Option+arrows move across the pad and stop at its edges |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
-| **CLI**              | `lattices layer <name\|slot>`            |
+| **CLI**              | `lats layer <name\|slot>`            |
 
 Every one of them switches the same way:
 
@@ -327,9 +327,9 @@ Choosing the layer you're on again gathers its windows back up.
 Two extras go further, and are always asked for by name:
 
 - **Tile** also moves windows with a `tile` value to that position:
-  `lattices layer <name> --tile`, or `mode: "tile"` in the API.
+  `lats layer <name> --tile`, or `mode: "tile"` in the API.
 - **Launch** first starts the projects that aren't running, then tiles:
-  `lattices layer <name> --launch`, **Launch Layer** in the command
+  `lats layer <name> --launch`, **Launch Layer** in the command
   bar, `l` in command mode, or `mode: "launch"`.
 
 The app remembers which layer was last active across restarts.
@@ -368,7 +368,7 @@ quitting:
 |----------------------|-----------------------------------------------|
 | **Command bar**      | Show All Windows, listed with the layers while anything is put away |
 | **Menu bar panel**   | Right-click a layer chip → Show All Windows   |
-| **CLI**              | `lattices layer reveal` (or `show-all`)       |
+| **CLI**              | `lats layer reveal` (or `show-all`)       |
 | **API**              | `layers.reveal`                               |
 
 Show All puts back every parked window and unhides every app a switch
@@ -385,9 +385,9 @@ stays in the corner until you switch layers or use Show All.
 You can switch layers by name from the CLI:
 
 ```bash
-lattices layer hudson           # Switch to the layer named "hudson"
-lattices layer 1                # Switch to the layer on ⌘⌥1
-lattices layer hudson --launch  # Start what isn't running, then tile
+lats layer hudson           # Switch to the layer named "hudson"
+lats layer 1                # Switch to the layer on ⌘⌥1
+lats layer hudson --launch  # Start what isn't running, then tile
 ```
 
 A number is a pad slot, as ⌘⌥ takes it: 1–4 and 6–9. A name is the
@@ -401,8 +401,8 @@ after a restart; while it lives, it stays in the layer when its title
 changes.
 
 ```bash
-lattices layer add wid:1234 --to web       # default: the active layer
-lattices layer remove wid:1234 --from web
+lats layer add wid:1234 --to web       # default: the active layer
+lats layer remove wid:1234 --from web
 ```
 
 ⌘⌥T adds the front window to the layer you're on. In the ⌘⌥Space

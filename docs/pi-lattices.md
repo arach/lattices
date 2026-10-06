@@ -31,7 +31,7 @@ pi install npm:@arach/pi-lattices
 Start Lattices before using the tools:
 
 ```bash
-lattices app
+lats app
 ```
 
 ## High-value tools
@@ -98,7 +98,7 @@ bun run --cwd packages/pi-lattices smoke:no-daemon
 Live status + safe staged call:
 
 ```bash
-lattices app
+lats app
 bun run --cwd packages/pi-lattices smoke:live
 ```
 

@@ -35,7 +35,7 @@ Each area below is a one-paragraph summary plus the doc to cite for detail.
 
 ### Window tiling & placement
 Snap windows to preset positions — halves, quarters, thirds, maximize, center —
-from the command palette or `lattices tile <position>`. There is also a grid
+from the command palette or `lats tile <position>`. There is also a grid
 placement primitive: compact `CxR:c,r` starts at 1 for command entry, while
 canonical `grid:CxR:c,r` starts at 0 for APIs. → [Tiling reference](/docs/tiling-reference), positions in [Configuration](/docs/config).
 
@@ -53,15 +53,15 @@ The palette (**Cmd+Shift+M**) is the app's primary surface: launch projects, til
 sync, restart, open settings — all searchable. → [Menu Bar App](/docs/app).
 
 ### tmux sessions (`.lattices.json`)
-Declare panes, commands, and layout per project. `lattices start` builds/attaches a
-persistent session named `<basename>-<hash>`; `lattices sync` reconciles a running
+Declare panes, commands, and layout per project. `lats start` builds/attaches a
+persistent session named `<basename>-<hash>`; `lats sync` reconciles a running
 session to its config. **Ensure** re-runs exited commands on reattach; **prefill**
 types them and waits. → [Concepts](/docs/concepts), [Configuration](/docs/config).
 
 ### Screen OCR & search
 The app reads on-screen text via the Accessibility API (~60s) and Apple Vision OCR
 on background windows (~2h), indexing everything with FTS5. Search across titles,
-app names, session tags, and OCR with `lattices search <query>` (add `--deep` or
+app names, session tags, and OCR with `lats search <query>` (add `--deep` or
 `--all` to inspect terminal tabs by cwd). → [Screen OCR & Search](/docs/ocr).
 
 ### Voice commands
@@ -87,8 +87,8 @@ subscribe to events (`windows.changed`, `tmux.changed`, `layer.switched`).
 | **Ctrl+Option+Space** | Open the command bar for captured-front-window actions |
 | **Ctrl+Option+G** | Show the 4x4 grid placement target |
 | **Ctrl+Option+V** | Fill the least-occupied 3x2 grid cell with the frontmost window |
-| `lattices tile <position>` | Tile the focused window (CLI) |
-| `lattices layer [name\|slot]` | Switch workspace layer (CLI) |
+| `lats tile <position>` | Tile the focused window (CLI) |
+| `lats layer [name\|slot]` | Switch workspace layer (CLI) |
 | **Ctrl+B** then `D` / `Z` / arrows | tmux: detach / zoom / move pane (inside a session) |
 
 Tiling and grid hotkeys are user-configurable — for the live set, point the user to
@@ -97,11 +97,11 @@ the defaults as guaranteed.
 
 ## CLI quick reference
 
-`lattices` · `lattices init` · `lattices sync` · `lattices start` ·
-`lattices restart [pane]` · `lattices tile <position>` · `lattices group [id]` ·
-`lattices layer [name|slot]` · `lattices windows --json` ·
-`lattices search <query> [--deep|--all] [--json] [--wid]` · `lattices place <query> [position]` ·
-`lattices app restart`. Full flags: [Configuration](/docs/config).
+`lats` · `lats init` · `lats sync` · `lats start` ·
+`lats restart [pane]` · `lats tile <position>` · `lats group [id]` ·
+`lats layer [name|slot]` · `lats windows --json` ·
+`lats search <query> [--deep|--all] [--json] [--wid]` · `lats place <query> [position]` ·
+`lats app restart`. Full flags: [Configuration](/docs/config).
 
 ## Config & file locations
 
