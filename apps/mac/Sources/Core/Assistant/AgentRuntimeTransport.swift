@@ -93,6 +93,11 @@ final class AgentRuntimeTransport {
     /// wired for non-interactive use.
     static let defaultHarnessPreference = ["pi", "claude-code", "codex", "opencode"]
 
+    /// Harnesses whose agent-sessions adapter actually installs `systemPrompt`.
+    /// Every other adapter (pi, claude-code, opencode) drops it on the floor,
+    /// so for those the instructions ride in the first prompt of the session.
+    static let harnessesHonoringSystemPrompt: Set<String> = ["codex"]
+
     /// Wall-clock for catalog/start/prompt-ack RPC (not the model turn itself).
     private static let requestTimeoutSeconds: TimeInterval = 12
     /// Default model-turn budget per harness for chat (cascade stays responsive).
@@ -113,7 +118,13 @@ final class AgentRuntimeTransport {
     private var activeModel: String?
     /// `AgentRuntimeLaunch.key` the live session was started with.
     private var activeLaunchKey: String?
-    private var textBlockIDs = Set<String>()
+    /// Session that has already received the instructions (natively or inline).
+    private var primedSessionID: String?
+    /// Last turn context delivered, keyed by session, so unchanged state is not resent.
+    private var deliveredContext: (sessionID: String, context: String)?
+    /// Block id → block type ("text", "reasoning", "action", …) for the current turn.
+    /// Only text blocks reach the transcript; reasoning must never leak into it.
+    private var blockTypes: [String: String] = [:]
     private var accumulatedText = ""
     /// Last adapter/process error seen on stderr or session:update status=error.
     private var lastAdapterError: String?
@@ -179,9 +190,13 @@ final class AgentRuntimeTransport {
 
     /// Run one chat turn. Streams text deltas via `onDelta`.
     /// Tries preferred harness, then the rest of the preference list on empty/crash.
+    /// `turnContext` is the live state for this turn (settings, attachments). It is
+    /// sent inline with the prompt whenever it differs from what the session last saw,
+    /// because the system prompt is fixed at session start.
     func ask(
         text: String,
         systemPrompt: String,
+        turnContext: String? = nil,
         cwd: String,
         preferredHarness: String? = nil,
         launch: AgentRuntimeLaunch? = nil,
@@ -205,6 +220,7 @@ final class AgentRuntimeTransport {
                 return try await askOnce(
                     text: text,
                     systemPrompt: systemPrompt,
+                    turnContext: turnContext,
                     cwd: cwd,
                     harness: harness.id,
                     launch: launch?.harness == harness.id
@@ -261,6 +277,7 @@ final class AgentRuntimeTransport {
     private func askOnce(
         text: String,
         systemPrompt: String,
+        turnContext: String?,
         cwd: String,
         harness: String,
         launch: AgentRuntimeLaunch,
@@ -269,6 +286,12 @@ final class AgentRuntimeTransport {
         timeoutSeconds: TimeInterval
     ) async throws -> AgentRuntimeReply {
         try await ensureSession(launch: launch, systemPrompt: systemPrompt, cwd: cwd)
+        let outgoing = composeTurnText(
+            text: text,
+            systemPrompt: systemPrompt,
+            turnContext: turnContext,
+            harness: harness
+        )
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AgentRuntimeReply, Error>) in
             lock.lock()
@@ -279,7 +302,7 @@ final class AgentRuntimeTransport {
             }
             turnContinuation = cont
             accumulatedText = ""
-            textBlockIDs.removeAll()
+            blockTypes.removeAll()
             lastAdapterError = nil
             self.onTextDelta = onDelta
             self.onTool = onTool
@@ -298,7 +321,7 @@ final class AgentRuntimeTransport {
                     _ = try await self.request([
                         "op": "prompt",
                         "sessionId": self.activeSessionID ?? "lattices-assistant",
-                        "text": text,
+                        "text": outgoing,
                     ])
                 } catch {
                     self.failTurn(error)
@@ -333,6 +356,38 @@ final class AgentRuntimeTransport {
         }
         process?.terminate()
         teardownProcess()
+    }
+
+    /// Wraps the user's text with whatever the session has not seen yet: the
+    /// instructions (first turn, adapters that ignore `systemPrompt`) and the
+    /// current state block (whenever it changed).
+    private func composeTurnText(
+        text: String,
+        systemPrompt: String,
+        turnContext: String?,
+        harness: String
+    ) -> String {
+        lock.lock()
+        let sessionID = activeSessionID ?? "lattices-assistant"
+        let needsInstructions = primedSessionID != sessionID
+            && !Self.harnessesHonoringSystemPrompt.contains(harness)
+        primedSessionID = sessionID
+        let context = turnContext?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let needsContext = !context.isEmpty
+            && (deliveredContext?.sessionID != sessionID || deliveredContext?.context != context)
+        if needsContext { deliveredContext = (sessionID, context) }
+        lock.unlock()
+
+        guard needsInstructions || needsContext else { return text }
+        var parts: [String] = []
+        if needsInstructions {
+            parts.append("<lattices_instructions>\n\(systemPrompt)\n</lattices_instructions>")
+        }
+        if needsContext {
+            parts.append(context)
+        }
+        parts.append("User request:\n\(text)")
+        return parts.joined(separator: "\n\n")
     }
 
     // MARK: - Session lifecycle
@@ -651,6 +706,14 @@ final class AgentRuntimeTransport {
         }
     }
 
+    /// Whether a block's content belongs in the visible reply. Untyped blocks
+    /// (adapters that never sent block:start) count as text; any typed block
+    /// other than "text" — reasoning, actions — does not. Call with `lock` held.
+    private func isTextBlock(_ blockId: String?) -> Bool {
+        guard let blockId, let type = blockTypes[blockId] else { return true }
+        return type == "text"
+    }
+
     private func handleEvent(_ event: [String: Any]) {
         let name = event["event"] as? String ?? ""
 
@@ -658,10 +721,9 @@ final class AgentRuntimeTransport {
         case "block:start":
             if let block = event["block"] as? [String: Any],
                let type = block["type"] as? String,
-               type == "text",
                let blockId = block["id"] as? String {
                 lock.lock()
-                textBlockIDs.insert(blockId)
+                blockTypes[blockId] = type
                 lock.unlock()
             }
             if let block = event["block"] as? [String: Any],
@@ -679,9 +741,7 @@ final class AgentRuntimeTransport {
             guard let text = event["text"] as? String, !text.isEmpty else { return }
             let blockId = event["blockId"] as? String
             lock.lock()
-            let isTextBlock = blockId.map { textBlockIDs.contains($0) } ?? true
-            // Prefer text blocks; if none were typed yet, still accumulate deltas.
-            let accept = textBlockIDs.isEmpty || isTextBlock
+            let accept = isTextBlock(blockId)
             if accept {
                 accumulatedText += text
             }
@@ -696,7 +756,7 @@ final class AgentRuntimeTransport {
             // Some adapters only put full text on block:end.
             if let blockId = event["blockId"] as? String {
                 lock.lock()
-                let isText = textBlockIDs.contains(blockId) || textBlockIDs.isEmpty
+                let isText = isTextBlock(blockId)
                 lock.unlock()
                 if isText, let text = event["text"] as? String, !text.isEmpty {
                     lock.lock()

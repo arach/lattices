@@ -501,7 +501,8 @@ final class WorkspaceAssistantSession: ObservableObject {
         // 1) local agent-runtime / ACP harness (no Lattices API key)
         // 2) HudsonAI direct when a key is saved
         // 3) Scout project session fallback
-        let system = chatSystemPrompt(attachments: attachments)
+        let system = chatInstructions()
+        let turnContext = chatTurnContext(attachments: attachments)
         let projectPath = scoutProjectPath()
         let preferredHarness = UserDefaults.standard.string(forKey: Self.preferredHarnessDefaultsKey)
         let selection = runtimeSelection
@@ -522,6 +523,7 @@ final class WorkspaceAssistantSession: ObservableObject {
                 await self.sendViaAgentRuntime(
                     userText: trimmed,
                     systemPrompt: system,
+                    turnContext: turnContext,
                     cwd: projectPath,
                     preferredHarness: preferredHarness,
                     launch: launch,
@@ -569,6 +571,7 @@ final class WorkspaceAssistantSession: ObservableObject {
     private func sendViaAgentRuntime(
         userText: String,
         systemPrompt: String,
+        turnContext: String,
         cwd: String,
         preferredHarness: String?,
         launch: AgentRuntimeLaunch,
@@ -583,6 +586,7 @@ final class WorkspaceAssistantSession: ObservableObject {
             let reply = try await AgentRuntimeTransport.shared.ask(
                 text: userText,
                 systemPrompt: systemPrompt,
+                turnContext: turnContext,
                 cwd: cwd,
                 preferredHarness: preferredHarness,
                 launch: launch,
@@ -899,29 +903,49 @@ final class WorkspaceAssistantSession: ObservableObject {
         }
     }
 
+    /// Full single-shot prompt for transports that take a fresh system prompt per
+    /// request (HudsonAI direct): instructions plus the live state.
     private func chatSystemPrompt(attachments: [WorkspaceAssistantAttachment] = []) -> String {
+        """
+        \(chatInstructions())
+
+        \(chatTurnContext(attachments: attachments))
+        """
+    }
+
+    /// Stable instructions for a chat session. Holds no live state, so it stays
+    /// valid for the whole session; the state rides with each turn instead.
+    private func chatInstructions() -> String {
         let knowledge = Self.capabilitiesGuide
         let knowledgeBlock = knowledge.isEmpty ? "" : """
 
             Lattices product knowledge (how the app works; cite the linked docs when a question goes deeper):
             \(knowledge)
             """
+        return """
+        You are the Workspace Assistant, the in-app assistant for Lattices.
+
+        Each turn may carry a <lattices_state> block: a JSON snapshot of this user's live Lattices configuration, taken by the app at the moment the message was sent. It is ground truth and supersedes any earlier snapshot. Answer questions about settings, mouse gestures, layers, OCR, terminals and the assistant runtime straight from it. Do not search the working directory, dotfiles or macOS system preferences for Lattices settings; the working directory is just a project the user has open and does not hold Lattices config.
+
+        If the snapshot lacks a detail you need, read it from the running app with `lattices call <method>` (for example `lattices call mouse.shortcuts.get` for the full gesture rules, `lattices call api.schema` to list methods), or read the file named under settingsFiles. Use the product knowledge to explain how Lattices works and point to the right feature or doc. Answer naturally and concretely: say what is configured, in the user's terms (button, gesture, resulting action), and what the choices mean.
+
+        For setting changes, say what should change and the exact next step if you cannot apply it yourself. Never claim a setting or file changed unless you know it did.
+        \(knowledgeBlock)
+        """
+    }
+
+    /// Live state for one turn: the structured settings snapshot plus any attachments.
+    private func chatTurnContext(attachments: [WorkspaceAssistantAttachment] = []) -> String {
         let attachmentBlock = attachments.isEmpty ? "" : """
+
 
             Attached files:
             \(assistantAttachmentBlock(attachments))
             """
         return """
-        You are the Workspace Assistant, the in-app assistant for Lattices.
-
-        Use the structured context as ground truth for this user's current configuration, and the product knowledge to explain how Lattices works and point to the right feature or doc. Answer naturally and concretely. For informational questions, explain what is currently configured and what the available choices mean.
-
-        For setting changes, say what should change and the exact next step if you cannot apply it yourself. Never claim a setting or file changed unless you know it did.
-        \(knowledgeBlock)
-        \(attachmentBlock)
-
-        Structured context:
+        <lattices_state>
         \(assistantKnowledgeBrief())
+        </lattices_state>\(attachmentBlock)
         """
     }
 
@@ -1861,8 +1885,23 @@ final class WorkspaceAssistantSession: ObservableObject {
                 "dragToSnap": prefs.dragSnapEnabled,
                 "companionBridge": prefs.companionBridgeEnabled,
                 "companionTrackpad": prefs.companionTrackpadEnabled,
+                "keyboard": [
+                    "ctrlOptionHoldMode": prefs.ctrlOptionHoldMode.rawValue,
+                    "keyboardRemapsEnabled": prefs.keyboardRemapsEnabled,
+                    "spaceSwitchKeysEnabled": prefs.spaceSwitchKeysEnabled,
+                    "spaceSwitchBezelPosition": prefs.spaceSwitchBezelPosition.rawValue,
+                    "spaceSwitchGlideEnabled": prefs.spaceSwitchGlideEnabled,
+                ],
+                "pointer": [
+                    "tilePointerHUDStyle": prefs.tilePointerHUDStyle.rawValue,
+                    "tilePointerSoundEffects": prefs.tilePointerSoundEffectsEnabled,
+                    "cursorMarkerShape": prefs.cursorMarkerShape.rawValue,
+                    "cursorMarkerAngleDeg": prefs.cursorMarkerAngleDeg,
+                    "cursorMarkerSize": prefs.cursorMarkerSize.rawValue,
+                ],
                 "ocr": [
                     "enabled": prefs.ocrEnabled,
+                    "retentionDays": prefs.ocrRetentionDays,
                     "accuracy": prefs.ocrAccuracy,
                     "quickIntervalSeconds": prefs.ocrQuickInterval,
                     "deepIntervalSeconds": prefs.ocrDeepInterval,
@@ -1949,6 +1988,11 @@ final class WorkspaceAssistantSession: ObservableObject {
 
         return [
             "enabled": prefs.mouseGesturesEnabled,
+            "hud": [
+                "visual": prefs.mouseGestureHUDVisualEnabled,
+                "audio": prefs.mouseGestureHUDAudioEnabled,
+                "style": prefs.mouseGestureHUDStyle.rawValue,
+            ],
             "configFile": store.configURL.path,
             "historyDirectory": store.historyDirectoryURL.path,
             "recentHistory": store.historySummaryLines,
