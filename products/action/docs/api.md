@@ -75,6 +75,7 @@ Fields:
 | `settings.openScreenRecording` | open Screen Recording settings pane | none |
 | `app.activate` | bring an app forward | `bundleId` |
 | `drape` / `raise-window` / `window-order` | host commands behind `action.stage.set` | color, level, subjects, optional bounds |
+| `agent-layer` / `blink-click` / `blink-type` / `blink-key` | host commands behind `action.layer.*` and blink acts (see [agent-layer.md](agent-layer.md)) | bundle id or pid, optional size and PiP; point or text/key |
 | `window.setFrame` | move/resize an app window | `bundleId`, `x`, `y`, `width`, `height` |
 | `window.getFrame` | inspect current app window frame | `bundleId` |
 | `drive.begin` | acquire a connection-owned drive lease | `agent`, `task`; attention mode also requires approval, run/workspace scope, `workspace.drag-file`, `system-pointer`, protocol version, and auth token |
