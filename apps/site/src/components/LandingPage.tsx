@@ -6,7 +6,7 @@ import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.13.2/Lattices.dmg";
+const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.13.3/Lattices.dmg";
 
 declare global {
   interface Window {
