@@ -4,7 +4,7 @@ import type { Transaction } from "@codemirror/state";
 import { applySheet } from "./sheet";
 import { runEntrance } from "./entrance";
 import { TypeOnController } from "./type-on";
-import { setUntrusted } from "./reader";
+import { setUntrusted, streamIn } from "./reader";
 
 /**
  * Native bridge for the Blink v2 editor.
@@ -84,6 +84,11 @@ export interface BlinkGlobal {
    * newlines kept. Re-renders when in read mode. No echo message.
    */
   setUntrusted(value: boolean): void;
+  /**
+   * Install `text` like setContent, then, in read mode, stream the rendered
+   * blocks in with a staggered fade. Presentation only; no echo message.
+   */
+  stream(text: string): void;
 }
 
 /** Minimal shape of the WKWebView message handler we depend on. */
@@ -288,6 +293,12 @@ export function installBlinkGlobal(
       if (modes.getMode() === "read") {
         modes.renderRead(view.state.doc.toString());
       }
+    },
+
+    stream(text: string): void {
+      api.setContent(text);
+      const reader = document.querySelector<HTMLElement>(".blink-reader");
+      if (modes.getMode() === "read" && reader) streamIn(reader);
     },
   };
 

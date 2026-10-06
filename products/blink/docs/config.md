@@ -69,7 +69,7 @@ Rules:
   "reader": {                   // the reader layer (hotkeys.reader)
     "width": 760,               // reading column width in points, capped at 80% of the screen
     "fontSize": 17,             // starting size; ⌘+ / ⌘− adjust, ⌘0 resets
-    "dim": 0.35                 // 0–1 tint over the blurred screen behind the column
+    "dim": 0.5                  // 0–1 veil over the screen behind the sheet
   },
   "drape": {                    // a backdrop parked BEHIND every note — a calm stage under the set
     "enabled": false,           // off by default; true parks a full-screen blur+dim behind the notes
@@ -92,7 +92,7 @@ Rules:
     "shakeEnabled": true        // shake side-to-side during a drag to fold the panel into its band (shade);
                                 // shake again — or double-click the band — to restore
   },
-  "editor": {                   // typography & colors, applied to editor AND reader
+  "editor": {                   // typography & colors; the reader takes the typography, keeps its own colors
     "fontFamily": null,         // null → system font stack; any CSS font-family string
     "monoFamily": null,         // null → ui-monospace stack
     "titleFamily": null,        // null → body stack; headings/titles only
@@ -139,21 +139,30 @@ Rules:
 ## Reader layer
 
 `hotkeys.reader` lifts the text selected in the frontmost app — usually a long
-answer in a terminal — into a centered reading column over the blurred screen.
+answer in a terminal — into a centered reading column over a dimmed screen (`reader.dim`).
 Esc, ⌘W, a click outside the column, the hotkey again, or switching to another
 app closes it; ⌘S keeps the text as a new note (opened in read mode). ⌘+ / ⌘−
 change the reading size and ⌘0 resets it to `reader.fontSize`.
 
+- Arrival is sequenced: a breathing cue lands beside the cursor the moment
+  the hotkey fires, then the screen dims and the sheet rises while the cue
+  grows at its centre, and the text streams in block by block once both the
+  sheet and editor are ready. Closing is a short fade. Reduced Motion skips
+  the rise and the stream. The sheet uses a fixed paper/ink palette (light or
+  dark with the app's appearance), not the note glass or `editor` colors.
 - Blink becomes the active app while the reader is up, and the column is an
   ordinary resizable window, so window-manager placement (Lattices tiling
   shortcuts, Rectangle, and the like) moves and sizes it. The placed frame is
   remembered and reused while it sits on the screen the reader opens on.
   Closing returns focus to the app the text came from.
 - The selection comes from Accessibility (`AXSelectedText`) when the app
-  exposes it. Terminals mostly don't, so Blink posts ⌘C once the hotkey's
-  modifiers are released, reads the pasteboard, and restores its previous
-  contents. Both need Accessibility permission; until it is granted, Blink
-  prompts and shows the current clipboard instead.
+  exposes it. Terminals mostly don't, so Blink presses the app's own ⌘C menu
+  item through Accessibility (posting ⌘C once the hotkey's modifiers lift
+  only for apps without one), reads the pasteboard, and restores its previous
+  contents. If Copy leaves the pasteboard untouched — Ghostty with
+  `copy-on-select` already put the selection there — the current clipboard is
+  used. All of this needs Accessibility permission; until it is granted,
+  Blink prompts and shows the current clipboard instead.
 - Terminal text is cleaned before rendering: ANSI escapes, TUI box frames, and
   Claude Code's `⏺`/`⎿` markers are stripped, the common indent removed, and
   lines the program hard-wrapped are rejoined. Box-drawn tables are kept as

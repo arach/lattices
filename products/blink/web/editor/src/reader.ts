@@ -136,6 +136,32 @@ function wrapCharacters(root: HTMLElement): HTMLElement[] {
   return spans;
 }
 
+/** Longest the whole stream may take to start its last block. */
+const STREAM_SPAN_MS = 900;
+
+/**
+ * Stream an already-rendered document in, block by block. Lists stream per
+ * item; everything else per top-level block. Blocks past the cap share the
+ * last delay, so long documents never make the reader wait.
+ */
+export function streamIn(root: HTMLElement): void {
+  const blocks: HTMLElement[] = [];
+  for (const child of Array.from(root.children) as HTMLElement[]) {
+    if (child.tagName === "UL" || child.tagName === "OL") {
+      blocks.push(...(Array.from(child.children) as HTMLElement[]));
+    } else {
+      blocks.push(child);
+    }
+  }
+  if (blocks.length === 0) return;
+  const step = Math.min(60, Math.max(18, STREAM_SPAN_MS / blocks.length));
+  blocks.forEach((block, index) => {
+    const delay = Math.min(index * step, STREAM_SPAN_MS);
+    block.style.setProperty("--blink-stream-delay", `${Math.round(delay)}ms`);
+    block.classList.add("blink-stream");
+  });
+}
+
 /**
  * Controller around the `.blink-reader` element. It renders the document, shows
  * a placeholder for empty notes, and exposes hide/show plus proportional
