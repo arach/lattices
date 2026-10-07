@@ -497,7 +497,7 @@ export class AgentLayerDirector {
     if (!status.active) {
       const handoff = await readJson<{ at?: string }>(this.paths().handoff);
       if (handoff) {
-        return `The operator took over the agent layer${handoff.at ? ` at ${handoff.at}` : ""} and the windows are back on their desktop. Open a new layer (or close it to acknowledge) before acting again.`;
+        return `The operator took over the agent layer${handoff.at ? ` at ${handoff.at}` : ""} and the windows are back on their desktop. Stop and tell the user. Close the layer to acknowledge, and open a new one only if they ask you to carry on.`;
       }
     }
     return undefined;
