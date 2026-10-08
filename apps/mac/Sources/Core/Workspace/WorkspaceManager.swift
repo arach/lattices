@@ -498,6 +498,7 @@ class WorkspaceManager: ObservableObject {
     // MARK: - Config I/O
 
     func loadConfig() {
+        migrateStudioLayersIfNeeded()
         guard FileManager.default.fileExists(atPath: configPath),
               let data = FileManager.default.contents(atPath: configPath) else {
             config = nil
@@ -512,6 +513,50 @@ class WorkspaceManager: ObservableObject {
         } catch {
             DiagnosticLog.shared.error("WorkspaceManager: failed to decode workspace.json — \(error.localizedDescription)")
             config = nil
+        }
+    }
+
+    /// Studio layers lived in layers.json until they were folded into the
+    /// workspace's layers. With no workspace.json yet, carry them over once,
+    /// each rule an entry, so ⌘⌥ reaches them. layers.json is left as it was.
+    private func migrateStudioLayersIfNeeded() {
+        struct StudioLayerFile: Decodable {
+            let name: String
+            let match: [StudioLayerClause]
+        }
+        let fm = FileManager.default
+        let legacyPath = ((configPath as NSString).deletingLastPathComponent as NSString)
+            .appendingPathComponent("layers.json")
+        guard !fm.fileExists(atPath: configPath),
+              let data = fm.contents(atPath: legacyPath),
+              let studio = try? JSONDecoder().decode([StudioLayerFile].self, from: data),
+              !studio.isEmpty
+        else { return }
+
+        var layers: [Layer] = []
+        for old in studio {
+            let projects = old.match.map {
+                LayerProject(path: nil, group: nil, tile: nil, display: nil,
+                             url: nil, launch: nil, match: $0)
+            }
+            layers.append(Layer(
+                id: Self.uniqueLayerID(for: old.name, in: layers),
+                label: old.name,
+                projects: projects,
+                layout: "auto"
+            ))
+        }
+        do {
+            var root: [String: Any] = ["name": "workspace"]
+            root["layers"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(layers))
+            let out = try JSONSerialization.data(
+                withJSONObject: root,
+                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            )
+            try out.write(to: URL(fileURLWithPath: configPath), options: .atomic)
+            DiagnosticLog.shared.info("WorkspaceManager: moved \(layers.count) Studio layers from layers.json into workspace.json")
+        } catch {
+            DiagnosticLog.shared.error("WorkspaceManager: couldn't move layers.json into workspace.json — \(error.localizedDescription)")
         }
     }
 

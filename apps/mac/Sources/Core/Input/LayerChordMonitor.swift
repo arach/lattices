@@ -19,6 +19,7 @@ final class LayerChordMonitor {
     private static let layerKeys: Set<Int64> = [
         123, 124, 125, 126,                     // arrows
         18, 19, 20, 21, 23, 22, 26, 28, 25,     // 1–9
+        83, 84, 85, 86, 87, 88, 89, 91, 92,     // numpad 1–9
         49,                                     // Space, which freezes the preview
     ]
     private static let arrowsAndDigits = layerKeys.subtracting([49])

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 enum HotkeyBootstrap {
     static func registerHotkeys() {
@@ -59,6 +60,18 @@ enum HotkeyBootstrap {
         for (offset, action) in HotkeyAction.layerActions.enumerated() {
             let slot = offset + 1
             store.register(action: action) { selectSlot(slot) }
+        }
+
+        // ⌘⌥ + numpad 1–9 reach the same slots: 1 2 3 is the pad's top row,
+        // as on the bezel. Fixed, beside the rebindable top-row digits.
+        let keypadKeyCodes: [UInt32] = [83, 84, 85, 86, 87, 88, 89, 91, 92]
+        for (offset, keyCode) in keypadKeyCodes.enumerated() {
+            let slot = offset + 1
+            HotkeyManager.shared.registerSingle(
+                id: 121 + UInt32(offset),
+                keyCode: keyCode,
+                modifiers: UInt32(cmdKey | optionKey)
+            ) { selectSlot(slot) }
         }
     }
 

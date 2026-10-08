@@ -383,7 +383,7 @@ extension WorkspaceManager {
 
     // MARK: Storage
 
-    private static func uniqueLayerID(for label: String, in layers: [Layer]) -> String {
+    static func uniqueLayerID(for label: String, in layers: [Layer]) -> String {
         let slug = label.lowercased()
             .map { $0.isLetter || $0.isNumber ? String($0) : "-" }
             .joined()
