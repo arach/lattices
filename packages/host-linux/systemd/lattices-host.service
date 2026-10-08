@@ -1,0 +1,22 @@
+# Run lattices-host in your graphical session.
+#
+#   ln -s "$PWD/packages/host-linux/systemd/lattices-host.service" ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now lattices-host
+#
+# Edit ExecStart if the checkout is not at ~/dev/projects/lattices. The unit
+# reads the Wayland and Hyprland variables from the session, so start it after
+# the compositor has imported its environment (Hyprland does this on login).
+
+[Unit]
+Description=lattices-host: expose this desktop to other lattices machines over the tailnet
+PartOf=graphical-session.target
+After=graphical-session.target tailscaled.service
+
+[Service]
+ExecStart=/usr/bin/env bun %h/dev/projects/lattices/packages/host-linux/src/main.ts --quiet
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

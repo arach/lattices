@@ -1,0 +1,221 @@
+import { describe, expect, test } from "bun:test";
+import { admit, isLoopback } from "../src/auth.ts";
+import { grimArgs, imageSize } from "../src/capture.ts";
+import { toDisplays, toWindow, widFor } from "../src/desktop.ts";
+import { spell, type HyprClient, type HyprMonitor, type HyprWorkspace } from "../src/hyprland.ts";
+import { keysym, parseShortcut, wtypeKeyArgs } from "../src/input.ts";
+import { parsePlacement, rectFor } from "../src/placement.ts";
+import { Router, resolveAlias } from "../src/router.ts";
+import { sessionName } from "../src/tmux.ts";
+import { encodeMessage } from "../src/wayland.ts";
+
+describe("router", () => {
+  const caps = new Set(["windows.read"]);
+  const router = new Router(() => caps);
+  router.register({ method: "windows.list", description: "", access: "read", capability: "windows.read", returns: "", handler: () => [1] });
+  router.register({ method: "windows.place", description: "", access: "mutate", capability: "windows.place", returns: "", handler: (p) => p.placement ?? null });
+  router.register({ method: "tmux.list", description: "", access: "read", returns: "", handler: (p) => p.includeOrphans ?? false });
+
+  test("dispatches new names and old aliases", async () => {
+    expect(await router.dispatch("windows.list", {})).toEqual([1]);
+    expect(await router.dispatch("tmux.inventory", null)).toBe(true);
+    expect(await router.dispatch("tmux.sessions", null)).toBe(false);
+  });
+
+  test("window.tile maps position to placement", () => {
+    expect(resolveAlias("window.tile", { session: "a", position: "left" })).toEqual({
+      method: "windows.place",
+      params: { session: "a", position: "left", placement: "left" },
+    });
+  });
+
+  test("unknown methods use the daemon's error text, which clients key their fallback on", async () => {
+    const res = await router.handle({ id: "1", method: "windows.nope" });
+    expect(res).toEqual({ id: "1", result: null, error: "Unknown method: windows.nope" });
+  });
+
+  test("endpoints without their capability are refused and left out of the schema", async () => {
+    await expect(router.dispatch("windows.place", { placement: "left" })).rejects.toThrow("capability_unavailable");
+    const schema = router.schema() as { methods: { method: string }[]; aliases: Record<string, string> };
+    expect(schema.methods.map((m) => m.method)).toEqual(["windows.list", "tmux.list"]);
+    expect(schema.aliases["tmux.sessions"]).toBe("tmux.list");
+    expect(schema.aliases["window.place"]).toBeUndefined();
+  });
+});
+
+describe("placement", () => {
+  test("named tiles match the Mac table", () => {
+    expect(parsePlacement("left")).toEqual({ x: 0, y: 0, w: 0.5, h: 1 });
+    expect(parsePlacement("bottom-right")).toEqual({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
+    expect(parsePlacement("center")).toEqual({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+    expect(parsePlacement("right-quarter")).toEqual({ x: 0.75, y: 0, w: 0.25, h: 1 });
+    expect(parsePlacement("MAX")).toEqual({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
+  test("grid:CxR:C,R is 0-indexed, compact CxR:C,R is 1-indexed", () => {
+    expect(parsePlacement("grid:3x2:2,1")).toEqual(parsePlacement("3x2:3,2"));
+    expect(parsePlacement({ kind: "grid", columns: 4, rows: 4, column: 0, row: 0 })).toEqual({ x: 0, y: 0, w: 0.25, h: 0.25 });
+  });
+
+  test("rejects what it cannot place", () => {
+    expect(() => parsePlacement("diagonal")).toThrow("Unknown placement");
+    expect(() => parsePlacement("grid:2x2:2,0")).toThrow("Invalid grid");
+    expect(() => parsePlacement({ kind: "fractions", x: 0.8, y: 0, w: 0.5, h: 1 })).toThrow("Invalid fractions");
+  });
+
+  test("rectFor fills the visible frame without gaps between neighbours", () => {
+    const visible = { x: 0, y: 24, w: 3440, h: 1416 };
+    const left = rectFor(parsePlacement("left-third"), visible);
+    const middle = rectFor(parsePlacement("center-third"), visible);
+    expect(left).toEqual({ x: 0, y: 24, w: 1147, h: 1416 });
+    expect(middle.x).toBe(left.x + left.w);
+  });
+});
+
+const monitor = (over: Partial<HyprMonitor> = {}): HyprMonitor => ({
+  id: 1,
+  name: "HDMI-A-1",
+  description: "Dell",
+  x: 0,
+  y: 0,
+  width: 3440,
+  height: 1440,
+  scale: 1,
+  transform: 0,
+  reserved: [0, 24, 0, 0],
+  activeWorkspace: { id: 1, name: "1" },
+  focused: true,
+  ...over,
+});
+
+const client = (over: Partial<HyprClient> = {}): HyprClient => ({
+  address: "0x562f8237b450",
+  mapped: true,
+  hidden: false,
+  at: [10, 36],
+  size: [700, 500],
+  workspace: { id: 1, name: "1" },
+  floating: false,
+  monitor: 1,
+  class: "foot",
+  title: "[lattices:api-b4c5d6] zsh",
+  pid: 42,
+  xwayland: false,
+  pinned: false,
+  fullscreen: 0,
+  focusHistoryID: 0,
+  stableId: "18000032",
+  ...over,
+});
+
+describe("desktop mapping", () => {
+  test("wid comes from the hex stableId, else the address", () => {
+    expect(widFor({ address: "0x1", stableId: "18000032" })).toBe(0x18000032);
+    expect(widFor({ address: "0x562f8237b450" })).toBe(0x8237b450);
+  });
+
+  test("windows take the Mac's shape, with session tags parsed", () => {
+    const w = toWindow(client(), [monitor()], "0x562f8237b450");
+    expect(w).toMatchObject({ wid: 0x18000032, app: "foot", frame: { x: 10, y: 36, w: 700, h: 500 }, spaceIds: [1], isOnScreen: true, isFocused: true, latticesSession: "api-b4c5d6" });
+    expect(toWindow(client({ workspace: { id: 3, name: "3" } }), [monitor()], null).isOnScreen).toBe(false);
+  });
+
+  test("displays subtract reserved space and convert physical size to logical", () => {
+    const workspaces: HyprWorkspace[] = [
+      { id: 2, name: "2", monitor: "HDMI-A-1", monitorID: 1, windows: 1 },
+      { id: 1, name: "1", monitor: "HDMI-A-1", monitorID: 1, windows: 4 },
+      { id: -98, name: "special:magic", monitor: "HDMI-A-1", monitorID: 1, windows: 0 },
+    ];
+    const [d] = toDisplays([monitor({ scale: 2, width: 3440, height: 1440 })], workspaces);
+    expect(d.frame).toEqual({ x: 0, y: 0, w: 1720, h: 720 });
+    expect(d.visibleFrame).toEqual({ x: 0, y: 24, w: 1720, h: 696 });
+    expect(d.spaces.map((s) => [s.id, s.index, s.isCurrent])).toEqual([[1, 1, true], [2, 2, false]]);
+  });
+
+  test("display indexes run left to right", () => {
+    const ds = toDisplays([monitor({ id: 5, name: "right", x: 3440 }), monitor({ id: 1, name: "left", x: 0 })], []);
+    expect(ds.map((d) => d.displayId)).toEqual(["left", "right"]);
+  });
+});
+
+describe("hyprland dialects", () => {
+  test("Lua dispatchers (0.55+)", () => {
+    expect(spell({ op: "resize", address: "0xab", w: 900.4, h: 600 }, true)).toBe('hl.dsp.window.resize({ x = 900, y = 600, window = "address:0xab" })');
+    expect(spell({ op: "toWorkspace", address: "0xab", workspace: 7 }, true)).toBe('hl.dsp.window.move({ workspace = 7, follow = false, window = "address:0xab" })');
+    expect(spell({ op: "focus", address: "0xab" }, true)).toBe('hl.dsp.focus({ window = "address:0xab" })');
+  });
+
+  test("legacy dispatchers", () => {
+    expect(spell({ op: "move", address: "0xab", x: 0, y: 24 }, false)).toBe("movewindowpixel exact 0 24,address:0xab");
+    expect(spell({ op: "float", address: "0xab" }, false)).toBe("setfloating address:0xab");
+  });
+});
+
+describe("input", () => {
+  test("Mac modifiers map to Linux ones", () => {
+    expect(wtypeKeyArgs("p", ["command", "shift"])).toEqual(["-M", "ctrl", "-M", "shift", "-k", "p", "-m", "shift", "-m", "ctrl"]);
+    expect(wtypeKeyArgs("escape", [], 2, 50)).toEqual(["-k", "Escape", "-s", "50", "-k", "Escape"]);
+    expect(() => wtypeKeyArgs("a", ["hyper"])).toThrow("Unknown modifier");
+  });
+
+  test("key names and shortcuts", () => {
+    expect(keysym("Enter")).toBe("Return");
+    expect(keysym("f12")).toBe("F12");
+    expect(keysym("/")).toBe("slash");
+    expect(parseShortcut("command+shift+p")).toEqual({ modifiers: ["command", "shift"], key: "p" });
+  });
+});
+
+describe("wayland wire format", () => {
+  test("bind with a typed new_id: name, padded string, version, id", () => {
+    const msg = encodeMessage(2, 0, [{ u: 7 }, { s: "wl_seat" }, { u: 1 }, { u: 3 }]);
+    expect(msg.readUInt32LE(0)).toBe(2);
+    expect(msg.readUInt32LE(4)).toBe((msg.length << 16) | 0);
+    expect(msg.readUInt32LE(12)).toBe(8); // "wl_seat\0"
+    expect(msg.subarray(16, 23).toString()).toBe("wl_seat");
+    expect(msg.length).toBe(8 + 4 + 4 + 8 + 4 + 4);
+  });
+
+  test("fixed-point is value * 256", () => {
+    expect(encodeMessage(5, 3, [{ fixed: 15 }]).readInt32LE(8)).toBe(3840);
+  });
+});
+
+describe("auth", () => {
+  const policy = { allowUsers: ["963427367505682"], allowTags: ["tag:lattices"] };
+
+  test("admits this owner's untagged devices and allowed tags only", () => {
+    expect(admit({ Node: { User: 963427367505682, Hostinfo: { Hostname: "air", OS: "macOS" } }, UserProfile: { LoginName: "arach@github" } }, policy)).toEqual({ user: "arach@github", node: "air", os: "macOS" });
+    expect(admit({ Node: { User: 1, Hostinfo: { Hostname: "stranger" } } }, policy)).toBeNull();
+    expect(admit({ Node: { User: 963427367505682, Tags: ["tag:server"] } }, policy)).toBeNull();
+    expect(admit({ Node: { User: 5, Tags: ["tag:lattices"], Hostinfo: { Hostname: "ci" } } }, policy)?.node).toBe("ci");
+  });
+
+  test("loopback is local", () => {
+    expect(isLoopback("127.0.0.1")).toBe(true);
+    expect(isLoopback("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopback("100.104.66.99")).toBe(false);
+  });
+});
+
+describe("tmux and capture", () => {
+  test("session names follow the Mac rule", () => {
+    expect(sessionName("/Users/you/dev/my app")).toMatch(/^my-app-[0-9a-f]{6}$/);
+    expect(sessionName("/a/b")).toBe(sessionName("/a/b"));
+  });
+
+  test("grim arguments", () => {
+    expect(grimArgs({ region: { x: 1.4, y: 2, w: 300, h: 200 }, format: "jpeg", quality: 70, scale: 0.5 })).toEqual(["-t", "jpeg", "-q", "70", "-s", "0.5", "-g", "1,2 300x200", "-"]);
+    expect(grimArgs({ output: "HDMI-A-1" })).toEqual(["-t", "png", "-o", "HDMI-A-1", "-"]);
+  });
+
+  test("image size from PNG and JPEG headers", () => {
+    const png = Buffer.alloc(32);
+    png.writeUInt32BE(0x89504e47, 0);
+    png.writeUInt32BE(640, 16);
+    png.writeUInt32BE(480, 20);
+    expect(imageSize(png)).toEqual({ width: 640, height: 480 });
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0xe0, 0x02, 0x80, 0, 0, 0, 0, 0]);
+    expect(imageSize(jpeg)).toEqual({ width: 640, height: 480 });
+  });
+});
