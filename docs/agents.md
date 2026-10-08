@@ -44,20 +44,20 @@ These are the preferred action identifiers:
 
 | Action | Purpose | Preferred surface |
 |--------|---------|-------------------|
-| `window.place` | Place a window or session using a typed placement spec | `actions.execute` |
-| `layer.activate` | Bring up a workspace layer with explicit activation mode | Daemon API |
-| `space.optimize` | Rebalance a set of windows using an explicit scope and strategy | Daemon API |
-| `tabStacks.create` | Turn explicit or Hyperspace-selected windows into ephemeral cross-app tabs | Daemon API |
-| `tabStacks.layout` | Expand a live tab stack to grid or collapse it back to tabs | Daemon API |
+| `windows.place` | Place a window or session using a typed placement spec | `actions.execute` |
+| `layers.activate` | Bring up a workspace layer with explicit activation mode | Daemon API |
+| `spaces.optimize` | Rebalance a set of windows using an explicit scope and strategy | Daemon API |
+| `tabs.stack` | Turn explicit or Hyperspace-selected windows into ephemeral cross-app tabs | Daemon API |
+| `tabs.layout` | Expand a live tab stack to grid or collapse it back to tabs | Daemon API |
 
 Compatibility wrappers still exist:
 
 | Legacy method | Canonical equivalent |
 |---------------|----------------------|
-| `window.place` | `actions.execute` with `type=window.place` |
-| `window.tile` | `window.place` |
-| `layer.switch` | `layer.activate` |
-| `layout.distribute` | `space.optimize` with `scope=visible`, `strategy=balanced` |
+| `windows.place` | `actions.execute` with `type=windows.place` |
+| `window.tile` | `windows.place` |
+| `layers.switch` | `layers.activate` |
+| `layout.distribute` | `spaces.optimize` with `scope=visible`, `strategy=balanced` |
 
 ## Discoverability
 
@@ -88,22 +88,22 @@ is exact tmux pane text — not OCR.
 For window actions, resolve before mutating when target identity matters:
 
 ```bash
-lats call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call windows.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
 lats call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
 ```
 
-`window.resolve` and `dryRun` return the resolved `wid`, app/title,
+`windows.resolve` and `dryRun` return the resolved `wid`, app/title,
 target resolution path, display, and planned frame without moving the
 window.
 
-Verified `window.place` receipts include `undoable: true` when Lattices
+Verified `windows.place` receipts include `undoable: true` when Lattices
 captured a concrete window id and previous frame. Agents can restore the
 latest undoable placement, or an entire request batch, through:
 
 ```bash
-lats call actions.undo '{}'
-lats call actions.undo '{"requestId":"req_..."}'
-lats call actions.undo '{"receiptId":"exec_...","dryRun":true}'
+lats call history.undo '{}'
+lats call history.undo '{"requestId":"req_..."}'
+lats call history.undo '{"receiptId":"exec_...","dryRun":true}'
 ```
 
 Undo checks that the window is still where the original receipt left it
@@ -201,8 +201,8 @@ Node.js:
 ```js
 import { daemonCall } from '@lattices/cli'
 
-await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('window.resolve', {
+await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
+await daemonCall('windows.resolve', {
   target: { kind: 'session', session: 'frontend-a1b2c3' },
   placement: 'left'
 })
@@ -211,19 +211,19 @@ await daemonCall('actions.execute', {
   target: { kind: 'session', session: 'frontend-a1b2c3' },
   args: { placement: { kind: 'tile', value: 'left' } }
 })
-await daemonCall('layer.activate', { name: 'review', mode: 'launch' })
-await daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })
+await daemonCall('layers.activate', { name: 'review', mode: 'launch' })
+await daemonCall('spaces.optimize', { scope: 'visible', strategy: 'balanced' })
 ```
 
 CLI:
 
 ```bash
 lats call api.schema
-lats call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call windows.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
 lats call actions.execute '{"type":"window.place","target":{"kind":"frontmost"},"args":{"placement":"left"}}'
-lats call window.place '{"session":"frontend-a1b2c3","placement":"left"}'
-lats call layer.activate '{"name":"review","mode":"launch"}'
-lats call space.optimize '{"scope":"visible","strategy":"balanced"}'
+lats call windows.place '{"session":"frontend-a1b2c3","placement":"left"}'
+lats call layers.activate '{"name":"review","mode":"launch"}'
+lats call spaces.optimize '{"scope":"visible","strategy":"balanced"}'
 ```
 
 ## Receipts and traceability
@@ -245,9 +245,9 @@ This is what keeps voice, hands-off, and scripted execution scrutable.
 Voice is not a separate execution system. It should compile into the
 same canonical actions:
 
-- "put Terminal in the upper third" → `window.place`
-- "bring up review" → `layer.activate`
-- "make this nice" → `space.optimize`
+- "put Terminal in the upper third" → `windows.place`
+- "bring up review" → `layers.activate`
+- "make this nice" → `spaces.optimize`
 
 That keeps the interaction layer flexible while the executor stays
 predictable.

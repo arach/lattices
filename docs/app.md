@@ -170,7 +170,7 @@ frontmost window.
 
 Window movement is a right-click action wherever a window is listed.
 Both surfaces share one movement engine — the same canonical
-`window.move` / `window.place` semantics the CLI and daemon API use —
+`windows.move` / `windows.place` semantics the CLI and daemon API use —
 so moving from the app, the CLI, or the API always behaves identically.
 
 Right-click a window in either surface:

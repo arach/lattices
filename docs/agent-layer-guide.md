@@ -145,10 +145,10 @@ lats call layers.assign '{"layer":"Coding","windowIds":[9012]}'
 lats call layers.unassign '{"layer":"Coding","wid":9012}'
 
 # Tile a specific window
-lats call window.place '{"wid":1234,"placement":"left"}'
+lats call windows.place '{"wid":1234,"placement":"left"}'
 
 # Switch layer
-lats call layer.activate '{"name":"Coding","mode":"focus"}'
+lats call layers.activate '{"name":"Coding","mode":"focus"}'
 
 # List layers
 lats call layers.list

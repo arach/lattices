@@ -353,7 +353,7 @@ private extension LatticesDeckHost {
                 params["name"] = .string(name)
             }
             params["mode"] = .string(request.payload["mode"]?.stringValue ?? "focus")
-            let result = try callAPI("layer.activate", params: params)
+            let result = try callAPI("layers.activate", params: params)
             let label = result["label"]?.stringValue ?? params["name"]?.stringValue ?? "layer"
             return ActionOutcome(
                 summary: "Activated \(label)",
@@ -390,7 +390,7 @@ private extension LatticesDeckHost {
             if let type = request.payload["type"]?.stringValue {
                 params["type"] = .string(type)
             }
-            let result = try callAPI("space.optimize", params: params)
+            let result = try callAPI("spaces.optimize", params: params)
             let count = result["windowCount"]?.intValue ?? 0
             return ActionOutcome(
                 summary: count > 0 ? "Optimized \(count) windows" : "Nothing needed rearranging",
@@ -409,7 +409,7 @@ private extension LatticesDeckHost {
                     HandsOffSession.shared.snapshotFrames(wids: [frontmost.wid])
                 }
             }
-            _ = try callAPI("window.place", params: [
+            _ = try callAPI("windows.place", params: [
                 "placement": .string(placement)
             ])
             return ActionOutcome(
@@ -430,7 +430,7 @@ private extension LatticesDeckHost {
             return try focusSwitcherItem(itemID)
 
         case "history.undoLast":
-            _ = try callAPI("intents.execute", params: [
+            _ = try callAPI("intents.run", params: [
                 "intent": .string("undo")
             ])
             return ActionOutcome(
@@ -604,7 +604,7 @@ private extension LatticesDeckHost {
                 }
                 return window
             }
-            _ = try callAPI("window.focus", params: ["wid": .int(Int(wid))])
+            _ = try callAPI("windows.focus", params: ["wid": .int(Int(wid))])
             return ActionOutcome(
                 summary: "Focused \(entry.app)",
                 detail: entry.title.isEmpty ? "Brought the selected window to the front." : entry.title,
@@ -613,7 +613,7 @@ private extension LatticesDeckHost {
         }
 
         if let session = itemID.stripPrefix("session:") {
-            _ = try callAPI("window.focus", params: ["session": .string(session)])
+            _ = try callAPI("windows.focus", params: ["session": .string(session)])
             return ActionOutcome(
                 summary: "Focused \(session)",
                 detail: "Raised the tmux session window.",
@@ -628,7 +628,7 @@ private extension LatticesDeckHost {
                 }
                 return window
             }
-            _ = try callAPI("window.focus", params: ["wid": .int(Int(entry.wid))])
+            _ = try callAPI("windows.focus", params: ["wid": .int(Int(entry.wid))])
             return ActionOutcome(
                 summary: "Focused \(entry.app)",
                 detail: entry.title.isEmpty ? "Brought the app's active window forward." : entry.title,
@@ -644,7 +644,7 @@ private extension LatticesDeckHost {
                 }
                 return index
             }
-            let result = try callAPI("layer.activate", params: [
+            let result = try callAPI("layers.activate", params: [
                 "index": .int(index),
                 "mode": .string("focus")
             ])
@@ -681,7 +681,7 @@ private extension LatticesDeckHost {
             HandsOffSession.shared.snapshotFrames(wids: [resolved.entry.wid])
         }
 
-        _ = try callAPI("window.present", params: [
+        _ = try callAPI("windows.present", params: [
             "wid": .int(Int(resolved.entry.wid)),
             "x": .int(Int(resolved.frame.origin.x.rounded())),
             "y": .int(Int(resolved.frame.origin.y.rounded())),
@@ -1363,7 +1363,7 @@ private extension LatticesDeckHost {
         let target = try MainActorSync.run {
             try self.nextApplicationTargetOnMainActor(direction: direction)
         }
-        _ = try callAPI("window.focus", params: ["wid": .int(Int(target.wid))])
+        _ = try callAPI("windows.focus", params: ["wid": .int(Int(target.wid))])
         let title = target.title.isEmpty ? target.app : target.title
         return ActionOutcome(
             summary: "Focused \(target.app)",
@@ -1376,7 +1376,7 @@ private extension LatticesDeckHost {
         let target = try MainActorSync.run {
             try self.nextWindowTargetOnMainActor(direction: direction)
         }
-        _ = try callAPI("window.focus", params: ["wid": .int(Int(target.wid))])
+        _ = try callAPI("windows.focus", params: ["wid": .int(Int(target.wid))])
         return ActionOutcome(
             summary: "Focused \(target.app)",
             detail: target.title.isEmpty ? "Moved to the next visible window." : target.title,

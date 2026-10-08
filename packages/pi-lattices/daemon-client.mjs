@@ -19,7 +19,22 @@ export function daemonConfig(overrides = {}) {
   };
 }
 
+// Daemons from before LAT-012 only know the old method names.
+const LEGACY_METHOD_NAMES = {
+  "windows.place": "window.place",
+};
+
 export async function daemonCall(method, params = null, options = {}) {
+  try {
+    return await sendRequest(method, params, options);
+  } catch (error) {
+    const legacy = LEGACY_METHOD_NAMES[method];
+    if (!legacy || error?.message !== `Unknown method: ${method}`) throw error;
+    return sendRequest(legacy, params, options);
+  }
+}
+
+function sendRequest(method, params, options) {
   const { host, port, timeoutMs } = daemonConfig(options);
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });

@@ -90,7 +90,7 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
         process.exit(1);
       }
     }
-    await daemonCall("layer.activate", "index" in target ? { index: target.index, mode } : { name: target.name, mode });
+    await daemonCall("layers.activate", "index" in target ? { index: target.index, mode } : { name: target.name, mode });
     const name = "index" in target ? `⌘⌥${target.slot}` : `"${target.name}"`;
     console.log(mode === "focus" ? `Switched to layer ${name}` : `Switched to layer ${name} (${mode})`);
   });
@@ -187,7 +187,7 @@ export async function layerCreateCommand(client: DaemonClient, args: string[]): 
     const tiles = picked.filter(p => p.tile);
     for (const t of tiles) {
       try {
-        await daemonCall("window.place", { wid: t.wid, placement: t.tile });
+        await daemonCall("windows.place", { wid: t.wid, placement: t.tile });
       } catch { /* the window may have closed */ }
     }
     if (tiles.length) console.log(`Tiled ${tiles.length} window(s).`);

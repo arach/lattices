@@ -240,7 +240,7 @@ function apiPreview() {
       <div class="rpc-log">
         ${call("windows.search", `{"query":"vox"}`, `[{"wid":265,"app":"iTerm2","matchSource":"ocr"},\n   {"wid":318,"app":"Zed","matchSource":"title"}]`)}
         ${call("terminals.search", `{"cwd":"vox","hasClaude":true}`, `[{"tty":"/dev/ttys003","tmuxSession":"vox-8c21d0"}, …]`)}
-        ${call("window.place", `{"wid":265,"placement":"left"}`, `{"ok":true,"status":"ok", …}`)}
+        ${call("windows.place", `{"wid":265,"placement":"left"}`, `{"ok":true,"status":"ok", …}`)}
         ${call("voice.say", `{"text":"vox is on the left."}`, `{"id":"job_9f3","state":"queued"}`)}
         <div><span class="rpc-dir">→</span> <span class="t-cursor"></span></div>
       </div>

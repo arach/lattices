@@ -932,7 +932,7 @@ async function focusCommand(session?: string): Promise<void> {
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
-    await daemonCall("window.focus", { session });
+    await daemonCall("windows.focus", { session });
     console.log(`Focused: ${session}`);
   });
 }
@@ -954,7 +954,7 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
   await withDaemon(async ({ daemonCall }) => {
     let sessions = positional.slice(0, 2);
     if (sessions.length < 2) {
-      const tmuxSessions = await daemonCall("tmux.sessions") as any[];
+      const tmuxSessions = await daemonCall("tmux.list") as any[];
       sessions = tmuxSessions
         .map(s => s?.name)
         .filter((name: unknown): name is string => typeof name === "string" && name.startsWith("lattices-place-"))
@@ -971,7 +971,7 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
     console.log(`Placement smoke: ${a} + ${b}`);
 
     for (const session of sessions) {
-      const resolved = await daemonCall("window.resolve", {
+      const resolved = await daemonCall("windows.resolve", {
         target: { kind: "session", session },
         placement: "left",
       }) as any;
@@ -1025,14 +1025,14 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
       await pause(pauseMs);
     }
 
-    const focused = await daemonCall("window.focus", { session: a }, 5000) as any;
+    const focused = await daemonCall("windows.focus", { session: a }, 5000) as any;
     console.log(`\nfocus ${a}: ok=${focused.ok === true} wid=${focused.wid ?? "?"} raised=${focused.raised === true}`);
   });
 }
 
 async function sessionsCommand(jsonFlag: boolean): Promise<void> {
   await withDaemon(async ({ daemonCall }) => {
-    const sessions = await daemonCall("tmux.sessions") as any[];
+    const sessions = await daemonCall("tmux.list") as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(sessions, null, 2));
       return;
@@ -1599,12 +1599,15 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
     console.log("\nExamples:");
     console.log("  lats call daemon.status");
     console.log("  lats call api.schema");
-    console.log('  lats call window.place \'{"session":"vox","placement":"left"}\'');
+    console.log('  lats call windows.place \'{"session":"vox","placement":"left"}\'');
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
     const params = rest[0] ? JSON.parse(rest[0]) : null;
-    const relocationMethods = new Set(["window.move", "window.place", "actions.execute", "actions.undo"]);
+    const relocationMethods = new Set([
+      "windows.move", "windows.place", "actions.execute", "history.undo",
+      "window.move", "window.place", "actions.undo",
+    ]);
     const result = await daemonCall(method, params, relocationMethods.has(method) ? 60_000 : 15_000);
     console.log(JSON.stringify(result, null, 2));
   });
@@ -2424,7 +2427,7 @@ async function tileFamilyCommand(rawArgs: string[]): Promise<void> {
 
 async function daemonLsCommand(): Promise<boolean> {
   const handled = await tryDaemon(async ({ daemonCall }) => {
-    const sessions = await daemonCall("tmux.sessions") as any[];
+    const sessions = await daemonCall("tmux.list") as any[];
     if (!sessions.length) {
       console.log("No active sessions.");
       return;
@@ -2459,7 +2462,7 @@ async function daemonLsCommand(): Promise<boolean> {
 
 async function daemonStatusInventory(): Promise<boolean> {
   const handled = await tryDaemon(async ({ daemonCall }) => {
-    const inv = await daemonCall("tmux.inventory") as any;
+    const inv = await daemonCall("tmux.list", { includeOrphans: true }) as any;
 
     // Build managed session name set
     const managed = new Map<string, string>();
@@ -2598,7 +2601,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
     const numArg = rest.find(a => !a.startsWith("-"));
     const limit = parseInt(numArg || "", 10) || 20;
     await withDaemon(async ({ daemonCall }) => {
-      const results = await daemonCall("ocr.recent", { limit }, 5000) as any[];
+      const results = await daemonCall("ocr.history", { limit }, 5000) as any[];
       if (!results.length) {
         console.log("No history yet. The first scan runs ~60s after launch.");
         return;
@@ -2862,7 +2865,7 @@ async function optimizeWindowsCommand(
     if (request.app) params.app = request.app;
     if (request.region) params.region = request.region;
 
-    const result = await daemonCall("space.optimize", params) as any;
+    const result = await daemonCall("spaces.optimize", params) as any;
     const count = result?.windowCount ?? 0;
     const target = formatOptimizeTarget(request);
     const regionSuffix = request.region ? ` in the ${request.region} region` : "";
@@ -2920,7 +2923,7 @@ function gridTileBounds(position: string, screen: ScreenBounds): number[] | null
 
 /**
  * Legacy `lats tile <position>`: prefer the canonical daemon placement
- * (window.place, frontmost target). Only when the daemon is down fall back to
+ * (windows.place, frontmost target). Only when the daemon is down fall back to
  * the AppleScript path — and say so, since that path is frontmost-app,
  * primary-display only.
  */
@@ -2935,7 +2938,7 @@ async function tileFrontmostCommand(position: string): Promise<void> {
   const client = await loadDaemonClient();
   if (await client.isDaemonRunning()) {
     try {
-      const receipt = await client.daemonCall("window.place", { placement });
+      const receipt = await client.daemonCall("windows.place", { placement });
       console.log(describeMoveReceipt(receipt));
     } catch (e: unknown) {
       console.error(`Daemon placement failed: ${(e as Error).message}`);

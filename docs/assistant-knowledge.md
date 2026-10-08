@@ -45,8 +45,8 @@ windows. Layers live in `workspace.json`; ⌘⌥ switches to one (focus), with t
 and launch as extras. An entry can carry a `match` clause (app/title/session exact,
 substring, regex, Space, visibility, and exclusion matches). For an ephemeral cross-app stack, select windows in Hyperspace and press
 Cmd+T or say “stack these as tabs” / “add these up”; use the HUD grid button to fan
-them out. Agents call `tabStacks.create`, `tabStacks.add`, `tabStacks.select`, and
-`tabStacks.layout`. → [Layers](/docs/layers).
+them out. Agents call `tabs.stack`, `tabs.add`, `tabs.select`, and
+`tabs.layout`. → [Layers](/docs/layers).
 
 ### Command palette & menu bar app
 The palette (**Cmd+Shift+M**) is the app's primary surface: launch projects, tile,

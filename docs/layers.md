@@ -446,13 +446,13 @@ const { layers, active } = await daemonCall('layers.list')
 console.log(`Active: ${layers[active].label}`)
 
 // Switch to a layer by index
-await daemonCall('layer.switch', { index: 0 })
+await daemonCall('layers.switch', { index: 0 })
 
 // Switch to a layer by name
-await daemonCall('layer.switch', { name: 'hudson' })
+await daemonCall('layers.switch', { name: 'hudson' })
 ```
 
-The `layer.switch` call switches as ⌘⌥ does: it puts away what the
+The `layers.switch` call switches as ⌘⌥ does: it puts away what the
 target layer doesn't use, brings its windows forward, and applies the
 layer's `layout`. Entry `tile` placements need `mode: "tile"`, and
 `mode: "launch"` also opens what isn't running. Its `index`

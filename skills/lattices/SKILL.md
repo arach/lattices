@@ -54,25 +54,28 @@ data rather than the window title.
 
 ## Canonical mutations
 
-Use these action identifiers. Legacy names still exist as wrappers.
+Use these methods. Methods are named `<domain>.<verb>` (LAT-012); the old
+singular names (`window.place`, `session.launch`, `tmux.sessions`) still work as
+aliases, and `lats call api.schema` lists them under `aliases`.
 
-| Action | Use for |
+| Method | Use for |
 | --- | --- |
-| `window.place` | Place a window or session with a typed placement |
-| `layer.activate` | Switch layers as ⌘⌥ does; `mode: "launch"` starts what isn't running |
-| `space.optimize` | Rebalance windows with an explicit scope and strategy |
+| `windows.place` | Place a window or session with a typed placement |
+| `layers.activate` | Switch layers as ⌘⌥ does; `mode: "launch"` starts what isn't running |
+| `spaces.optimize` | Rebalance windows with an explicit scope and strategy |
 
-`window.tile` is `window.place`. `layer.switch` is `layer.activate`. `layout.distribute` is `space.optimize` with
+`layers.switch` is `layers.activate`. `layout.distribute` is `spaces.optimize` with
 `scope=visible` and `strategy=balanced`.
 
 Resolve before mutating when the target identity matters:
 
 ```bash
-lats call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call windows.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
 lats call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
 ```
 
-Undo the latest undoable placement with `lats call actions.undo '{}'`.
+Action receipts keep their `window.place` type. Undo the latest undoable placement with
+`lats call history.undo '{}'`.
 
 ## Recipes
 
@@ -89,15 +92,15 @@ Default place position is `bottom-right`. Positions include `left`, `right`,
 ### Launch two sessions and tile them
 
 ```bash
-lats call session.launch '{"path":"/Users/you/dev/frontend"}'
-lats call session.launch '{"path":"/Users/you/dev/api"}'
-lats call tmux.sessions
-lats call window.place '{"session":"frontend-a1b2c3","placement":"left"}'
-lats call window.place '{"session":"api-b4c5d6","placement":"right"}'
+lats call sessions.launch '{"path":"/Users/you/dev/frontend"}'
+lats call sessions.launch '{"path":"/Users/you/dev/api"}'
+lats call tmux.list
+lats call windows.place '{"session":"frontend-a1b2c3","placement":"left"}'
+lats call windows.place '{"session":"api-b4c5d6","placement":"right"}'
 ```
 
 Session names are `<basename>-<sha256-6chars>`. Read the live name from
-`lats sessions --json` or `tmux.sessions`. Do not guess the hash.
+`lats sessions --json` or `tmux.list`. Do not guess the hash.
 
 ### Read the screen
 

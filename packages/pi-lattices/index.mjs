@@ -261,7 +261,7 @@ export const LATTICES_TOOLS = [
   },
   {
     name: `${TOOL_PREFIX}window_place`,
-    method: "window.place",
+    method: "windows.place",
     description: "Place a target window/session using Lattices' typed placement runtime and return the action receipt.",
     parameters: object({
       ...targetParams,

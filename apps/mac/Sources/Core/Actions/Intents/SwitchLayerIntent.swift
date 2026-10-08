@@ -43,7 +43,7 @@ struct SwitchLayerIntent: LatticeIntent {
             throw IntentError.missingSlot("layer")
         }
         return try LatticesApi.shared.dispatch(
-            method: "layer.switch",
+            method: "layers.switch",
             params: .object(["name": .string(layer)])
         )
     }

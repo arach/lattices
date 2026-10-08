@@ -115,7 +115,7 @@ Move windows to screen positions.
 ```
 
 Voice tiling should resolve into the same canonical daemon mutation used
-by other agent surfaces: `window.place`.
+by other agent surfaces: `windows.place`.
 
 ### Focus
 
