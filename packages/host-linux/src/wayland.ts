@@ -196,6 +196,49 @@ export async function virtualPointerAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * A virtual pointer kept open across calls, for gestures that span requests:
+ * the companion trackpad sends mouseDown, drags, then mouseUp separately, and a
+ * pointer torn down in between would drop the held button.
+ */
+export class PointerSession {
+  private constructor(private conn: WaylandConnection, private pointer: number) {}
+
+  static async open(): Promise<PointerSession> {
+    const conn = await WaylandConnection.open();
+    await conn.loadGlobals();
+    const manager = conn.globals.find((g) => g.iface === VIRTUAL_POINTER_MANAGER);
+    if (!manager) {
+      conn.close();
+      throw new Error(`${VIRTUAL_POINTER_MANAGER} is not offered by this compositor`);
+    }
+    const managerId = conn.bind(manager, Math.min(manager.version, 2));
+    const pointer = conn.newId();
+    conn.send(managerId, 0, [{ u: 0 }, { u: pointer }]);
+    return new PointerSession(conn, pointer);
+  }
+
+  async move(x: number, y: number, extent: Extent) {
+    const ax = Math.max(0, Math.min(extent.w - 1, Math.round(x - extent.x)));
+    const ay = Math.max(0, Math.min(extent.h - 1, Math.round(y - extent.y)));
+    this.conn.send(this.pointer, Ptr.MotionAbsolute, [{ u: now() }, { u: ax }, { u: ay }, { u: extent.w }, { u: extent.h }]);
+    this.conn.send(this.pointer, Ptr.Frame);
+    await this.conn.roundtrip();
+  }
+
+  async button(button: Button, down: boolean) {
+    this.conn.send(this.pointer, Ptr.Button, [{ u: now() }, { u: BUTTONS[button] }, { u: down ? 1 : 0 }]);
+    this.conn.send(this.pointer, Ptr.Frame);
+    await this.conn.roundtrip();
+  }
+
+  async close() {
+    this.conn.send(this.pointer, Ptr.Destroy);
+    await this.conn.roundtrip().catch(() => {});
+    this.conn.close();
+  }
+}
+
 /** Run pointer steps through a fresh virtual pointer, then tear it down. */
 export async function runPointer(steps: PointerStep[], extent: Extent): Promise<void> {
   const conn = await WaylandConnection.open();

@@ -63,6 +63,34 @@ the logo key.
 Events: Hyprland's event socket becomes `windows.changed` and
 `spaces.changed`, pushed to every connected client.
 
+## The iOS companion
+
+lattices-host also speaks the companion bridge the iOS app uses with a Mac
+(port 5287, the same routes and security), so a Linux machine joins the
+phone's fleet without app changes.
+
+1. In the app, add a host by address: `archie:5287` over Tailscale, or a LAN
+   IP if you start the host with `--bridge-bind <lan-ip>` (that also
+   advertises it over Bonjour through Avahi).
+2. The host shows a notification, "Pair <device>?", with the device's code.
+   Check the code matches the phone and approve. You can also approve from
+   anywhere you can reach the host: `lats --host archie call bridge.status`,
+   then `bridge.pairing.approve '{"deviceID":"..."}'`. Requests nobody
+   decides are denied after two minutes.
+3. Every later request is signed and encrypted with keys from that pairing.
+   `bridge.devices.revoke` forgets a device.
+
+The deck shows the windows (switcher and layout preview), workspaces,
+system telemetry, a placement cockpit, the screen preview and the trackpad.
+Actions: `layout.placeFrontmost`, `switch.focusItem`, `keys.send`,
+`keys.type`, `clipboard.pasteFromDevice`, `window.dragBy`,
+`spaces.focusIndex`, `spaces.focusRelative`, `displays.focus`. Mac-only
+actions (voice, Talkie, layers) answer "Not available on Linux".
+
+The bridge identity and trusted devices live in `~/.lattices/host/`
+(`bridge-key.json`, `bridge-devices.json`, both 0600). `--no-bridge` turns
+it off.
+
 ## Tests
 
 ```sh

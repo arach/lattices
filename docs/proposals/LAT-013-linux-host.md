@@ -1,6 +1,6 @@
 # LAT-013: Linux host
 
-Status: Phases 1–3 built, phase 4 in progress, 2026-10-08. Builds on [LAT-012](LAT-012-domain-api.md).
+Status: Phases 1–4 built, 2026-10-08. Builds on [LAT-012](LAT-012-domain-api.md).
 
 ## Summary
 
@@ -94,7 +94,7 @@ Screen Sharing ◀──── vnc://archie:5900 ── wayvnc (started by captu
      input capabilities and `screenRecording` to `capture.still`.
      `SurfaceObservation.ax` did not need to change, since the remote engine
      does not produce surface observations.
-4. **Fleet** (in progress):
+4. **Fleet** (done):
    - Done: the `hosts` MCP toolset (`lats mcp --toolsets hosts`). Every tool
      takes a `host`: `hosts_list` (local daemon, `~/.lattices/hosts.json`,
      `LATTICES_HOSTS`, and with `discover` your own tailnet devices answering
@@ -104,7 +104,24 @@ Screen Sharing ◀──── vnc://archie:5900 ── wayvnc (started by captu
      for people. The daemon client gains `daemonCallTo(endpoint, ...)`.
    - Done: `events.subscribe` / `events.unsubscribe` filter events per
      connection, on the Mac daemon and on lattices-host. Default stays all.
-   - Open: the iOS fleet view showing Linux hosts.
+   - Done: the iOS companion reaches Linux hosts with no app changes.
+     lattices-host speaks the companion bridge
+     (`packages/host-linux/src/bridge/`), ported from
+     `LatticesCompanionBridgeServer.swift` and
+     `LatticesCompanionSecurityCoordinator.swift`:
+     - Port 5287, the same routes and status codes.
+     - X25519 pairing with a person's approval: a desktop notification or
+       `bridge.pairing.approve`.
+     - HKDF-SHA256 keys, HMAC-signed requests with a replay window, and
+       ChaCha20-Poly1305 envelopes.
+     - Bun's crypto lacks ChaCha20-Poly1305, so `chacha.ts` implements
+       RFC 8439. It is checked against the RFC vector and against OpenSSL.
+     - The deck (manifest, snapshot, actions, trackpad, preview) is built
+       from Hyprland. Payloads were checked mechanically against all 42
+       DeckKit structs and 20 enums.
+     - Bonjour through Avahi when the bridge listens on a LAN address.
+     - Verified with a client written like the iOS app's
+       `DeckBridgeSecurityStore`, not with the phone itself.
 
 ## Open questions
 
