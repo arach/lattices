@@ -1,6 +1,6 @@
 # LAT-013: Linux host
 
-Status: Phases 1–3 built, 2026-10-08. Builds on [LAT-012](LAT-012-domain-api.md).
+Status: Phases 1–3 built, phase 4 in progress, 2026-10-08. Builds on [LAT-012](LAT-012-domain-api.md).
 
 ## Summary
 
@@ -94,8 +94,17 @@ Screen Sharing ◀──── vnc://archie:5900 ── wayvnc (started by captu
      input capabilities and `screenRecording` to `capture.still`.
      `SurfaceObservation.ax` did not need to change, since the remote engine
      does not produce surface observations.
-4. **Fleet**: a `hosts` MCP toolset that takes a host per call, the iOS fleet
-   view reading `capture.still`, and a subscribe RPC for filtered events.
+4. **Fleet** (in progress):
+   - Done: the `hosts` MCP toolset (`lats mcp --toolsets hosts`). Every tool
+     takes a `host`: `hosts_list` (local daemon, `~/.lattices/hosts.json`,
+     `LATTICES_HOSTS`, and with `discover` your own tailnet devices answering
+     on 9399), `host_describe`, `host_windows`, `host_screenshot` (an image),
+     `host_read` (OCR, `find` for a click point), `host_place`, `host_focus`,
+     `host_act` (executes), `host_call`. `lats hosts [--discover]` lists them
+     for people. The daemon client gains `daemonCallTo(endpoint, ...)`.
+   - Done: `events.subscribe` / `events.unsubscribe` filter events per
+     connection, on the Mac daemon and on lattices-host. Default stays all.
+   - Open: the iOS fleet view showing Linux hosts.
 
 ## Open questions
 

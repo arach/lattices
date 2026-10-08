@@ -140,7 +140,7 @@ final class DaemonServer: ObservableObject {
         lock.lock()
         let snapshot = clients
         lock.unlock()
-        for (_, client) in snapshot {
+        for (_, client) in snapshot where EventSubscriptions.wants(client.subscribedEvents, event: event.event) {
             sendWebSocketText(text, to: client)
         }
     }
@@ -361,6 +361,19 @@ final class DaemonServer: ObservableObject {
         guard let request = try? decoder.decode(DaemonRequest.self, from: data) else {
             let errResponse = DaemonResponse(id: "?", result: nil, error: "Invalid request JSON")
             sendResponse(errResponse, to: client)
+            return
+        }
+
+        if EventSubscriptions.methods.contains(request.method) {
+            client.subscribedEvents = EventSubscriptions.apply(
+                method: request.method,
+                params: request.params,
+                to: client.subscribedEvents
+            )
+            sendResponse(
+                DaemonResponse(id: request.id, result: EventSubscriptions.result(client.subscribedEvents), error: nil),
+                to: client
+            )
             return
         }
 
@@ -632,6 +645,14 @@ final class WebSocketClient {
     var speechConnection: SpeechCompanionConnection?
     /// Replies to requests the daemon sent the Voice helper itself. Touched only on the daemon queue.
     var helperCallbacks: [String: (DaemonResponse) -> Void] = [:]
+    /// Events this client asked for (`events.subscribe`); nil means all. Read from
+    /// the broadcast path and written on the daemon queue, so it is locked.
+    var subscribedEvents: Set<String>? {
+        get { subscriptionLock.lock(); defer { subscriptionLock.unlock() }; return _subscribedEvents }
+        set { subscriptionLock.lock(); _subscribedEvents = newValue; subscriptionLock.unlock() }
+    }
+    private var _subscribedEvents: Set<String>?
+    private let subscriptionLock = NSLock()
     let id: UUID
     let fd: Int32
     var buffer: [UInt8] = []

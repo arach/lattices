@@ -8,6 +8,7 @@ import { parsePlacement, rectFor } from "../src/placement.ts";
 import { Router, resolveAlias } from "../src/router.ts";
 import { sessionName } from "../src/tmux.ts";
 import { find, matchScore, parseTsv } from "../src/ocr.ts";
+import { handleSubscription } from "../src/server.ts";
 import { encodeMessage } from "../src/wayland.ts";
 
 describe("router", () => {
@@ -246,5 +247,21 @@ describe("ocr", () => {
     const lines = parseTsv(tsv, { x: 0, y: 0, w: 500, h: 300 }, 1);
     expect(find(lines, "remote engine")[0].text).toBe("Hetlo Renote Engine");
     expect(find(lines, "nothing like it")).toEqual([]);
+  });
+});
+
+describe("event subscriptions", () => {
+  test("all by default, narrowed by subscribe, widened by *", () => {
+    const conn = { identity: { user: "u", node: "n" }, events: null as Set<string> | null };
+    expect(handleSubscription(conn, "events.subscribe", { events: ["windows.changed"] })).toEqual({ ok: true, events: ["windows.changed"] });
+    expect(handleSubscription(conn, "events.subscribe", { events: ["*"] })).toEqual({ ok: true, events: ["*"] });
+    expect(conn.events).toBeNull();
+  });
+
+  test("unsubscribe removes from all, or stops everything without a list", () => {
+    const conn = { identity: { user: "u", node: "n" }, events: null as Set<string> | null };
+    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["windows.changed"]);
+    expect(handleSubscription(conn, "events.unsubscribe", {})?.events).toEqual([]);
+    expect(handleSubscription(conn, "windows.list", {})).toBeNull();
   });
 });

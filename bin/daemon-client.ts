@@ -17,9 +17,11 @@ const DEFAULT_DAEMON_PORT = 9399;
  * lattices host, such as a Linux machine running lattices-host on the tailnet
  * (LAT-013). Read per call so the CLI's --host flag can set it at startup.
  */
-export function daemonEndpoint(): { host: string; port: number } {
-  const host = process.env.LATTICES_DAEMON_HOST?.trim() || DEFAULT_DAEMON_HOST;
-  const port = Number(process.env.LATTICES_DAEMON_PORT);
+export function daemonEndpoint(
+  env: Record<string, string | undefined> = process.env
+): { host: string; port: number } {
+  const host = env.LATTICES_DAEMON_HOST?.trim() || DEFAULT_DAEMON_HOST;
+  const port = Number(env.LATTICES_DAEMON_PORT);
   return { host, port: Number.isInteger(port) && port > 0 ? port : DEFAULT_DAEMON_PORT };
 }
 
@@ -128,16 +130,27 @@ export async function daemonCall(
   params?: Record<string, unknown> | null,
   timeoutMs = 3000
 ): Promise<unknown> {
+  return daemonCallTo(daemonEndpoint(), method, params, timeoutMs);
+}
+
+/** `daemonCall` against an explicit host, for clients that address several (LAT-013). */
+export async function daemonCallTo(
+  endpoint: { host: string; port: number },
+  method: string,
+  params?: Record<string, unknown> | null,
+  timeoutMs = 3000
+): Promise<unknown> {
   try {
-    return await sendRequest(method, params, timeoutMs);
+    return await sendRequest(endpoint, method, params, timeoutMs);
   } catch (err) {
     const legacy = legacyMethodName(method, params);
     if (!legacy || (err as Error).message !== `Unknown method: ${method}`) throw err;
-    return sendRequest(legacy, params, timeoutMs);
+    return sendRequest(endpoint, legacy, params, timeoutMs);
   }
 }
 
 async function sendRequest(
+  endpoint: { host: string; port: number },
   method: string,
   params: Record<string, unknown> | null | undefined,
   timeoutMs: number
@@ -146,7 +159,7 @@ async function sendRequest(
   const request = JSON.stringify({ id, method, params: params ?? null });
 
   return new Promise((resolve, reject) => {
-    const { host, port } = daemonEndpoint();
+    const { host, port } = endpoint;
     const socket = createConnection({ host, port });
     let settled = false;
     let buffer = Buffer.alloc(0);
