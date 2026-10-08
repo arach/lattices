@@ -405,6 +405,12 @@ export interface EngineDiagnostics {
   accessibility: PermissionState;
   screenRecording: PermissionState;
   notes?: string[];
+  /** Set by engines that drive another machine (LAT-013), e.g. "linux". */
+  platform?: string;
+  /** The remote host's name, for remote engines. */
+  host?: string;
+  /** The remote host's advertised capabilities (host.describe). */
+  capabilities?: string[];
 }
 
 export const guidedSessionPhases = [

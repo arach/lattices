@@ -33,6 +33,8 @@ export function serve({ hosts, port, policy, router, log }: ServeOptions) {
         return Response.json({ ok: true, service: "lattices-host", websocket: `ws://${hostname}:${port}` });
       },
       websocket: {
+        // Recordings and captures come back as base64; leave room for them.
+        maxPayloadLength: 64 * 1024 * 1024,
         open(ws) {
           sockets.add(ws);
           ws.subscribe("events");

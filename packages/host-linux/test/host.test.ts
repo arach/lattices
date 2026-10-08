@@ -7,6 +7,7 @@ import { keysym, parseShortcut, wtypeKeyArgs } from "../src/input.ts";
 import { parsePlacement, rectFor } from "../src/placement.ts";
 import { Router, resolveAlias } from "../src/router.ts";
 import { sessionName } from "../src/tmux.ts";
+import { find, matchScore, parseTsv } from "../src/ocr.ts";
 import { encodeMessage } from "../src/wayland.ts";
 
 describe("router", () => {
@@ -217,5 +218,33 @@ describe("tmux and capture", () => {
     expect(imageSize(png)).toEqual({ width: 640, height: 480 });
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0xe0, 0x02, 0x80, 0, 0, 0, 0, 0]);
     expect(imageSize(jpeg)).toEqual({ width: 640, height: 480 });
+  });
+});
+
+describe("ocr", () => {
+  const tsv = [
+    "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext",
+    "5\t1\t1\t1\t1\t1\t20\t10\t100\t30\t91\tHetlo",
+    "5\t1\t1\t1\t1\t2\t130\t12\t120\t28\t89\tRenote",
+    "5\t1\t1\t1\t1\t3\t260\t10\t130\t30\t95\tEngine",
+    "5\t1\t1\t1\t2\t1\t20\t60\t140\t30\t96\tsecond",
+    "4\t1\t1\t1\t2\t0\t20\t60\t140\t30\t-1\t",
+  ].join("\n");
+
+  test("words group into lines mapped back to screen coordinates", () => {
+    // A 2x capture of a region at (1000, 400).
+    const lines = parseTsv(tsv, { x: 1000, y: 400, w: 500, h: 300 }, 2);
+    expect(lines.map((l) => l.text)).toEqual(["Hetlo Renote Engine", "second"]);
+    expect(lines[0].frame).toEqual({ x: 20, y: 10, width: 370, height: 30 });
+    expect(lines[0].screenFrame).toEqual({ x: 1010, y: 405, w: 185, h: 15 });
+    expect(lines[0].confidence).toBeCloseTo(0.9167, 3);
+  });
+
+  test("find tolerates OCR misreads and ranks exact lines first", () => {
+    expect(matchScore("Hetlo Renote Engine", "Hello Remote Engine")).toBeGreaterThan(0.85);
+    expect(matchScore("something else", "Hello Remote Engine")).toBeLessThan(0.5);
+    const lines = parseTsv(tsv, { x: 0, y: 0, w: 500, h: 300 }, 1);
+    expect(find(lines, "remote engine")[0].text).toBe("Hetlo Renote Engine");
+    expect(find(lines, "nothing like it")).toEqual([]);
   });
 });

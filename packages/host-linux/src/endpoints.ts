@@ -5,6 +5,10 @@ import { hasCommand, run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
+import * as ocr from "./ocr.ts";
+import * as record from "./record.ts";
+import { closeSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
+import { sep } from "node:path";
 import { parsePlacement, type Rect } from "./placement.ts";
 import { Router, RouterError, bool, num, requireStr, str, type Json, type Params } from "./router.ts";
 import * as tmux from "./tmux.ts";
@@ -36,6 +40,8 @@ export async function refreshCapabilities() {
   if (await virtualPointerAvailable()) capabilities.add("input.pointer");
   if (hasCommand("tmux")) capabilities.add("sessions.tmux");
   if (hasCommand("tesseract") && capabilities.has("capture.still")) capabilities.add("ocr");
+  if (hasCommand("ffmpeg") && capabilities.has("capture.still")) capabilities.add("capture.record");
+  if (capabilities.has("windows.read")) capabilities.add("apps.open");
   return capabilities;
 }
 
@@ -747,5 +753,176 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     ],
     returns: "Object with text",
     handler: async (params) => asJson({ text: await tmux.capturePane(requireStr(params, "session"), num(params, "lines") ?? 200) }),
+  });
+
+  // ── Action support (LAT-013 phase 3) ────────────────────────────────
+  const regionParams = [
+    ...targetParams,
+    { name: "x", type: "double", description: "Region left (with y, width, height)" },
+    { name: "y", type: "double", description: "Region top" },
+    { name: "width", type: "double", description: "Region width" },
+    { name: "height", type: "double", description: "Region height" },
+    { name: "displayIndex", type: "int", description: "Read a whole display" },
+  ];
+
+  /** A region from x/y/width/height, a display, or a window target (default: focused window). */
+  async function resolveRegion(params: Params): Promise<{ region: Rect; output?: string; window: desktop.Window | null }> {
+    const explicit = regionFrom(params);
+    if (explicit) return { region: explicit, window: null };
+    const index = num(params, "displayIndex");
+    if (index !== undefined) {
+      const display = (await desktop.snapshot()).displays[index];
+      if (!display) throw RouterError.notFound(`display ${index}`);
+      return { region: display.frame, output: display.displayId, window: null };
+    }
+    const { window } = await desktop.resolveTarget(params);
+    return { region: window.frame, window };
+  }
+
+  async function readRegion(params: Params) {
+    const { region, output, window } = await resolveRegion(params);
+    // tesseract misreads small UI text at 1x ("Hetlo Renote"); a 2x capture fixes most of it.
+    const scale = region.w * 2 <= 8000 ? 2 : 1;
+    const png = await capture.grab({ region: output ? undefined : region, output, format: "png", scale });
+    const size = capture.imageSize(png) ?? { width: region.w, height: region.h };
+    return { read: await ocr.read(png, region, size.width, size.height), window, png };
+  }
+
+  router.register({
+    method: "ocr.read",
+    description: "OCR a window, region or display; returns lines with image and screen boxes",
+    access: "read",
+    capability: "ocr",
+    params: [...regionParams, { name: "image", type: "bool", description: "Also return the PNG as base64" }],
+    returns: "Object with fullText, blocks (text, confidence, frame, screenFrame), imageWidth, imageHeight, region",
+    handler: async (params) => {
+      const { read, window, png } = await readRegion(params);
+      return asJson({ ...read, wid: window?.wid ?? null, ...(bool(params, "image") ? { image: png.toString("base64") } : {}) });
+    },
+  });
+
+  router.register({
+    method: "ocr.find",
+    description: "Find text on screen; returns matching lines with screen bounds and a center point to click",
+    access: "read",
+    capability: "ocr",
+    params: [
+      { name: "text", type: "string", required: true, description: "Text to find; tolerates OCR misreads" },
+      { name: "minScore", type: "double", description: "Minimum match score, 0-1 (default 0.75)" },
+      ...regionParams,
+    ],
+    returns: "Object with matches (text, confidence, bounds, point), best first",
+    handler: async (params) => {
+      const text = requireStr(params, "text");
+      const { read, window } = await readRegion(params);
+      const matches = ocr.find(read.blocks, text, num(params, "minScore") ?? 0.75).map((line) => ({
+        text: line.text,
+        score: Number(line.score.toFixed(3)),
+        confidence: line.confidence,
+        bounds: line.screenFrame,
+        point: { x: Math.round(line.screenFrame.x + line.screenFrame.w / 2), y: Math.round(line.screenFrame.y + line.screenFrame.h / 2) },
+      }));
+      return asJson({ text, matches, region: read.region, wid: window?.wid ?? null });
+    },
+  });
+
+  router.register({
+    method: "apps.open",
+    description: "Launch a command through the compositor and wait for its window",
+    access: "mutate",
+    capability: "apps.open",
+    params: [
+      { name: "command", type: "string", required: true, description: "Command line, e.g. `firefox` or `foot -T notes`" },
+      { name: "timeoutMs", type: "int", description: "How long to wait for a new window (default 8000)" },
+    ],
+    returns: "Object with ok and the new window, or window: null if none appeared in time",
+    handler: async (params) => {
+      const command = requireStr(params, "command");
+      const before = new Set((await desktop.snapshot()).windows.map((w) => w.wid));
+      await hypr.exec(command);
+      const deadline = Date.now() + (num(params, "timeoutMs") ?? 8000);
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 150));
+        const fresh = (await desktop.snapshot()).windows.find((w) => !before.has(w.wid));
+        if (fresh) return asJson({ ok: true, window: fresh });
+      }
+      return asJson({ ok: true, window: null });
+    },
+  });
+
+  router.register({
+    method: "capture.record",
+    description: "Record the screen as grim frames encoded by ffmpeg: action start | pause | resume | stop | status",
+    access: "mutate",
+    capability: "capture.record",
+    params: [
+      { name: "action", type: "string", required: true, description: "start, pause, resume, stop or status" },
+      ...regionParams,
+      { name: "fps", type: "int", description: "Frames per second, 1-15 (default 5)" },
+      { name: "format", type: "string", description: "`mp4` (default) or `mov`" },
+    ],
+    returns: "Recording status; stop returns the video path, frame count and duration",
+    handler: async (params) => {
+      switch (params.action) {
+        case "start": {
+          const hasRegion = regionFrom(params) || num(params, "displayIndex") !== undefined || num(params, "wid") !== undefined || str(params, "app") || str(params, "session");
+          const target = hasRegion ? await resolveRegion(params) : undefined;
+          return asJson(
+            record.start({
+              region: target?.output ? undefined : target?.region,
+              output: target?.output,
+              fps: num(params, "fps"),
+              format: params.format === "mov" ? "mov" : "mp4",
+            })
+          );
+        }
+        case "pause":
+          return asJson(record.setPaused(true));
+        case "resume":
+          return asJson(record.setPaused(false));
+        case "stop":
+          return asJson(await record.stop());
+        case "status":
+          return asJson(record.status());
+        default:
+          throw new RouterError("capture.record needs action: start, pause, resume, stop or status");
+      }
+    },
+  });
+
+  router.register({
+    method: "files.read",
+    description: "Read a capture or recording this host wrote (only under ~/.lattices/captures), in base64 chunks",
+    access: "read",
+    capability: "capture.still",
+    params: [
+      { name: "path", type: "string", required: true, description: "Path returned by a capture or recording" },
+      { name: "offset", type: "int", description: "Byte offset (default 0)" },
+      { name: "length", type: "int", description: "Max bytes (default and cap 16 MiB)" },
+    ],
+    returns: "Object with data (base64), offset, length, size, eof",
+    handler: (params) => {
+      const requested = requireStr(params, "path");
+      let real: string;
+      try {
+        real = realpathSync(requested);
+      } catch {
+        throw RouterError.notFound(requested);
+      }
+      mkdirSync(capture.CAPTURE_DIR, { recursive: true });
+      const root = realpathSync(capture.CAPTURE_DIR);
+      if (!real.startsWith(root + sep)) throw new RouterError(`files.read only serves files under ${capture.CAPTURE_DIR}`);
+      const size = statSync(real).size;
+      const offset = Math.max(0, Math.floor(num(params, "offset") ?? 0));
+      const length = Math.min(16 * 1024 * 1024, Math.max(0, Math.floor(num(params, "length") ?? 16 * 1024 * 1024)), Math.max(0, size - offset));
+      const buffer = Buffer.alloc(length);
+      const fd = openSync(real, "r");
+      try {
+        readSync(fd, buffer, 0, length, offset);
+      } finally {
+        closeSync(fd);
+      }
+      return asJson({ data: buffer.toString("base64"), offset, length, size, eof: offset + length >= size });
+    },
   });
 }

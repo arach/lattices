@@ -11,6 +11,7 @@ import type {
 import { Session } from "./session.js";
 import { buildPersistedSession, buildSessionManifest } from "./session-storage.js";
 import { CurrentSurfaceSnapshot, MacOSCommandEngine } from "./macos.js";
+import type { SurfaceEngine } from "./surface-engine.js";
 import type { OCRResult, VisionAnalysisResult } from "./vision.js";
 import { analyzeScreenshotVision, ocrScreenshot } from "./vision.js";
 
@@ -107,7 +108,7 @@ async function persistInspectionFiles(input: {
 }
 
 export interface InspectCurrentSurfaceOptions {
-  engine?: MacOSCommandEngine;
+  engine?: SurfaceEngine;
   outputDir?: string;
   sessionId?: string;
   includeOcr?: boolean;
@@ -129,7 +130,7 @@ export async function inspectCurrentSurface(
 ): Promise<InspectCurrentSurfaceResult> {
   const sessionId = options.sessionId ?? `inspection_current_surface_${sessionSuffix()}`;
   const outputDir = options.outputDir ?? outputDirFor(sessionId);
-  const engine = options.engine ?? new MacOSCommandEngine();
+  const engine: SurfaceEngine = options.engine ?? new MacOSCommandEngine();
   const session = new Session(sessionId, "inspection");
   let phase: GuidedSessionPhase = "created";
   let currentSurface: CurrentSurfaceSnapshot | undefined;
@@ -174,24 +175,30 @@ export async function inspectCurrentSurface(
     const screenshot = await engine.captureSurfaceScreenshot(currentSurface, screenshotPath);
     session.registerArtifact(screenshot);
 
-    const axPath = resolve(outputDir, "ax-snapshot.json");
-    const axSnapshot = await engine.captureSurfaceAccessibilitySnapshot(currentSurface, axPath);
-    session.recordObservation({
-      kind: "accessibility",
-      source: "engine",
-      at: now(),
-      surfaceId: currentSurface.surface.id,
-      data: {
-        bundleId: currentSurface.bundleId,
-        nodeCount: axSnapshot.nodeCount,
-        artifactPath: axPath,
-      },
-    });
-    session.registerArtifact(axSnapshot.artifact);
+    // An accessibility tree exists only on macOS; a remote host has none.
+    if (engine.captureSurfaceAccessibilitySnapshot) {
+      const axPath = resolve(outputDir, "ax-snapshot.json");
+      const axSnapshot = await engine.captureSurfaceAccessibilitySnapshot(currentSurface, axPath);
+      session.recordObservation({
+        kind: "accessibility",
+        source: "engine",
+        at: now(),
+        surfaceId: currentSurface.surface.id,
+        data: {
+          bundleId: currentSurface.bundleId,
+          nodeCount: axSnapshot.nodeCount,
+          artifactPath: axPath,
+        },
+      });
+      session.registerArtifact(axSnapshot.artifact);
+    }
 
     if (options.includeOcr !== false) {
       const ocrPath = resolve(outputDir, "ocr-snapshot.json");
-      const ocrCapture = await ocrScreenshot(screenshotPath, ocrPath);
+      // OCR where the pixels are: the remote host when the engine offers it.
+      const ocrCapture = engine.ocrSurface
+        ? await engine.ocrSurface(currentSurface, screenshotPath, ocrPath)
+        : await ocrScreenshot(screenshotPath, ocrPath);
       ocr = ocrCapture.result;
       session.recordObservation({
         kind: "vision",
@@ -199,7 +206,7 @@ export async function inspectCurrentSurface(
         at: now(),
         surfaceId: currentSurface.surface.id,
         data: {
-          provider: "apple-vision",
+          provider: engine.ocrSurface ? "tesseract" : "apple-vision",
           blockCount: ocr.blockCount,
           artifactPath: ocrPath,
         },
