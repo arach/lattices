@@ -42,6 +42,7 @@ on its methods; missing tools just hide them.
 | Capability | Backend | Methods |
 | --- | --- | --- |
 | `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move`, `spaces.list`, `desktop.snapshot` |
+| `displays.virtual` | `hyprctl output create headless` plus a monitor rule (`eval hl.monitor` on 0.55+) | `displays.create`, `displays.remove` |
 | `capture.still` | `grim` | `capture.screenshotDisplay/Window/Region`, `capture.still` (inline JPEG) |
 | `capture.live` | `wayvnc`, started on demand on the host's address | `capture.live` returns a `vnc://` URL for Screen Sharing |
 | `input.keys` | `wtype` | `computer.typeText`, `computer.pressKey`, `computer.hotkey` |
@@ -50,6 +51,11 @@ on its methods; missing tools just hide them.
 | `ocr` | `tesseract` on a grim capture (2x for `ocr.*`) | `computer.observe`, `ocr.read` (lines with screen boxes), `ocr.find` (fuzzy, tolerates misreads) |
 | `capture.record` | grim frames at 1-15 fps, encoded by `ffmpeg` on stop | `capture.record` (`start`, `pause`, `resume`, `stop`, `status`) |
 | `apps.open` | the compositor's exec dispatcher | `apps.open` waits for the new window |
+
+Virtual displays are headless outputs (`virtual: true` in every Display). The
+host records the ones it creates in `~/.lattices/host-displays.json` and only
+removes those (`managed: true` in `host.describe`). An output made by hand stays
+yours unless you hand it over with `displays.create {name, adopt: true}`.
 
 `files.read` returns files under `~/.lattices/captures` in base64 chunks, so a
 remote client can fetch the recordings and captures it asked for. Action's
