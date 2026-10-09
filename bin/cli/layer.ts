@@ -38,6 +38,14 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       console.log(`Renamed layer "${rest[0]}" to "${rest.slice(1).join(" ")}".`);
       return;
     }
+    if (sub === "classic") {
+      const oneSpace = rest.includes("--one-space");
+      const result = await daemonCall("layers.classic", oneSpace ? { oneSpace: true } : {}) as any;
+      console.log(result.gathering
+        ? "Classic · one space: carrying windows from other desktops (see the bezel)."
+        : "Classic: every window back, as if Lattices weren't running.");
+      return;
+    }
     if (sub === "reveal" || sub === "show-all") {
       const result = await daemonCall("layers.reveal") as any;
       const unhidden: string[] = result.unhidden ?? [];

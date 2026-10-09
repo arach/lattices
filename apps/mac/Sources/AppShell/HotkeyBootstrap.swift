@@ -73,6 +73,16 @@ enum HotkeyBootstrap {
                 modifiers: UInt32(cmdKey | optionKey)
             ) { selectSlot(slot) }
         }
+
+        // ⌘⌥0 and ⌘⌥ numpad 0: Classic, every window back as if Lattices
+        // weren't running. Again: Classic · one space.
+        for (offset, keyCode) in [UInt32(29), 82].enumerated() {
+            HotkeyManager.shared.registerSingle(
+                id: 130 + UInt32(offset),
+                keyCode: keyCode,
+                modifiers: UInt32(cmdKey | optionKey)
+            ) { WorkspaceManager.shared.showClassic() }
+        }
     }
 
     /// Cmd+Opt+N switches to the layer in slot N of the pad. The middle
