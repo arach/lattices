@@ -5,7 +5,7 @@ import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost } from "
 /**
  * lats hosts [--discover] [--json]   list reachable lattices hosts (LAT-013)
  * lats hosts describe <name>         host.describe for one host
- * lats hosts pair [name] [--read-only] pair this machine with a lattices-host
+ * lats hosts pair [name] [--read-only | --drive]  pair this machine with a lattices-host
  */
 export async function hostsCommand(args: string[]): Promise<void> {
   const json = hasFlag(args, "json");
@@ -45,7 +45,8 @@ export async function hostsCommand(args: string[]): Promise<void> {
 async function pairCommand(args: string[]): Promise<void> {
   const name = args.find((a) => !a.startsWith("--"));
   const host = resolveHost(name);
-  const scope = hasFlag(args, "read-only") ? "read" : "mutate";
+  // act by default; --drive also asks for computer.* input, --read-only for less.
+  const scope = hasFlag(args, "read-only") ? "read" : hasFlag(args, "drive") ? "drive" : "act";
   const { params, fingerprint } = pairingRequest(scope);
   const where = `${host.address}:${host.port}`;
   console.log(`Pairing ${params.clientName} with ${where} (${scope}).`);
@@ -56,7 +57,7 @@ async function pairCommand(args: string[]): Promise<void> {
     host: string;
     hostPublicKey: string;
     hostFingerprint: string;
-    scope: "read" | "mutate" | null;
+    scope: "read" | "act" | "drive" | null;
     detail?: string;
   };
   if (result.disposition === "denied" || !result.scope) {

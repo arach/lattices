@@ -39,7 +39,7 @@ Past whois, a remote client must be **paired** before any method runs; being
 on the tailnet is not enough. This is the companion bridge's scheme (below)
 applied to the daemon socket:
 
-1. From the client: `lats --host archie pair` (or `--read-only`). The CLI
+1. From the client: `lats --host archie pair` (or `--read-only`, or `--drive`). The CLI
    makes an X25519 key and id for this machine and calls `clients.pair`, the
    only method an unpaired client may call. It prints a code; wait.
 2. On the host, a notification shows the client's name, its tailnet node and
@@ -55,9 +55,17 @@ applied to the daemon socket:
    Timestamps must be within 2 minutes; a nonce is accepted once. A bad or
    revoked signature gets a 401/403 before the socket opens.
 
-Each client has a scope: `read` runs `access: "read"` methods (listed in
-`api.schema`), `mutate` runs everything. Asking for more scope later needs a
-new approval. `clients.list` shows each client's name, node, scope, created
+Each client has a scope, matching LAT-014's grants:
+
+| Scope | Runs | Granted |
+| --- | --- | --- |
+| `read` | `access: "read"` methods (listed in `api.schema`) | always |
+| `act` | the rest: focus, place, move, displays, sessions, apps | by default |
+| `drive` | `computer.*` input (clicks, typing, scroll) and `capture.live` (VNC takes input) | only when asked for (`--drive`, or `scope: "drive"`) |
+
+Each scope includes the ones above it. Clients that paired with `mutate`
+before the split are `act`, and a request for `mutate` means `act`. Asking
+for more scope later, such as `drive`, needs a new approval. `clients.list` shows each client's name, node, scope, created
 and last-seen times; `clients.revoke '{"clientID":"…"}'` forgets one and closes
 its open connections.
 

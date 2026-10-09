@@ -9,7 +9,9 @@
 //      over the X25519 shared secret, over "GET", the path, its client id, a
 //      timestamp and a nonce (headers as on the bridge). Skew and replay
 //      windows are the bridge's.
-//   3. Each client has a scope. "read" runs read endpoints; "mutate" runs all.
+//   3. Each client has a scope (LAT-014's grants). "read" runs read endpoints;
+//      "act" adds the rest except driving; "drive" adds computer.* input and
+//      capture.live (VNC). Drive is never granted unless asked for.
 //
 // Loopback is trusted, as before. --no-pairing turns step 1-3 off.
 
@@ -27,18 +29,42 @@ import {
 import type { Identity } from "./auth.ts";
 import { RouterError, requireStr, type Json, type Router } from "./router.ts";
 
-export type Scope = "read" | "mutate";
+export type Scope = "read" | "act" | "drive";
+
+const RANK: Record<Scope, number> = { read: 0, act: 1, drive: 2 };
 
 /** Methods an admitted but unpaired client may call. */
 export const PAIRING_METHODS = new Set(["clients.pair"]);
 
-/** Scope as stored capabilities: mutate implies read. */
-export function grantScope(requested: string[] | undefined): string[] {
-  return requested?.includes("mutate") ? ["mutate", "read"] : ["read"];
+/** A requested scope; "mutate" (before act/drive) means act. Anything else is read. */
+export function parseScope(value: unknown): Scope {
+  if (value === "drive") return "drive";
+  if (value === "act" || value === "mutate") return "act";
+  return "read";
 }
 
+/** Scope as stored capabilities: each scope includes the ones below it. */
+export function grantScope(requested: string[] | undefined): string[] {
+  const top = (requested ?? []).map(parseScope).reduce<Scope>((a, b) => (RANK[b] > RANK[a] ? b : a), "read");
+  return top === "drive" ? ["act", "drive", "read"] : top === "act" ? ["act", "read"] : ["read"];
+}
+
+/** Stored capabilities back to a scope. Clients paired as "mutate" are act. */
 export function scopeOf(capabilities: string[]): Scope {
-  return capabilities.includes("mutate") ? "mutate" : "read";
+  if (capabilities.includes("drive")) return "drive";
+  if (capabilities.includes("act") || capabilities.includes("mutate")) return "act";
+  return "read";
+}
+
+/**
+ * The scope a method needs. Reads need read; mutations need act, except
+ * driving the desktop: computer.* input, and capture.live, whose VNC session
+ * takes pointer and keyboard input.
+ */
+export function scopeFor(info: Pick<MethodInfo, "method" | "access">): Scope {
+  if (info.method === "capture.live") return "drive";
+  if (info.access === "read") return "read";
+  return info.method.startsWith("computer.") ? "drive" : "act";
 }
 
 export interface ConnAuth {
@@ -63,8 +89,10 @@ export function gate(conn: ConnAuth, info: MethodInfo): string | null {
   if (PAIRING_METHODS.has(info.method)) return null;
   if (!conn.pairingRequired) return null;
   if (!conn.client) return `pairing_required: pair this client first (lats --host <host> pair)`;
-  if (info.access === "mutate" && scopeOf(conn.client.capabilities) !== "mutate") {
-    return `scope_denied: ${info.method} needs mutate scope; this client is read-only (pair again with mutate to upgrade)`;
+  const needs = scopeFor(info);
+  const has = scopeOf(conn.client.capabilities);
+  if (RANK[has] < RANK[needs]) {
+    return `scope_denied: ${info.method} needs ${needs} scope; this client has ${has} (pair again with ${needs} to upgrade)`;
   }
   return null;
 }
@@ -144,7 +172,8 @@ export class DaemonPairing {
 
   /** clients.pair: waits for a person to decide. `identity` comes from whois, not the client. */
   async pair(params: PairParams, identity: Identity) {
-    const scope: Scope = params.scope === "read" ? "read" : "mutate";
+    // No scope asked: act. Drive only when asked for by name.
+    const scope: Scope = params.scope === undefined ? "act" : parseScope(params.scope);
     const response = await this.security.handlePairing({
       deviceID: String(params.clientID ?? ""),
       deviceName: String(params.clientName ?? ""),
@@ -177,7 +206,7 @@ export function registerPairingEndpoints(router: Router, pairing: DaemonPairing,
   const asJson = (v: unknown) => v as Json;
   router.register({
     method: "clients.list",
-    description: "Paired daemon clients (name, node, scope, created, last seen) and pending pairings",
+    description: "Paired daemon clients (name, node, scope: read, act or drive, created, last seen) and pending pairings",
     access: "read",
     returns: "Object with clients, pending and the host fingerprint",
     handler: () =>

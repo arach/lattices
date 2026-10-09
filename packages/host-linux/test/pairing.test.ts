@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PairingApprovals } from "../src/bridge/approval.ts";
 import { BridgeSecurityError, HEADERS, type TrustedDevice } from "../src/bridge/security.ts";
-import { DaemonPairing, gate, grantScope, scopeOf, type ConnAuth } from "../src/pairing.ts";
+import { DaemonPairing, gate, grantScope, scopeFor, scopeOf, type ConnAuth } from "../src/pairing.ts";
 import { Router } from "../src/router.ts";
 import { pairedHost, signUpgrade, signingKey } from "../../../bin/host-pairing.ts";
 
@@ -23,6 +23,8 @@ const device = (capabilities: string[]): TrustedDevice => ({
 });
 const read = { method: "windows.list", access: "read" as const };
 const mutate = { method: "windows.place", access: "mutate" as const };
+const click = { method: "computer.click", access: "mutate" as const };
+const vnc = { method: "capture.live", access: "read" as const };
 const approve = { method: "clients.approve", access: "mutate" as const, loopbackOnly: true };
 const pair = { method: "clients.pair", access: "read" as const };
 
@@ -30,7 +32,9 @@ describe("gate", () => {
   const local: ConnAuth = { local: true, client: null, pairingRequired: true };
   const unpaired: ConnAuth = { local: false, client: null, pairingRequired: true };
   const reader: ConnAuth = { local: false, client: device(["read"]), pairingRequired: true };
-  const writer: ConnAuth = { local: false, client: device(["mutate", "read"]), pairingRequired: true };
+  const writer: ConnAuth = { local: false, client: device(["act", "read"]), pairingRequired: true };
+  const legacy: ConnAuth = { local: false, client: device(["mutate", "read"]), pairingRequired: true };
+  const driver: ConnAuth = { local: false, client: device(["act", "drive", "read"]), pairingRequired: true };
   const noPairing: ConnAuth = { local: false, client: null, pairingRequired: false };
 
   test("loopback may call anything, including approval", () => {
@@ -43,29 +47,49 @@ describe("gate", () => {
     expect(gate(unpaired, mutate)).toStartWith("pairing_required");
   });
 
-  test("scope: read clients read, mutate clients do both", () => {
+  test("scope: read reads, act also acts, only drive drives", () => {
     expect(gate(reader, read)).toBeNull();
     expect(gate(reader, mutate)).toStartWith("scope_denied");
     expect(gate(writer, read)).toBeNull();
     expect(gate(writer, mutate)).toBeNull();
+    expect(gate(writer, click)).toStartWith("scope_denied: computer.click needs drive");
+    expect(gate(writer, vnc)).toStartWith("scope_denied");
+    for (const m of [read, mutate, click, vnc]) expect(gate(driver, m)).toBeNull();
+  });
+
+  test("clients paired as mutate before the split are act, not drive", () => {
+    expect(gate(legacy, mutate)).toBeNull();
+    expect(gate(legacy, click)).toStartWith("scope_denied");
+  });
+
+  test("the scope a method needs", () => {
+    expect(scopeFor(read)).toBe("read");
+    expect(scopeFor({ method: "computer.observe", access: "read" })).toBe("read");
+    expect(scopeFor(mutate)).toBe("act");
+    expect(scopeFor(click)).toBe("drive");
+    expect(scopeFor(vnc)).toBe("drive");
   });
 
   test("approval is never grantable remotely, paired or not, pairing on or off", () => {
-    for (const conn of [unpaired, reader, writer, noPairing]) expect(gate(conn, approve)).toStartWith("loopback_only");
+    for (const conn of [unpaired, reader, writer, driver, noPairing]) expect(gate(conn, approve)).toStartWith("loopback_only");
   });
 
   test("--no-pairing admits remote clients fully, except loopback-only methods", () => {
     expect(gate(noPairing, read)).toBeNull();
     expect(gate(noPairing, mutate)).toBeNull();
+    expect(gate(noPairing, click)).toBeNull();
   });
 
-  test("scope grants: mutate implies read, anything else is read", () => {
-    expect(grantScope(["mutate"])).toEqual(["mutate", "read"]);
+  test("scope grants: each includes those below; mutate means act; anything else is read", () => {
+    expect(grantScope(["drive"])).toEqual(["act", "drive", "read"]);
+    expect(grantScope(["act"])).toEqual(["act", "read"]);
+    expect(grantScope(["mutate"])).toEqual(["act", "read"]);
     expect(grantScope(["read"])).toEqual(["read"]);
     expect(grantScope(["admin"])).toEqual(["read"]);
     expect(grantScope(undefined)).toEqual(["read"]);
     expect(scopeOf(["read"])).toBe("read");
-    expect(scopeOf(["mutate", "read"])).toBe("mutate");
+    expect(scopeOf(["mutate", "read"])).toBe("act");
+    expect(scopeOf(["act", "drive", "read"])).toBe("drive");
   });
 
   test("the router looks up endpoints through aliases for the gate", () => {
@@ -125,12 +149,24 @@ describe("DaemonPairing", () => {
     expect(client!.lastSeenAt).toBeTruthy();
   });
 
-  test("a read client asking for mutate needs a second approval", async () => {
+  test("a read client asking for act needs a second approval", async () => {
     const { pairing, pairAs } = setup();
     await pairAs("read", true);
     expect((await pairAs("mutate", false)).scope).toBe("read");
-    expect((await pairAs("mutate", true)).scope).toBe("mutate");
-    expect(pairing.clients()[0]!.scope).toBe("mutate");
+    expect((await pairAs("mutate", true)).scope).toBe("act");
+    expect(pairing.clients()[0]!.scope).toBe("act");
+  });
+
+  test("drive is never granted unless asked for, and asking needs its own approval", async () => {
+    const { pairing, pairAs, params, identity, approvals, clientID } = setup();
+    const { scope: _, ...unscoped } = params("x");
+    const first = pairing.pair(unscoped, identity);
+    await Bun.sleep(5);
+    approvals.decide(clientID, true);
+    expect((await first).scope).toBe("act");
+    expect((await pairAs("drive", false)).scope).toBe("act");
+    expect((await pairAs("drive", true)).scope).toBe("drive");
+    expect(pairing.clients()[0]!.scope).toBe("drive");
   });
 
   test("the CLI's signed upgrade authenticates; tampering, replay and skew do not", async () => {

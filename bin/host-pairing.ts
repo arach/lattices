@@ -37,7 +37,8 @@ export interface PairedHost {
   host: string;
   hostPublicKey: string;
   hostFingerprint: string;
-  scope: "read" | "mutate";
+  /** "mutate" in files written before the act/drive split; read it as act. */
+  scope: "read" | "act" | "drive" | "mutate";
   pairedAt: string;
 }
 
@@ -136,7 +137,7 @@ export function pairingHeaders(endpoint: { host: string; port: number }, path = 
 }
 
 /** clients.pair parameters for this machine. */
-export function pairingRequest(scope: "read" | "mutate") {
+export function pairingRequest(scope: "read" | "act" | "drive") {
   const client = clientIdentity();
   return {
     params: { clientID: client.id, clientName: client.name, publicKey: client.publicKey, platform: platform(), scope },
