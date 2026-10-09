@@ -62,6 +62,7 @@ async function main() {
 
   const router = new Router(() => capabilities);
   let clientCount = () => 0;
+  let emit: (event: string, data: unknown) => void = () => {};
   const policy: Policy = { allowUsers: [...opts.allowUsers], allowTags: [...opts.allowTags] };
 
   let binds = opts.binds;
@@ -78,7 +79,7 @@ async function main() {
   if (policy.allowUsers.length === 0 && self) policy.allowUsers.push(self.userId);
 
   const primary = binds.find((b) => b !== "127.0.0.1") ?? binds[0];
-  registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount() });
+  registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount(), emit: (event, data) => emit(event, data) });
 
   if (opts.describe) {
     console.log(JSON.stringify(await router.dispatch("host.describe", {}), null, 2));
@@ -106,6 +107,7 @@ async function main() {
     log(`companion bridge on ${bridgeHosts.map((h) => `http://${h}:${opts.bridgePort}`).join(", ")} (fingerprint ${bridge.security.fingerprint})`);
   }
   clientCount = server.clientCount;
+  emit = server.broadcast;
 
   // Hyprland events become the daemon's windows.changed / spaces.changed.
   let pending: ReturnType<typeof setTimeout> | null = null;
