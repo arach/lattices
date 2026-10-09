@@ -23,7 +23,7 @@ carries the skill; it no longer carries the server.
 
 ## Which browser are we talking about?
 
-Three different browsers can be in play. Pick deliberately, and say which one
+Four different browsers can be in play. Pick deliberately, and say which one
 you picked.
 
 | | What it is | How you control it |
@@ -31,6 +31,7 @@ you picked.
 | **The user's regular Chrome** | Their everyday browser — real profiles (`Default`, `Profile 1` / "Work"), their tabs, history, extensions, logins | `browser_open { mode: "regular" }` opens a URL and stops there. **No DOM tools.** Drive that window with Action's native macOS control: `action.observe.snapshot` (screen + accessibility), `action.resolve.target`, `action.act.execute` |
 | **An Action browser** | Real, non-headless Chrome that Action owns, on its own user-data-dir. Default identity `agent-browser` is blank and signed into nothing | Full DOM tools over CDP: `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot` |
 | **An Action browser identity seeded from a regular Chrome profile** | The same Action-owned Chrome under a name like `work`, carrying cookies copied from one of the user's real profiles for an allowlist of domains | Full DOM tools, on sites the user is already signed in to |
+| **An Action browser on the agent layer** | `action.layer.open { browser: true }` puts an Action browser on Action's hidden virtual display, watched through a PiP. Same profile and port as these tools | `action.layer.go`, `action.layer.click`, `action.layer.type`, `action.layer.js` (Action MCP) |
 
 The tradeoff in one line: **regular Chrome gives you their real session but only
 screen-and-accessibility control; an Action browser gives you DOM control but

@@ -26,17 +26,17 @@
         </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>0.12.0</string>
+    <string>0.13.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.12.0</string>
+    <string>0.13.3</string>
     <key>LatticesBuildChannel</key>
     <string>dev</string>
     <key>LatticesBuildTrack</key>
     <string>latest</string>
     <key>LatticesBuildRevision</key>
-    <string>76801f64</string>
+    <string>ebffcf2b</string>
     <key>LatticesBuildTimestamp</key>
-    <string>2026-09-23T04:15:32.874Z</string>
+    <string>2026-10-07T16:21:27.712Z</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSUIElement</key>
