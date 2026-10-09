@@ -12,6 +12,8 @@ enum AppPage: String, CaseIterable {
     /// (`desktopInventory`).
     case overview
     case layers
+    /// Other machines running lattices (LAT-013).
+    case hosts
     case activity
     case runs
     case assistant
@@ -24,6 +26,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "Home"
         case .overview:         return "Overview"
         case .layers:           return "Layers"
+        case .hosts:            return "Hosts"
         case .activity:         return "Activity"
         case .runs:             return "Runs"
         case .assistant:        return "Assistant"
@@ -38,6 +41,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "house"
         case .overview:         return "rectangle.3.group"
         case .layers:           return "square.3.layers.3d"
+        case .hosts:            return "display.2"
         case .activity:         return "list.bullet.rectangle"
         case .runs:             return "record.circle"
         case .assistant:        return "bubble.left.and.bubble.right"
@@ -51,7 +55,7 @@ enum AppPage: String, CaseIterable {
     /// places you work, agent surfaces, system state — so Runs and Activity stop
     /// reading as peers of Home.
     static let navigationGroups: [(title: String, pages: [AppPage])] = [
-        ("Workspace", [.home, .overview, .layers]),
+        ("Workspace", [.home, .overview, .layers, .hosts]),
         ("Agents",    [.assistant, .runs]),
         ("System",    [.activity]),
     ]
@@ -442,6 +446,8 @@ struct AppShellView: View {
             OverviewView(model: overview, controller: controller)
         case .layers:
             LayersPage()
+        case .hosts:
+            HostsPageView()
         case .activity:
             ActivityPageView()
         case .runs:

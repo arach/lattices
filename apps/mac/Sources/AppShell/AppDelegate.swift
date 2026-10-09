@@ -331,6 +331,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             handleCompanionDeepLink(action: action)
         case "daemon":
             handleDaemonDeepLink(action: action)
+        case "page":
+            // lattices://page/<name> opens a page of the main window.
+            if let action, let page = AppPage.named(action) {
+                ScreenMapWindowController.shared.showPage(page)
+            } else {
+                ScreenMapWindowController.shared.show()
+            }
         case "settings":
             // lattices://settings/<section> jumps straight to a sidebar tab.
             if let action, !action.isEmpty {
