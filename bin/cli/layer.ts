@@ -46,6 +46,11 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
         : "Classic: every window back, as if Lattices weren't running.");
       return;
     }
+    if (sub === "undo") {
+      const result = await daemonCall("layers.undo") as any;
+      console.log(result.undone ? `Undid ${result.undone}.` : "Nothing to undo.");
+      return;
+    }
     if (sub === "reveal" || sub === "show-all") {
       const result = await daemonCall("layers.reveal") as any;
       const unhidden: string[] = result.unhidden ?? [];

@@ -30,6 +30,21 @@ extension WorkspaceManager {
 
     private static var backedUp = false
 
+    /// One edit undo takes back: the layers before it, the layer you were
+    /// on, and what it did, as the bezel says it.
+    struct LayerUndo {
+        let layers: [Layer]
+        let activeIndex: Int
+        let summary: String
+    }
+
+    /// Edits this launch, newest last. Undo writes the layers back; no
+    /// window moves until the next switch, as with any edit.
+    private static var undoStack: [LayerUndo] = []
+    private static let undoLimit = 30
+
+    var canUndoLayerEdit: Bool { !Self.undoStack.isEmpty }
+
     var layers: [Layer] { config?.layers ?? [] }
 
     // MARK: Windows worth saving
@@ -206,7 +221,7 @@ extension WorkspaceManager {
         let (rebound, closed) = (resolution.rebound.count, resolution.closed.count)
         guard rebound + closed > 0, (try? Self.same(resolved, layers)) == true else { return }
         do {
-            try saveLayers(Self.keeping(resolution, in: layers))
+            try saveLayers(Self.keeping(resolution, in: layers), undoable: false)
             DiagnosticLog.shared.info("Layers: rebound \(rebound) pin(s) to live windows, dropped \(closed) closed")
         } catch {
             DiagnosticLog.shared.error("Layers: couldn't save rebound pins — \(error.localizedDescription)")
@@ -404,10 +419,67 @@ extension WorkspaceManager {
         try saveLayers(layers)
     }
 
+    // MARK: Undo
+
+    /// Takes back the last edit: writes the layers as they were before it
+    /// and goes back to the layer you were on, without moving a window.
+    /// Returns what it took back, nil with nothing to undo.
+    @discardableResult
+    func undoLayerEdit() throws -> String? {
+        guard let last = Self.undoStack.last else { return nil }
+        try saveLayers(last.layers, undoable: false)
+        Self.undoStack.removeLast()
+        activeLayerIndex = min(max(last.activeIndex, 0), max(last.layers.count - 1, 0))
+        UserDefaults.standard.set(activeLayerIndex, forKey: activeLayerKey)
+        DiagnosticLog.shared.info("Layers: undid \(last.summary)")
+        return last.summary
+    }
+
+    /// ⌘⌥Z: undo, said on the bezel.
+    func undoLayerEditFromHotkey() {
+        do {
+            if let summary = try undoLayerEdit() {
+                LayerBezel.shared.acknowledge("Undid \(summary)")
+            } else {
+                LayerBezel.shared.acknowledge("Nothing to undo")
+            }
+        } catch {
+            LayerBezel.shared.acknowledge("Couldn't undo")
+            DiagnosticLog.shared.error("Layers: couldn't undo — \(error.localizedDescription)")
+        }
+    }
+
+    /// What an edit from `old` to `new` did, in a few words: the layers it
+    /// made, deleted, renamed or changed, by name.
+    static func changeSummary(from old: [Layer], to new: [Layer]) -> String {
+        let before = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let after = Set(new.map(\.id))
+        var parts: [String] = []
+        for layer in new where before[layer.id] == nil { parts.append("creating '\(layer.label)'") }
+        for layer in old where !after.contains(layer.id) { parts.append("deleting '\(layer.label)'") }
+        var edited: [String] = []
+        for layer in new {
+            guard let was = before[layer.id] else { continue }
+            if was.label != layer.label { parts.append("renaming '\(was.label)' to '\(layer.label)'") }
+            var same = layer
+            same.label = was.label
+            if (try? Self.same([same], [was])) != true { edited.append("'\(layer.label)'") }
+        }
+        if !edited.isEmpty {
+            let named = edited.prefix(2).joined(separator: ", ")
+            parts.append("editing \(named)\(edited.count > 2 ? " +\(edited.count - 2)" : "")")
+        }
+        if parts.isEmpty, old.map(\.id) != new.map(\.id) { parts.append("reordering layers") }
+        return parts.isEmpty ? "an edit" : parts.joined(separator: ", ")
+    }
+
     /// Writes `layers` into workspace.json, keeping everything else in the
     /// file as it was. The first write of a launch keeps the previous file
-    /// as workspace.json.bak.
-    private func saveLayers(_ layers: [Layer]) throws {
+    /// as workspace.json.bak. An `undoable` write can be taken back
+    /// (`undoLayerEdit`); bookkeeping such as rebound pins can't.
+    private func saveLayers(_ layers: [Layer], undoable: Bool = true) throws {
+        let previous = self.layers
+        let previousActive = activeLayerIndex
         let fm = FileManager.default
         var root: [String: Any] = ["name": config?.name ?? "workspace"]
         if !fm.fileExists(atPath: configPath), !self.layers.isEmpty {
@@ -454,6 +526,13 @@ extension WorkspaceManager {
             try data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
         } catch {
             throw LayerEditError.write(error.localizedDescription)
+        }
+        if undoable, (try? Self.same(previous, layers)) != true {
+            Self.undoStack.append(LayerUndo(
+                layers: previous, activeIndex: previousActive,
+                summary: Self.changeSummary(from: previous, to: layers)
+            ))
+            if Self.undoStack.count > Self.undoLimit { Self.undoStack.removeFirst() }
         }
         if var config {
             config.layers = layers
