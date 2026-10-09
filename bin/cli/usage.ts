@@ -96,6 +96,10 @@ Usage:
   lats layer add wid:N ... [--to <layer>]  Add windows to a layer (default: the active one)
   lats layer remove wid:N ... [--from <layer>]  Take windows out of a layer (default: the active one)
   lats layer rename <layer> <name>  Rename a layer
+  lats display [list]       The displays and what's gathered off any of them (daemon required)
+  lats display gather <n> [--to <m>]  Move a display's windows onto another, laid out as they were
+  lats display restore [n]  Put gathered windows back where they sat
+  lats display lend <n>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
   lats layer delete <layer> Delete a layer from workspace.json
   lats voice say <text>   Speak text through the Voice helper
   lats voice stop         Stop speaking (pause, resume, skip, seek, list, select too)
