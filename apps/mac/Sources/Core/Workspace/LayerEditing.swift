@@ -30,16 +30,22 @@ extension WorkspaceManager {
 
     private static var backedUp = false
 
-    /// One edit undo takes back: the layers before it, the layer you were
-    /// on, and what it did, as the bezel says it.
+    /// One step undo takes back, the layer you were on before it, and what
+    /// it did, as the bezel says it. An edit keeps the layers before it; a
+    /// switch keeps where the main screen's windows sat, back to front.
     struct LayerUndo {
-        let layers: [Layer]
+        enum Kind {
+            case edit(layers: [Layer])
+            case switched(windows: [(wid: UInt32, pid: Int32, frame: CGRect)])
+        }
+        let kind: Kind
         let activeIndex: Int
         let summary: String
     }
 
-    /// Edits this launch, newest last. Undo writes the layers back; no
-    /// window moves until the next switch, as with any edit.
+    /// Edits and switches this launch, newest last. Undoing an edit writes
+    /// the layers back and moves no window; undoing a switch goes back to
+    /// the layer you were on and puts its windows where they sat.
     private static var undoStack: [LayerUndo] = []
     private static let undoLimit = 30
 
@@ -427,12 +433,51 @@ extension WorkspaceManager {
     @discardableResult
     func undoLayerEdit() throws -> String? {
         guard let last = Self.undoStack.last else { return nil }
-        try saveLayers(last.layers, undoable: false)
-        Self.undoStack.removeLast()
-        activeLayerIndex = min(max(last.activeIndex, 0), max(last.layers.count - 1, 0))
-        UserDefaults.standard.set(activeLayerIndex, forKey: activeLayerKey)
+        switch last.kind {
+        case .edit(let layers):
+            try saveLayers(layers, undoable: false)
+            Self.undoStack.removeLast()
+            activeLayerIndex = min(max(last.activeIndex, 0), max(layers.count - 1, 0))
+            UserDefaults.standard.set(activeLayerIndex, forKey: activeLayerKey)
+        case .switched(let windows):
+            Self.undoStack.removeLast()
+            undoSwitch(to: last.activeIndex, windows: windows)
+        }
         DiagnosticLog.shared.info("Layers: undid \(last.summary)")
         return last.summary
+    }
+
+    /// Before a switch away from the layer you're on: where the main
+    /// screen's windows sit, back to front, for undo.
+    func noteSwitch(to index: Int, in layers: [Layer]) {
+        guard index != activeLayerIndex, layers.indices.contains(index),
+              let stage = LayerStage.Stage.current() else { return }
+        let showing = DesktopModel.shared.allWindows()
+            .filter { LayerStage.isShowing($0, on: stage) }
+            .sorted { $0.zIndex > $1.zIndex }
+        var seen = Set<UInt32>()
+        let windows = showing.filter { seen.insert($0.wid).inserted }.map {
+            (wid: $0.wid, pid: $0.pid, frame: CGRect(x: $0.frame.x, y: $0.frame.y, width: $0.frame.w, height: $0.frame.h))
+        }
+        Self.undoStack.append(LayerUndo(
+            kind: .switched(windows: windows), activeIndex: activeLayerIndex,
+            summary: "switching to '\(layers[index].label)'"
+        ))
+        if Self.undoStack.count > Self.undoLimit { Self.undoStack.removeFirst() }
+    }
+
+    /// Back to layer `index` as it was: stage it again, then put `windows`
+    /// where they sat, back to front.
+    private func undoSwitch(to index: Int, windows: [(wid: UInt32, pid: Int32, frame: CGRect)]) {
+        let layers = self.layers
+        guard layers.indices.contains(index) else { return }
+        stageSwitch(to: index, in: layers, persistRebinds: false)
+        let live = Set(DesktopModel.shared.refreshNow().map(\.wid))
+        WindowTiler.batchMoveAndRaiseWindows(windows.filter { live.contains($0.wid) }, activation: .frontmostOnly)
+        activeLayerIndex = index
+        classicShowing = false
+        UserDefaults.standard.set(index, forKey: activeLayerKey)
+        EventBus.shared.post(.layerSwitched(index: index))
     }
 
     /// ⌘⌥Z: undo, said on the bezel.
@@ -529,7 +574,7 @@ extension WorkspaceManager {
         }
         if undoable, (try? Self.same(previous, layers)) != true {
             Self.undoStack.append(LayerUndo(
-                layers: previous, activeIndex: previousActive,
+                kind: .edit(layers: previous), activeIndex: previousActive,
                 summary: Self.changeSummary(from: previous, to: layers)
             ))
             if Self.undoStack.count > Self.undoLimit { Self.undoStack.removeFirst() }

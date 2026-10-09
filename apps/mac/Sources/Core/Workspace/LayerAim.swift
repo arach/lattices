@@ -1,25 +1,39 @@
 import AppKit
 
-/// A ⌘⌥ browse that moves nothing until it's let go. While ⌘⌥ is held, the
-/// arrows and digits aim at a layer: the pad lights its slot and lists its
-/// windows, where they are now, and no window moves. Letting go of ⌘⌥
-/// switches to the layer aimed at, once. Escape, the middle slot, or
-/// someone else's ⌘⌥ shortcut drops the aim and leaves every window be.
+/// A ⌘⌥ browse that moves nothing until you say so. While ⌘⌥ is held, the
+/// arrows and digits aim at a layer: the pad lights its slot and draws a
+/// map of where its windows would sit (`LayerForecast`); no window moves.
+/// Letting go of ⌘⌥ asks: Return switches to the layer aimed at, Escape,
+/// a click, another key or a few idle seconds stay on the layer you're on.
+/// ⌘⌥ again goes on browsing from the layer aimed at. Escape, the middle
+/// slot, or someone else's ⌘⌥ shortcut while held drops the aim.
 ///
 /// Space mid-browse freezes on the layer aimed at (`LayerPreview`), which
 /// takes the aim over; its Enter switches.
 final class LayerAim {
     static let shared = LayerAim()
 
-    /// The layer aimed at, while ⌘⌥ is held.
+    private enum Phase { case aiming, deciding }
+
+    /// The layer aimed at, while ⌘⌥ is held or the choice is open. Main
+    /// thread only, the key tap's callback included.
     private(set) var target: Int?
+    private var phase = Phase.aiming
     /// How many keys aimed in this hold. Aiming at the layer you're on as
-    /// the only key reconciles it, as ⌘⌥N always has; browsing back to it
-    /// leaves it be.
+    /// the only key offers to reconcile it, as ⌘⌥N always has; browsing
+    /// back to it leaves it be.
     private var steps = 0
     private var watch: Timer?
+    private var timeout: DispatchWorkItem?
+    private var keyTap: CFMachPort?
+    private var mouseMonitor: Any?
+
+    /// How long the choice waits for a key before staying.
+    private static let decideLimit: TimeInterval = 6
 
     private init() {}
+
+    var isDeciding: Bool { target != nil && phase == .deciding }
 
     /// Where the next arrow steps from: the layer aimed at, else the one
     /// you're on.
@@ -29,44 +43,88 @@ final class LayerAim {
     }
 
     /// Aims at layer `index` and shows it on the pad. With ⌘⌥ already up,
-    /// it switches at once.
+    /// it asks at once.
     func aim(at index: Int) {
         dispatchPrecondition(condition: .onQueue(.main))
         let workspace = WorkspaceManager.shared
-        let layers = workspace.layers
-        guard layers.indices.contains(index) else { return }
+        guard workspace.layers.indices.contains(index) else { return }
+        if phase == .deciding { endDeciding() }
+        phase = .aiming
         target = index
         steps += 1
         guard Self.chordHeld() else {
-            commit()
+            LayerBezel.shared.hold()
+            if !letGo() { LayerBezel.shared.release(after: 0) }
             return
         }
-        workspace.showBezel(for: index, in: layers)
+        present()
         watchRelease()
     }
 
-    /// ⌘⌥ came up: switch to the layer aimed at. A freeze owns the aim
-    /// instead, and switches on its own Enter.
-    func commit() {
-        dispatchPrecondition(condition: .onQueue(.main))
-        guard let index = target, !LayerPreview.shared.isFrozen else { return }
-        let reconcile = steps == 1
-        reset()
+    /// A bump off the pad's edge, from the layer aimed at.
+    func bump(_ direction: LayerSlots.Direction) {
         let workspace = WorkspaceManager.shared
-        guard workspace.layers.indices.contains(index) else { return }
-        if index == workspace.activeLayerIndex, !reconcile {
-            workspace.showBezel(for: index, in: workspace.layers)
+        guard target != nil else {
+            let current = origin(in: workspace)
+            workspace.showBezel(for: current, in: workspace.layers, edge: direction)
             return
         }
+        present(edge: direction)
+    }
+
+    /// ⌘⌥ came up. True when it now asks, keeping the pad up; false when
+    /// there was nothing to ask, and the pad can go.
+    @discardableResult
+    func letGo() -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let index = target, phase == .aiming, !LayerPreview.shared.isFrozen else { return false }
+        stopWatch()
+        let workspace = WorkspaceManager.shared
+        guard workspace.layers.indices.contains(index), index != workspace.activeLayerIndex else {
+            // ⌘⌥N on the layer you're on puts it back in order, as it always
+            // has; browsing back to it leaves it be.
+            let reconcile = steps == 1 && workspace.layers.indices.contains(index)
+            reset()
+            if reconcile { workspace.focusLayer(index: index) }
+            return false
+        }
+        phase = .deciding
+        present()
+        listenForChoice()
+        return true
+    }
+
+    /// ⌘⌥ went down again while asking: browse on from the layer aimed at.
+    /// True when there was a choice open.
+    func resume() -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard isDeciding else { return false }
+        endDeciding()
+        phase = .aiming
+        present()
+        watchRelease()
+        return true
+    }
+
+    /// Return: switch to the layer aimed at.
+    func confirm() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let index = target else { return }
+        reset()
+        LayerBezel.shared.release(after: 0)
+        let workspace = WorkspaceManager.shared
+        guard workspace.layers.indices.contains(index) else { return }
         workspace.focusLayer(index: index)
     }
 
-    /// Drops the aim: no window moves.
+    /// Stay where you are: no window moves.
     func cancel() {
         dispatchPrecondition(condition: .onQueue(.main))
         guard target != nil else { return }
+        let wasDeciding = phase == .deciding
         reset()
-        DiagnosticLog.shared.info("LayerAim: cancelled; nothing moved")
+        if wasDeciding { LayerBezel.shared.release(after: 0) }
+        DiagnosticLog.shared.info("LayerAim: stayed; nothing moved")
     }
 
     /// Hands the aim to a freeze, which shows that layer.
@@ -75,25 +133,120 @@ final class LayerAim {
         return target
     }
 
+    // MARK: Showing
+
+    private func present(edge: LayerSlots.Direction? = nil) {
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        guard let index = target, layers.indices.contains(index) else { return }
+        let current = layers.indices.contains(workspace.activeLayerIndex) ? layers[workspace.activeLayerIndex].label : nil
+        guard let forecast = workspace.forecast(for: index) else {
+            workspace.showBezel(for: index, in: layers, edge: edge)
+            return
+        }
+        let deciding = phase == .deciding ? (current ?? "here") : nil
+        LayerBezel.shared.showForecast(
+            label: layers[index].label, index: index, total: layers.count,
+            forecast: forecast, edge: edge, deciding: deciding
+        )
+    }
+
+    // MARK: State
+
     private func reset() {
         target = nil
         steps = 0
+        phase = .aiming
+        stopWatch()
+        endDeciding()
+    }
+
+    private func stopWatch() {
         watch?.invalidate()
         watch = nil
     }
 
     /// A release the chord monitor misses (no tap, a key that came in after
-    /// its release) still commits.
+    /// its release) still asks.
     private func watchRelease() {
         guard watch == nil else { return }
         watch = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
             guard let self, !Self.chordHeld() else { return }
-            self.commit()
-            if self.target != nil, LayerPreview.shared.isFrozen {
-                // The freeze has it now.
-                self.watch?.invalidate()
-                self.watch = nil
+            if LayerPreview.shared.isFrozen {
+                self.stopWatch()
+                return
             }
+            if !self.letGo() { LayerBezel.shared.release(after: 0) }
+        }
+    }
+
+    // MARK: The choice
+
+    private func listenForChoice() {
+        LayerBezel.shared.hold()
+        installKeyTap()
+        if let keyTap { CGEvent.tapEnable(tap: keyTap, enable: true) }
+        if mouseMonitor == nil {
+            mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                self?.cancel()
+            }
+        }
+        let stay = DispatchWorkItem { [weak self] in self?.cancel() }
+        timeout?.cancel()
+        timeout = stay
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.decideLimit, execute: stay)
+    }
+
+    private func endDeciding() {
+        if let keyTap { CGEvent.tapEnable(tap: keyTap, enable: false) }
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        mouseMonitor = nil
+        timeout?.cancel()
+        timeout = nil
+    }
+
+    private func installKeyTap() {
+        guard keyTap == nil else { return }
+        let mask = CGEventMask(1) << CGEventType.keyDown.rawValue
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: Self.callback,
+            userInfo: nil
+        ) else {
+            DiagnosticLog.shared.warn("LayerAim: couldn't listen for Return/Escape")
+            return
+        }
+        keyTap = tap
+        if let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+    }
+
+    /// On the main run loop. Return and Escape are the choice's; ⌘⌥ keys go
+    /// through to the hotkeys, which browse on; any other key stays and
+    /// goes through.
+    private static let callback: CGEventTapCallBack = { _, type, event, _ in
+        let aim = LayerAim.shared
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if aim.isDeciding, let tap = aim.keyTap { CGEvent.tapEnable(tap: tap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+        guard type == .keyDown, aim.isDeciding else { return Unmanaged.passUnretained(event) }
+        let flags = event.flags
+        if flags.contains(.maskCommand), flags.contains(.maskAlternate) { return Unmanaged.passUnretained(event) }
+        switch event.getIntegerValueField(.keyboardEventKeycode) {
+        case 36, 76:
+            DispatchQueue.main.async { aim.confirm() }
+            return nil
+        case 53:
+            DispatchQueue.main.async { aim.cancel() }
+            return nil
+        default:
+            DispatchQueue.main.async { aim.cancel() }
+            return Unmanaged.passUnretained(event)
         }
     }
 

@@ -99,7 +99,7 @@ enum HotkeyBootstrap {
     }
 
     /// Cmd+Opt+N aims at the layer in slot N of the pad; letting go of ⌘⌥
-    /// switches to it (`LayerAim`). The middle slot, and any slot without a
+    /// asks to switch to it (`LayerAim`). The middle slot, and any slot without a
     /// layer, drops the aim and shows where you are instead.
     private static func selectSlot(_ slot: Int) {
         if LayerPreview.shared.select(slot: slot) { return }
@@ -124,7 +124,7 @@ enum HotkeyBootstrap {
     }
 
     /// Cmd+Opt+arrows aim across the pad the way they point, from the layer
-    /// last aimed at; letting go of ⌘⌥ switches (`LayerAim`). They hop the
+    /// last aimed at; letting go of ⌘⌥ asks to switch (`LayerAim`). They hop the
     /// middle and don't wrap: at the pad's edge, the lit slot bumps the way
     /// you pushed.
     private static func stepLayer(_ direction: LayerSlots.Direction) {
@@ -135,7 +135,7 @@ enum HotkeyBootstrap {
         guard !layers.isEmpty else { return }
         let from = LayerAim.shared.origin(in: workspace)
         guard let index = LayerSlots.neighbour(of: from, direction, count: layers.count) else {
-            workspace.showBezel(for: from, in: layers, edge: direction)
+            LayerAim.shared.bump(direction)
             return
         }
         LayerAim.shared.aim(at: index)

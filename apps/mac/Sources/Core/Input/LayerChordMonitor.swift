@@ -3,8 +3,8 @@ import Combine
 
 /// Shows the layer pad as soon as ⌘⌥ goes down, before any arrow, and keeps
 /// it up while the chord is held (`LayerBezel.hold`). An arrow or digit
-/// lights the slot it aims at (`LayerAim`), and letting go switches there,
-/// then fades the pad.
+/// lights the slot it aims at (`LayerAim`), and letting go asks whether to
+/// switch there: Return switches, Escape stays. ⌘⌥ again browses on.
 ///
 /// Apps own plenty of ⌘⌥ shortcuts (⌘⌥I, ⌘⌥Esc), so the pad waits a beat
 /// before showing, and any key that isn't a layer key (arrows, 1–9, Space)
@@ -54,6 +54,11 @@ final class LayerChordMonitor {
     private func pressed() {
         guard !holding else { return }
         holding = true
+        if LayerAim.shared.resume() {
+            flipped = true
+            LayerPreview.shared.arm()
+            return
+        }
         flipped = false
         LayerBezel.shared.hold()
         // Space works from the first moment, not once the pad shows.
@@ -71,7 +76,8 @@ final class LayerChordMonitor {
         holding = false
         pending?.cancel()
         pending = nil
-        LayerAim.shared.commit()
+        // Asking keeps the pad up until Return or Escape.
+        if LayerAim.shared.letGo() { return }
         LayerBezel.shared.release(after: flipped ? Self.lingerAfterFlip : 0)
     }
 

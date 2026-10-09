@@ -1055,7 +1055,7 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "layers.undo",
-            description: "Take back the last layer edit this launch (create, add, remove, move, rename, delete, layout). Writes the layers as they were and goes back to the layer you were on; no window moves until the next switch",
+            description: "Take back the last layer edit or switch this launch. An edit (create, add, remove, move, rename, delete, layout) writes the layers as they were and moves no window; a switch goes back to the layer you were on and puts its windows where they sat",
             access: .mutate,
             params: [],
             returns: .custom("Object with 'undone' (what it took back, or null with nothing to undo) and 'remaining'"),
