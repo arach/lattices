@@ -1,0 +1,36 @@
+{
+  "bun": "1.4.2",
+  "port": 19499,
+  "results": [
+    {
+      "method": "windows.list",
+      "calls": 100,
+      "queriesPerCall": 4,
+      "concurrency": 1,
+      "rounds": 5,
+      "samplesMs": [
+        448.28,
+        434.16,
+        434.44,
+        434.55,
+        430.83
+      ],
+      "medianMs": 434.44
+    },
+    {
+      "method": "windows.list",
+      "calls": 100,
+      "queriesPerCall": 4,
+      "concurrency": 2,
+      "rounds": 5,
+      "samplesMs": [
+        286.57,
+        287.29,
+        292.37,
+        285.7,
+        289.98
+      ],
+      "medianMs": 287.29
+    }
+  ]
+}

@@ -1,9 +1,8 @@
-// Hyprland over hyprctl and its event socket. hyprctl -j gives structured
-// window, workspace and monitor state; `hyprctl dispatch` mutates it.
+// Hyprland over its command and event sockets, outside the compositor.
 
 import { connect } from "node:net";
 import { join } from "node:path";
-import { run } from "./exec.ts";
+import { commandSocketPath, dispatchBatch, request } from "./hyprland-command.ts";
 
 export interface HyprClient {
   address: string;
@@ -49,20 +48,24 @@ export interface HyprWorkspace {
 }
 
 export async function hyprctlJson<T>(command: string): Promise<T> {
-  const out = await run("hyprctl", ["-j", command]);
+  const out = await request("j/" + command);
   return JSON.parse(out) as T;
 }
 
 // Hyprland 0.55 moved dispatchers to Lua: `hyprctl dispatch 'hl.dsp.focus({...})'`.
 // Older versions take `hyprctl dispatch focuswindow address:...`. The dialect
 // is detected once with a no-op and every operation is spelled for it.
-let luaDialect: Promise<boolean> | null = null;
+let luaDialect: { path: string; value: Promise<boolean> } | null = null;
 
 export function usesLua(): Promise<boolean> {
-  luaDialect ??= run("hyprctl", ["dispatch", "hl.dsp.no_op()"])
-    .then((out) => out.trim() === "ok")
-    .catch(() => false);
-  return luaDialect;
+  const path = commandSocketPath();
+  if (!luaDialect || luaDialect.path !== path) {
+    const value = request("/dispatch hl.dsp.no_op()", { path })
+      .then((out) => out.trim() === "ok")
+      .catch((error) => { luaDialect = null; throw error; });
+    luaDialect = { path, value };
+  }
+  return luaDialect.value;
 }
 
 export type Op =
@@ -120,14 +123,12 @@ export function spell(op: Op, lua: boolean): string {
   }
 }
 
-/** Run operations in one hyprctl round trip; throws if any fails. */
+/** Run operations in one command-socket batch; throws if any fails. */
 export async function apply(ops: Op[]): Promise<string[]> {
   if (ops.length === 0) return [];
   const lua = await usesLua();
   const commands = ops.map((op) => spell(op, lua));
-  const out = (await run("hyprctl", ["--batch", commands.map((c) => `dispatch ${c}`).join(" ; ")])).trim();
-  const failures = out.split(/\n+/).map((l) => l.trim()).filter((l) => l !== "ok" && l !== "");
-  if (failures.length > 0) throw new Error(`hyprctl: ${failures.join("; ")}`);
+  await dispatchBatch(commands);
   return commands;
 }
 
@@ -141,7 +142,7 @@ export async function plan(ops: Op[]): Promise<string[]> {
 export async function exec(command: string): Promise<void> {
   const lua = await usesLua();
   const spelled = lua ? `hl.dsp.exec_cmd(${JSON.stringify(command)})` : `exec ${command}`;
-  const out = (await run("hyprctl", ["dispatch", spelled])).trim();
+  const out = (await request("/dispatch " + spelled)).trim();
   if (out !== "ok") throw new Error(`hyprctl: ${out}`);
 }
 
