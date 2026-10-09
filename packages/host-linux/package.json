@@ -11,9 +11,13 @@
   "scripts": {
     "start": "bun src/main.ts",
     "describe": "bun src/main.ts --describe",
+    "mouse-home": "bun src/main.ts mouse-home",
     "test": "bun test"
   },
   "engines": {
     "bun": ">=1.1"
+  },
+  "dependencies": {
+    "dbus-next": "0.10.2"
   }
 }

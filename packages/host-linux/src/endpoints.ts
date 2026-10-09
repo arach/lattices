@@ -5,6 +5,7 @@ import { hasCommand, run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
+import { bringCursorHome } from "./mouse.ts";
 import * as ocr from "./ocr.ts";
 import * as record from "./record.ts";
 import { closeSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
@@ -121,6 +122,14 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
 }
 
 export function registerEndpoints(router: Router, ctx: HostContext) {
+  router.register({
+    method: "mouse.home",
+    description: "Release lan-mouse clients and bring the cursor to the focused real monitor",
+    access: "mutate",
+    capability: "spaces.read",
+    returns: "Object with ok, monitor, x, y and lan-mouse release receipt",
+    handler: async () => asJson(await bringCursorHome()),
+  });
   // ── Host ────────────────────────────────────────────────────────────
   router.register({
     method: "daemon.status",

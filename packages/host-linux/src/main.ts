@@ -42,6 +42,7 @@ function parseArgs(argv: string[]) {
 
 Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
                      [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
+       lattices-host mouse-home
 
 By default listens on this machine's tailnet IPv4 address and on 127.0.0.1,
 port ${DEFAULT_PORT}, and admits only devices owned by this machine's Tailscale user.
@@ -57,6 +58,13 @@ a LAN IP for a phone without Tailscale.`);
 }
 
 async function main() {
+  // Local primitives stay available when the network host is stopped.
+  if (process.argv[2] === "mouse-home") {
+    if (process.argv.length !== 3) throw new Error("Usage: lattices-host mouse-home");
+    const { bringCursorHome } = await import("./mouse.ts");
+    console.log(JSON.stringify(await bringCursorHome(), null, 2));
+    return;
+  }
   const opts = parseArgs(process.argv.slice(2));
   await refreshCapabilities();
 
