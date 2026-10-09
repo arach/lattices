@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { admit, isLoopback } from "../src/auth.ts";
 import { grimArgs, imageSize } from "../src/capture.ts";
-import { toDisplays, toWindow, widFor } from "../src/desktop.ts";
+import { toDisplays, toWindow, widFor, type Window } from "../src/desktop.ts";
+import { clear as clearOrigins, get as getOrigin, record as recordOrigin, returnOps } from "../src/moves.ts";
 import { spell, type HyprClient, type HyprMonitor, type HyprWorkspace } from "../src/hyprland.ts";
 import { keysym, parseShortcut, wtypeKeyArgs } from "../src/input.ts";
 import { parsePlacement, rectFor } from "../src/placement.ts";
@@ -263,5 +264,42 @@ describe("event subscriptions", () => {
     expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["windows.changed"]);
     expect(handleSubscription(conn, "events.unsubscribe", {})?.events).toEqual([]);
     expect(handleSubscription(conn, "windows.list", {})).toBeNull();
+  });
+});
+
+describe("windows.moveBack", () => {
+  const win = (over: Partial<Window>): Window => ({
+    wid: 1, address: "0xabc", app: "foot", pid: 1, title: "", frame: { x: 0, y: 0, w: 800, h: 600 }, spaceIds: [2], displayIndex: 0,
+    isOnScreen: true, isFloating: false, isFullscreen: false, isFocused: false, ...over,
+  });
+
+  test("a tiled window goes back to its workspace and is re-tiled if it was floated", () => {
+    const origin = { workspace: 2, floating: false, frame: { x: 0, y: 0, w: 800, h: 600 }, movedAt: 0 };
+    expect(returnOps(win({ spaceIds: [4], isFloating: true }), origin)).toEqual([
+      { op: "toWorkspace", address: "0xabc", workspace: 2 },
+      { op: "tile", address: "0xabc" },
+    ]);
+    expect(returnOps(win({}), origin)).toEqual([]);
+  });
+
+  test("a floating window gets its exact frame back", () => {
+    const origin = { workspace: 2, floating: true, frame: { x: 100, y: 50, w: 640, h: 480 }, movedAt: 0 };
+    expect(returnOps(win({ spaceIds: [4], isFloating: true, frame: { x: 3000, y: 0, w: 1000, h: 700 } }), origin)).toEqual([
+      { op: "toWorkspace", address: "0xabc", workspace: 2 },
+      { op: "resize", address: "0xabc", w: 640, h: 480 },
+      { op: "move", address: "0xabc", x: 100, y: 50 },
+    ]);
+  });
+
+  test("the first move is the origin until the window is moved back", () => {
+    clearOrigins();
+    recordOrigin(win({ spaceIds: [2] }));
+    recordOrigin(win({ spaceIds: [4] }));
+    expect(getOrigin(1)?.workspace).toBe(2);
+  });
+
+  test("tile spells for both dialects", () => {
+    expect(spell({ op: "tile", address: "0xabc" }, true)).toBe('hl.dsp.window.float({ action = "disable", window = "address:0xabc" })');
+    expect(spell({ op: "tile", address: "0xabc" }, false)).toBe("settiled address:0xabc");
   });
 });
