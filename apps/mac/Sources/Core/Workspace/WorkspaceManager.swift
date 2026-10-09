@@ -467,6 +467,11 @@ class WorkspaceManager: ObservableObject {
     private var gridConfigSourceToken = ""
     private var tmuxPath: String { TmuxQuery.resolvedPath ?? "/opt/homebrew/bin/tmux" }
     let activeLayerKey = "lattices.activeLayerIndex"
+    /// Classic is showing: every window put back, as if Lattices weren't
+    /// running (`showClassic`). Any layer switch ends it.
+    @Published var classicShowing = false
+    /// Classic · one space is carrying windows to the showing desktops.
+    var classicGathering = false
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -1082,6 +1087,7 @@ class WorkspaceManager: ObservableObject {
         }
 
         activeLayerIndex = index
+        classicShowing = false
         UserDefaults.standard.set(index, forKey: activeLayerKey)
 
         if listApps {

@@ -1030,6 +1030,30 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "layers.classic",
+            description: "Classic: every window back as if Lattices weren't running (Show All, nothing tiled). Called again while it shows, or with oneSpace, it also carries windows on other desktops to the desktop each display shows",
+            access: .mutate,
+            params: [
+                Param(name: "oneSpace", type: "bool", required: false, description: "Also gather onto one desktop per display"),
+            ],
+            returns: .custom("Object with 'classic' (showing) and 'gathering' (windows are being carried; the result is logged)"),
+            handler: { params in
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    wm.showClassic()
+                    if params?["oneSpace"]?.boolValue == true, !wm.classicGathering {
+                        wm.showClassic()
+                    }
+                    return .object([
+                        "ok": .bool(true),
+                        "classic": .bool(wm.classicShowing),
+                        "gathering": .bool(wm.classicGathering),
+                    ])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
             method: "layers.reveal",
             description: "Show All: put back every window a layer switch parked and unhide every app it hid",
             access: .mutate,
