@@ -6,6 +6,7 @@
 //   lattices-host --allow-user you@github --allow-tag tag:lattices
 //   lattices-host --describe           print capabilities and exit
 
+import { BUILD_IDENTITY } from "./build-info.ts";
 import { selfIdentity, type Policy } from "./auth.ts";
 import { VERSION, capabilities, refreshCapabilities, registerEndpoints } from "./endpoints.ts";
 import * as hypr from "./hyprland.ts";
@@ -122,6 +123,7 @@ async function main() {
   });
 
   log(`v${VERSION} listening on ${binds.map((b) => `ws://${b}:${opts.port}`).join(", ")}`);
+  log("build: " + (BUILD_IDENTITY.commit ?? "unknown commit") + (BUILD_IDENTITY.dirty === true ? " (dirty)" : BUILD_IDENTITY.dirty === null ? " (dirty unknown)" : ""));
   log(`capabilities: ${[...capabilities].sort().join(", ") || "none"}`);
   log(`admits: ${[...policy.allowUsers, ...policy.allowTags].join(", ") || "loopback only"}${self?.login ? ` (owner ${self.login})` : ""}`);
 

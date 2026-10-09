@@ -96,3 +96,32 @@ it off.
 ```sh
 bun test --cwd packages/host-linux
 ```
+
+### Which build is running?
+
+Both **host.describe.build** and **daemon.status.build** contain:
+
+    { "version": "0.1.0", "commit": "<full Git revision>", "dirty": false }
+
+The existing top-level version stays intact. The version comes from this
+package's package.json, not a second hard-coded constant. A source run snapshots
+HEAD and the host package's tracked/untracked dirty state **once at startup**;
+editing the checkout or moving HEAD later cannot make an old process report
+new code. If Git metadata is absent/unreadable, commit and dirty are null,
+rather than a fabricated revision.
+
+For a relocatable build with its identity embedded:
+
+    bun packages/host-linux/scripts/build.ts
+    bun packages/host-linux/dist/lattices-host.js --describe
+
+Or inside the package: bun run build. Pass an output file as the script's first
+argument to put it elsewhere. Building requires a known source commit and
+preserves dirty: true when building uncommitted work. The emitted bundle can
+run without Git/a checkout; optionally compile **that bundle** with
+bun build --compile to make a standalone executable with the same identity.
+
+Clients should compare build.commit as well as build.version; null is unknown,
+not current. These fields cannot retrospectively identify an older running host
+that predates this change. Deploy/restart only after its clients are ready for
+the pairing protocol; do not restart the everyday host just to obtain metadata.

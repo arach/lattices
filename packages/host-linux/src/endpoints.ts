@@ -14,7 +14,8 @@ import { Router, RouterError, bool, num, requireStr, str, type Json, type Params
 import * as tmux from "./tmux.ts";
 import { virtualPointerAvailable } from "./wayland.ts";
 
-export const VERSION = "0.1.0";
+import { BUILD_IDENTITY, VERSION } from "./build-info.ts";
+export { VERSION } from "./build-info.ts";
 
 export interface HostContext {
   bindHost: string;
@@ -134,6 +135,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
         uptime: (Date.now() - ctx.startedAt) / 1000,
         clientCount: ctx.clientCount(),
         version: VERSION,
+        build: BUILD_IDENTITY,
         platform: "linux",
         windowCount: snap?.windows.length ?? 0,
         tmuxSessionCount: sessions.length,
@@ -163,6 +165,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
         hostname: osHostname(),
         tailnetName: ctx.tailnetName ?? null,
         version: VERSION,
+        build: BUILD_IDENTITY,
         address: ctx.bindHost,
         displays,
         capabilities: [...capabilities].sort(),

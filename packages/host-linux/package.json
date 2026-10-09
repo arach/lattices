@@ -11,7 +11,8 @@
   "scripts": {
     "start": "bun src/main.ts",
     "describe": "bun src/main.ts --describe",
-    "test": "bun test"
+    "test": "bun test",
+    "build": "bun scripts/build.ts"
   },
   "engines": {
     "bun": ">=1.1"
