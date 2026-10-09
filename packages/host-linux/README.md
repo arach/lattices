@@ -55,6 +55,14 @@ on its methods; missing tools just hide them.
 remote client can fetch the recordings and captures it asked for. Action's
 `RemoteEngine` (LAT-013 phase 3) drives this host through these methods.
 
+Every executed `computer.*` action emits a `computer.acted` event:
+`{kind, label, point, to, wid, element, displayIndex, ratio, toRatio, at}`.
+`point` is in global logical pixels, and `ratio` is that point within display
+`displayIndex` (0-1), so a viewer can draw it on that display's
+`capture.still`. Keyboard actions have no point; they carry the target or
+focused window's display. Labels never include typed text. Subscribe with
+`events.subscribe {events: ["computer.acted"]}`.
+
 `computer.*` input methods stage by default and act only with
 `treatment: "execute"`, as on the Mac. Mac modifier names are mapped:
 `command` and `control` become ctrl, `option` becomes alt, `super`/`meta`/`win`

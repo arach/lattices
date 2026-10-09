@@ -1,4 +1,5 @@
 import { hostname as osHostname } from "node:os";
+import * as acted from "./acted.ts";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
 import { hasCommand, run } from "./exec.ts";
@@ -22,6 +23,8 @@ export interface HostContext {
   tailnetName?: string;
   startedAt: number;
   clientCount: () => number;
+  /** Broadcast an event to subscribed connections (server.ts). */
+  emit?: (event: string, data: unknown) => void;
 }
 
 /** Capabilities from LAT-013. Probed once at start; `refreshCapabilities` re-probes. */
@@ -121,6 +124,17 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
 }
 
 export function registerEndpoints(router: Router, ctx: HostContext) {
+  // computer.acted after every executed computer.* action; never fails the action.
+  const announce = async (action: acted.Action) => {
+    if (!ctx.emit) return;
+    try {
+      const snap = await desktop.snapshot();
+      const target = action.wid != null ? snap.windows.find((w) => w.wid === action.wid) : snap.windows.find((w) => w.isFocused);
+      ctx.emit("computer.acted", acted.toEvent({ ...action, wid: action.wid ?? target?.wid ?? null }, snap.displays, target?.displayIndex));
+    } catch {
+      // An overlay hint is not worth an error on an action that already ran.
+    }
+  };
   // ── Host ────────────────────────────────────────────────────────────
   router.register({
     method: "daemon.status",
@@ -179,7 +193,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
   };
   router.register({
     method: "events.subscribe",
-    description: "Receive only these events on this connection (windows.changed, spaces.changed); `*` for all, the default",
+    description: "Receive only these events on this connection (windows.changed, spaces.changed, computer.acted); `*` for all, the default",
     access: "read",
     params: [{ name: "events", type: "[string]", description: "Event names, or [\"*\"]" }],
     returns: "Object with ok and the connection's events",
@@ -497,7 +511,13 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     ...targetParams,
   ];
 
-  const registerClick = (method: string, description: string, fixed: { button?: "left" | "right"; count?: number }) =>
+  const registerClick = (
+    method: string,
+    description: string,
+    kind: "click" | "doubleClick" | "rightClick",
+    label: string,
+    fixed: { button?: "left" | "right"; count?: number }
+  ) =>
     router.register({
       method,
       description: `${description}. Stages by default; acts with treatment: "execute"`,
@@ -517,12 +537,13 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
         const plan = { point: { x: Math.round(point.x), y: Math.round(point.y) }, button, count, wid: point.window?.wid ?? null };
         if (!executes(params)) return staged(plan);
         await input.click(point.x, point.y, point.extent, button, count, num(params, "delayMs") ?? 80);
+        await announce({ kind, label: `${label}${point.window ? ` in ${point.window.app}` : ""}`, point: plan.point, wid: plan.wid });
         return asJson({ ok: true, status: "executed", executed: true, ...plan });
       },
     });
-  registerClick("computer.click", "Click a point", {});
-  registerClick("computer.doubleClick", "Double-click a point", { count: 2 });
-  registerClick("computer.rightClick", "Right-click a point", { button: "right" });
+  registerClick("computer.click", "Click a point", "click", "Click", {});
+  registerClick("computer.doubleClick", "Double-click a point", "doubleClick", "Double-click", { count: 2 });
+  registerClick("computer.rightClick", "Right-click a point", "rightClick", "Right-click", { button: "right" });
 
   router.register({
     method: "computer.drag",
@@ -547,6 +568,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
       if (!executes(params)) return staged(plan);
       const extent = input.layoutExtent((await desktop.snapshot()).displays);
       await input.drag(plan.from, plan.to, extent);
+      await announce({ kind: "drag", label: "Drag", point: plan.from, to: plan.to });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -569,6 +591,8 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
       if (!executes(params)) return staged(plan);
       const extent = input.layoutExtent((await desktop.snapshot()).displays);
       await input.scroll(plan.x ?? undefined, plan.y ?? undefined, plan.dx * 15, plan.dy * 15, extent);
+      const at = plan.x !== null && plan.y !== null ? { x: plan.x, y: plan.y } : await hypr.cursorPos();
+      await announce({ kind: "scroll", label: `Scroll ${plan.dy ? (plan.dy > 0 ? "down" : "up") : plan.dx > 0 ? "right" : "left"}`, point: at });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -585,6 +609,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
       const plan = { point: { x: Math.round(point.x), y: Math.round(point.y) } };
       if (!executes(params)) return staged(plan);
       await input.moveCursor(point.x, point.y, point.extent);
+      await announce({ kind: "aim", label: "Aim", point: plan.point, wid: point.window?.wid ?? null });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -620,6 +645,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
         }
         await input.typeText(text, enter);
       }
+      await announce({ kind: "typeText", label: acted.typeLabel(text.length, enter), wid: num(params, "wid") ?? null });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -642,11 +668,14 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     const args = input.wtypeKeyArgs(key, modifiers, count, num(params, "delayMs") ?? 80);
     const plan = { key, modifiers, count, wtype: args };
     if (!executes(params)) return staged(plan);
+    let targetWid: number | null = null;
     if (num(params, "wid") !== undefined || str(params, "app")) {
       const { window } = await desktop.resolveTarget(params);
       await hypr.apply([{ op: "focus", address: window.address }]);
+      targetWid = window.wid;
     }
     await run("wtype", args);
+    await announce({ kind: method === "computer.hotkey" ? "hotkey" : "pressKey", label: acted.keyLabel(key, modifiers, count), wid: targetWid });
     return asJson({ ok: true, status: "executed", executed: true, ...plan });
   };
   const keyParams = [

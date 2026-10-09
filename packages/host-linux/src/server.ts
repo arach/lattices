@@ -29,7 +29,7 @@ export function handleSubscription(conn: Conn, method: string, params: Record<st
   return { ok: true, events: conn.events ? [...conn.events].sort() : ["*"] };
 }
 
-export const KNOWN_EVENTS = ["windows.changed", "spaces.changed"];
+export const KNOWN_EVENTS = ["windows.changed", "spaces.changed", "computer.acted"];
 
 export interface ServeOptions {
   hosts: string[];
