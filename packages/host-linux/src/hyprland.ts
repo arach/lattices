@@ -133,6 +133,14 @@ export async function plan(ops: Op[]): Promise<string[]> {
   return ops.map((op) => spell(op, lua));
 }
 
+/** Launch a command through the compositor, so it inherits the session. */
+export async function exec(command: string): Promise<void> {
+  const lua = await usesLua();
+  const spelled = lua ? `hl.dsp.exec_cmd(${JSON.stringify(command)})` : `exec ${command}`;
+  const out = (await run("hyprctl", ["dispatch", spelled])).trim();
+  if (out !== "ok") throw new Error(`hyprctl: ${out}`);
+}
+
 export const clients = () => hyprctlJson<HyprClient[]>("clients");
 export const monitors = () => hyprctlJson<HyprMonitor[]>("monitors");
 export const workspaces = () => hyprctlJson<HyprWorkspace[]>("workspaces");

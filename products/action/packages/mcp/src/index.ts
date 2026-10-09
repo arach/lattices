@@ -44,6 +44,8 @@ import {
   inferAxTier,
   inspectCurrentSurface,
   MacOSCommandEngine,
+  remoteEngineFromEnv,
+  type SurfaceEngine,
   ocrScreenshot,
   StageDirector,
   AgentLayerDirector,
@@ -639,8 +641,21 @@ async function runHost(command: string, ...args: string[]): Promise<JsonObject> 
   return JSON.parse(text) as JsonObject;
 }
 
-function newEngine(): MacOSCommandEngine {
-  return new MacOSCommandEngine(nativeHostPath);
+/**
+ * The native engine, or a remote lattices host (LAT-013) when
+ * ACTION_REMOTE_HOST names one. Tools that need macOS-only features check
+ * `isRemote` and say so instead of failing inside the native host.
+ */
+function newEngine(): SurfaceEngine {
+  return remoteEngineFromEnv() ?? new MacOSCommandEngine(nativeHostPath);
+}
+
+function isRemote(): boolean {
+  return Boolean(process.env.ACTION_REMOTE_HOST?.trim() || process.env.LATTICES_REMOTE_HOST?.trim());
+}
+
+function nativeOnly(tool: string): never {
+  throw new Error(`${tool} needs the native macOS engine; it is not available while ACTION_REMOTE_HOST points at a remote host.`);
 }
 
 function recordingMetadataPath(entry: RecordingEntry): string | undefined {
@@ -1240,7 +1255,8 @@ const tools: Tool[] = [
 
 
 async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, direct: boolean | undefined): Promise<JsonObject | undefined> {
-  if (direct || process.env.ACTION_COMPANION_DIRECT === "1") {
+  // The companion worker drives the local Mac; remote runs go through the engine directly.
+  if (direct || process.env.ACTION_COMPANION_DIRECT === "1" || isRemote()) {
     return undefined;
   }
   const client = new CompanionClient({ timeoutMs: 2_000 });
@@ -1724,7 +1740,9 @@ const handlers: Record<string, ToolHandler> = {
       actionRoot,
       optionalString(args.outputPath) ?? (existingImagePath ? `${screenshotPath}.ocr.json` : resolve(outputDir, "ocr-snapshot.json")),
     );
-    const result = await ocrScreenshot(screenshotPath, outputPath);
+    const result = engine.ocrSurface && currentSurface
+      ? await engine.ocrSurface(currentSurface, screenshotPath, outputPath)
+      : await ocrScreenshot(screenshotPath, outputPath);
     const query = optionalString(args.query);
     const matches = query ? searchOCRText(result.result, query) : undefined;
 
@@ -1787,6 +1805,7 @@ const handlers: Record<string, ToolHandler> = {
         ?? resolve(sessionOutputDir(sessionId), `ax-snapshot-${timestampId()}.json`),
     );
     const engine = newEngine();
+    if (!engine.captureSurfaceAccessibilitySnapshot) nativeOnly("action.observe.ax");
     const currentSurface = await engine.currentSurface();
     const result = await engine.captureSurfaceAccessibilitySnapshot(currentSurface, outputPath);
 
@@ -1824,7 +1843,7 @@ const handlers: Record<string, ToolHandler> = {
         : undefined;
 
     const agentLayer = await agentLayerDirector.routing();
-    const blinkRoute = engine.blinkRoute(action, target, agentLayer);
+    const blinkRoute = engine instanceof MacOSCommandEngine ? engine.blinkRoute(action, target, agentLayer) : undefined;
     // Work that never touches the operator's screen: a blink act on the layer, or an app
     // opened in the background (which the layer adopts). No cursor, cues or countdown.
     const onLayerApp = agentLayer?.bundleId !== undefined && action.input?.bundleId === agentLayer.bundleId;
@@ -1904,7 +1923,9 @@ const handlers: Record<string, ToolHandler> = {
 
     let hostDetail: string | undefined;
     try {
-      hostDetail = await engine.performAction(action, target, { agentLayer });
+      hostDetail = engine instanceof MacOSCommandEngine
+        ? await engine.performAction(action, target, { agentLayer })
+        : (await engine.performAction(action, target)) ?? undefined;
     } catch (error) {
       if (pointerFocusWarningShown) {
         try {
@@ -1950,6 +1971,7 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.record.start"(args) {
+    if (isRemote()) nativeOnly("action.record.start (remote runs record through the guided session engine)");
     const sessionId = optionalString(args.sessionId);
     const recordingId = optionalString(args.recordingId) ?? defaultRecordingId();
     const scope = (() => {

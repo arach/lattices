@@ -46,8 +46,14 @@ on its methods; missing tools just hide them.
 | `capture.live` | `wayvnc`, started on demand on the host's address | `capture.live` returns a `vnc://` URL for Screen Sharing |
 | `input.keys` | `wtype` | `computer.typeText`, `computer.pressKey`, `computer.hotkey` |
 | `input.pointer` | Wayland `zwlr_virtual_pointer_v1`, spoken directly; no root, no uinput | `computer.click/doubleClick/rightClick/drag/scroll/aim` |
-| `ocr` | `tesseract` on a grim capture | `computer.observe` |
 | `sessions.tmux` | `tmux` | `tmux.list`, `sessions.launch/kill/detach`, `terminals.capture`, `computer.typeText` with `session` |
+| `ocr` | `tesseract` on a grim capture (2x for `ocr.*`) | `computer.observe`, `ocr.read` (lines with screen boxes), `ocr.find` (fuzzy, tolerates misreads) |
+| `capture.record` | grim frames at 1-15 fps, encoded by `ffmpeg` on stop | `capture.record` (`start`, `pause`, `resume`, `stop`, `status`) |
+| `apps.open` | the compositor's exec dispatcher | `apps.open` waits for the new window |
+
+`files.read` returns files under `~/.lattices/captures` in base64 chunks, so a
+remote client can fetch the recordings and captures it asked for. Action's
+`RemoteEngine` (LAT-013 phase 3) drives this host through these methods.
 
 `computer.*` input methods stage by default and act only with
 `treatment: "execute"`, as on the Mac. Mac modifier names are mapped:

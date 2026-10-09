@@ -1,6 +1,6 @@
 # LAT-013: Linux host
 
-Status: Phases 1–2 built, 2026-10-08. Builds on [LAT-012](LAT-012-domain-api.md).
+Status: Phases 1–3 built, 2026-10-08. Builds on [LAT-012](LAT-012-domain-api.md).
 
 ## Summary
 
@@ -73,10 +73,27 @@ Screen Sharing ◀──── vnc://archie:5900 ── wayvnc (started by captu
 2. **Control** (done): keyboard, pointer, placement, workspace moves, tmux
    sessions, `computer.observe` (OCR), Hyprland events as `windows.changed` /
    `spaces.changed`.
-3. **Action integration**: a `RemoteEngine` implementing Action's
-   `CaptureEngine`. Needs Action's MCP off its hardcoded `MacOSCommandEngine`,
-   and `SurfaceObservation.ax` and the TCC fields of `EngineDiagnostics`
-   optional.
+3. **Action integration** (done): `RemoteEngine`
+   (`products/action/packages/runtime/src/remote.ts`) implements Action's
+   `CaptureEngine` against a host, so guided sessions, MCP observe/resolve/act
+   tools, runs and artifacts work on the Linux machine. `ACTION_REMOTE_HOST`
+   (`host[:port]`) selects it in the MCP server; the CLI has a `remote` engine
+   mode.
+   - A `SurfaceEngine` interface is what inspection and MCP need from an engine
+     (current surface, its screenshot), with the accessibility snapshot and
+     engine-side OCR optional. Both engines implement it.
+   - Targets resolve by point or by OCR text: the host's `ocr.find` matches
+     fuzzily, since tesseract misreads UI text, and captures at 2x.
+   - Recordings are grim frames encoded with ffmpeg on the host
+     (`capture.record`), fetched back with `files.read` to the session's path.
+   - The stage, backdrop and drape are macOS overlays and are no-ops remotely.
+     AX tools and native recording (`action.record.*`) say they need the
+     native engine; the companion worker is skipped.
+   - `EngineDiagnostics` gains optional `platform`, `host` and `capabilities`.
+     The permission fields stay required: `accessibility` maps to the host's
+     input capabilities and `screenRecording` to `capture.still`.
+     `SurfaceObservation.ax` did not need to change, since the remote engine
+     does not produce surface observations.
 4. **Fleet**: a `hosts` MCP toolset that takes a host per call, the iOS fleet
    view reading `capture.still`, and a subscribe RPC for filtered events.
 
