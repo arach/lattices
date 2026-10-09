@@ -81,20 +81,35 @@ enum HotkeyBootstrap {
                 id: 130 + UInt32(offset),
                 keyCode: keyCode,
                 modifiers: UInt32(cmdKey | optionKey)
-            ) { WorkspaceManager.shared.showClassic() }
+            ) {
+                LayerAim.shared.cancel()
+                WorkspaceManager.shared.showClassic()
+            }
+        }
+
+        // ⌘⌥Z takes back the last layer edit.
+        HotkeyManager.shared.registerSingle(
+            id: 132,
+            keyCode: UInt32(kVK_ANSI_Z),
+            modifiers: UInt32(cmdKey | optionKey)
+        ) {
+            LayerAim.shared.cancel()
+            WorkspaceManager.shared.undoLayerEditFromHotkey()
         }
     }
 
-    /// Cmd+Opt+N switches to the layer in slot N of the pad. The middle
-    /// slot, and any slot without a layer, shows where you are instead.
+    /// Cmd+Opt+N aims at the layer in slot N of the pad; letting go of ⌘⌥
+    /// asks to switch to it (`LayerAim`). The middle slot, and any slot without a
+    /// layer, drops the aim and shows where you are instead.
     private static func selectSlot(_ slot: Int) {
         if LayerPreview.shared.select(slot: slot) { return }
         let workspace = WorkspaceManager.shared
         guard let index = LayerSlots.index(forSlot: slot), workspace.layers.indices.contains(index) else {
+            LayerAim.shared.cancel()
             showCurrentLayer()
             return
         }
-        workspace.focusLayer(index: index)
+        LayerAim.shared.aim(at: index)
         LayerPreview.shared.arm()
     }
 
@@ -108,21 +123,22 @@ enum HotkeyBootstrap {
         LayerPreview.shared.arm()
     }
 
-    /// Cmd+Opt+arrows move across the pad the way they point. They hop the
-    /// middle and don't wrap: at the pad's edge, the bezel shows where you are
-    /// briefly, its lit slot bumping the way you pushed.
+    /// Cmd+Opt+arrows aim across the pad the way they point, from the layer
+    /// last aimed at; letting go of ⌘⌥ asks to switch (`LayerAim`). They hop the
+    /// middle and don't wrap: at the pad's edge, the lit slot bumps the way
+    /// you pushed.
     private static func stepLayer(_ direction: LayerSlots.Direction) {
         // Frozen on a preview (Space mid-flip), its tap browses instead.
         if LayerPreview.shared.step(direction) { return }
         let workspace = WorkspaceManager.shared
         let layers = workspace.layers
         guard !layers.isEmpty else { return }
-        let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
-        guard let index = LayerSlots.neighbour(of: current, direction, count: layers.count) else {
-            workspace.showBezel(for: current, in: layers, edge: direction)
+        let from = LayerAim.shared.origin(in: workspace)
+        guard let index = LayerSlots.neighbour(of: from, direction, count: layers.count) else {
+            LayerAim.shared.bump(direction)
             return
         }
-        workspace.focusLayer(index: index)
+        LayerAim.shared.aim(at: index)
         LayerPreview.shared.arm()
     }
 

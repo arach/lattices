@@ -90,6 +90,7 @@ Usage:
   lats layer [name|slot] [--tile|--launch]  List layers, or switch as ⌘⌥ does; slots are the pad's 1-4, 6-9 (daemon required)
   lats layer reveal        Show All: put back parked windows, unhide apps a switch hid
   lats layer classic [--one-space]  Every window back as if Lattices weren't running (⌘⌥0); --one-space also gathers onto one desktop per display
+  lats layer undo                   Take back the last layer edit (⌘⌥Z); no window moves until the next switch
   lats layer create <name> [wid:N ...] [--json '<specs>']  Save windows (default: on screen) as a new layer
   lats layer snap [name]   Save the windows on screen as a new layer
   lats layer add wid:N ... [--to <layer>]  Add windows to a layer (default: the active one)

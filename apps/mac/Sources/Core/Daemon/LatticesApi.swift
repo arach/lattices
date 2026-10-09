@@ -1053,6 +1053,25 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "layers.undo",
+            description: "Take back the last layer edit or switch this launch. An edit (create, add, remove, move, rename, delete, layout) writes the layers as they were and moves no window; a switch goes back to the layer you were on and puts its windows where they sat",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with 'undone' (what it took back, or null with nothing to undo) and 'remaining'"),
+            handler: { _ in
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    let undone = try wm.undoLayerEdit()
+                    return .object([
+                        "ok": .bool(true),
+                        "undone": undone.map { .string($0) } ?? .null,
+                        "remaining": .bool(wm.canUndoLayerEdit),
+                    ])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
             method: "layers.reveal",
             description: "Show All: put back every window a layer switch parked and unhide every app it hid",
             access: .mutate,
