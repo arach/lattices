@@ -547,8 +547,11 @@ final class LayerPreview {
         static let delete: Int64 = 51
         static let forwardDelete: Int64 = 117
         static let l: Int64 = 37
-        /// Key codes of 1–9, to their digit.
-        static let digits: [Int64: Int] = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9]
+        /// Key codes of 1–9, on the top row and the numpad, to their digit.
+        static let digits: [Int64: Int] = [
+            18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9,
+            83: 1, 84: 2, 85: 3, 86: 4, 87: 5, 88: 6, 89: 7, 91: 8, 92: 9,
+        ]
     }
 
     private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
