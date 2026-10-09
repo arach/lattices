@@ -19,6 +19,7 @@ import { searchCommand, placeCommand } from "./cli/search.ts";
 import { captureCommand } from "./cli/capture.ts";
 import { layerCommand } from "./cli/layer.ts";
 import { displayCommand } from "./cli/display.ts";
+import { stateCommand } from "./cli/state.ts";
 import { runsCommand } from "./cli/runs.ts";
 import { mapCommand, mapUsage } from "./cli/map.ts";
 import { hostsCommand } from "./cli/hosts.ts";
@@ -3295,6 +3296,10 @@ switch (command) {
   case "display":
   case "displays":
     await displayCommand(args[1], ...args.slice(2));
+    break;
+  case "state":
+  case "states":
+    await stateCommand(args[1], ...args.slice(2));
     break;
   case "diag":
   case "diagnostics":

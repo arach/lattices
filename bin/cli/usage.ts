@@ -100,6 +100,9 @@ Usage:
   lats display gather <n> [--to <m>]  Move a display's windows onto another, laid out as they were
   lats display restore [n]  Put gathered windows back where they sat
   lats display lend <n>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
+  lats state [list] [--since 2h] [--named]  Desktop maps recorded after each change, kept 72h (daemon required)
+  lats state show [id]      One map: displays, their desktops and what's on each
+  lats state save <name>    Record the desktop now under a name, before a risky change
   lats layer delete <layer> Delete a layer from workspace.json
   lats voice say <text>   Speak text through the Voice helper
   lats voice stop         Stop speaking (pause, resume, skip, seek, list, select too)
