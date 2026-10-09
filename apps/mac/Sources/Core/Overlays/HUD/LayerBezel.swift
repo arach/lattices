@@ -66,11 +66,11 @@ final class LayerBezel {
     /// While ⌘⌥ aims (`LayerAim`): lights layer `index`, with a map of
     /// where its windows would sit on the main screen above the slots
     /// (`LayerForecast`), and under the name the apps a switch can't show
-    /// here. `deciding` names the layer you're on once ⌘⌥ is let go: the
-    /// foot says Return switches and Escape stays there.
+    /// here. `decision`, once ⌘⌥ is let go, adds two buttons under it:
+    /// switch (Return) and stay (Escape), clickable.
     func showForecast(
         label: String, index: Int, total: Int, forecast: LayerForecast,
-        edge: LayerSlots.Direction? = nil, deciding: String? = nil
+        edge: LayerSlots.Direction? = nil, decision: LayerBezelView.Decision? = nil
     ) {
         let filled = (0..<min(total, LayerSlots.ordered.count)).compactMap(LayerSlots.slot(forIndex:))
         let rows = forecast.away.map { away -> LayerBezelView.Row in
@@ -81,7 +81,7 @@ final class LayerBezel {
         present(
             label: label,
             slots: LayerBezelView.Slots(lit: LayerSlots.slot(forIndex: index), filled: Set(filled)),
-            rows: rows, edge: edge, map: forecast, footer: deciding.map { "Stay on \($0)" }
+            rows: rows, edge: edge, map: forecast, decision: decision
         )
     }
 
@@ -92,6 +92,9 @@ final class LayerBezel {
 
     func dismiss(animated: Bool = true) {
         guard let panel, panel.isVisible else { return }
+        // The choice is over: clicks go through again, the countdown stops.
+        panel.ignoresMouseEvents = true
+        bezelView?.endDecision()
         guard animated else {
             dismissTimer?.invalidate()
             generation += 1
@@ -110,7 +113,7 @@ final class LayerBezel {
 
     private func present(
         label: String, slots: LayerBezelView.Slots?, rows: [LayerBezelView.Row] = [],
-        edge: LayerSlots.Direction? = nil, map: LayerForecast? = nil, footer: String? = nil
+        edge: LayerSlots.Direction? = nil, map: LayerForecast? = nil, decision: LayerBezelView.Decision? = nil
     ) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         dismissTimer?.invalidate()
@@ -120,7 +123,7 @@ final class LayerBezel {
 
         // Centred, two thirds of the way up the screen, not counting the
         // map or the list, so the slots keep their place whatever they hold.
-        let size = LayerBezelView.size(label: label, slots: slots, rows: rows, map: map, footer: footer)
+        let size = LayerBezelView.size(label: label, slots: slots, rows: rows, map: map, decision: decision)
         let area = screen.frame
         let top = area.minY + area.height * 2 / 3 + LayerBezelView.size(label: label, slots: slots).height / 2
             + (map.map { LayerBezelView.mapSize($0).height + LayerBezelView.gap } ?? 0)
@@ -138,7 +141,9 @@ final class LayerBezel {
             panel.orderFrontRegardless()
         }
         // On screen first, so the pointer's turn has a display to run on.
-        view.show(label: label, slots: slots, rows: rows, edge: edge, map: map, footer: footer)
+        // Only the buttons take clicks; otherwise clicks go through.
+        panel.ignoresMouseEvents = decision == nil
+        view.show(label: label, slots: slots, rows: rows, edge: edge, map: map, decision: decision)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
@@ -233,7 +238,10 @@ final class LayerBezelView: NSView {
     static let labelFont = rounded(13, .semibold)
     static let nameFont = rounded(12, .medium)
     static let noteFont = rounded(11, .medium)
-    static let titleFont = rounded(9.5, .regular)
+    static let titleFont = rounded(10.5, .regular)
+    static let tileFont = rounded(12, .medium)
+    static let choiceFont = rounded(13, .semibold)
+    static let keyFont = rounded(10.5, .semibold)
     /// The pointer's square, as a share of the middle cell, as in the matrix.
     static let pointerScale: CGFloat = 0.64
     static let turnDuration: CFTimeInterval = 0.16
@@ -247,7 +255,10 @@ final class LayerBezelView: NSView {
     /// Where the lit layer's windows would sit, drawn above the slots.
     private var map: LayerForecast?
     /// The choice once ⌘⌥ is let go: Return switches, Escape stays.
-    private var footer: String?
+    private var decision: Decision?
+    /// The button the mouse is over.
+    private var hovered: Choice?
+    private var tracking: NSTrackingArea?
     /// The slot the pointer aims at, nil at rest, once it has aimed.
     private var aimed: Int?
     private var hasAimed = false
@@ -280,13 +291,15 @@ final class LayerBezelView: NSView {
     /// A step off the pad's `edge` bumps the lit slot that way and back.
     func show(
         label: String, slots: Slots?, rows: [Row] = [], edge: LayerSlots.Direction? = nil,
-        map: LayerForecast? = nil, footer: String? = nil
+        map: LayerForecast? = nil, decision: Decision? = nil
     ) {
         self.label = label
         self.slots = slots
         self.rows = rows
         self.map = map
-        self.footer = footer
+        if decision == nil { hovered = nil }
+        self.decision = decision
+        if decision?.limit != nil { run() }
         if let slots, !hasAimed || slots.lit != aimed {
             from = pose
             if let lit = slots.lit {
@@ -325,7 +338,7 @@ final class LayerBezelView: NSView {
         let b = min(1, max(0, (link.targetTimestamp - bumpStart) / Self.bumpDuration))
         lean = CGFloat(sin(Double.pi * b)) * Self.bumpDistance
         needsDisplay = true
-        if t == 1, b == 1 { settle() }
+        if t == 1, b == 1, decision?.limit == nil { settle() }
     }
 
     private func settle() {
@@ -340,7 +353,7 @@ final class LayerBezelView: NSView {
     /// Fixed with slots, so a switch never resizes the slots and bar; fitted
     /// to `label` without. A list adds its height, and widens the panel when
     /// it's wider than the slots.
-    static func size(label: String, slots: Slots?, rows: [Row] = [], map: LayerForecast? = nil, footer: String? = nil) -> CGSize {
+    static func size(label: String, slots: Slots?, rows: [Row] = [], map: LayerForecast? = nil, decision: Decision? = nil) -> CGSize {
         var size: CGSize
         if slots != nil {
             size = CGSize(width: gridSide + pad * 2, height: gridSide + gap + barHeight + pad * 2)
@@ -358,23 +371,23 @@ final class LayerBezelView: NSView {
             size.width = max(size.width, mapped.width + pad * 2)
             size.height += gap + mapped.height
         }
-        if footer != nil {
-            size.height += gap + barHeight
+        if decision != nil {
+            size.height += gap * 2 + choiceHeight
         }
         return size
     }
 
-    static let mapWidth: CGFloat = 340
+    static let mapWidth: CGFloat = 540
     static let mapInset: CGFloat = 8
     /// The line under the screen saying what the switch puts away.
     static let mapCaption: CGFloat = 20
     /// How far a window sitting on another steps down and right of it.
-    static let depthStep: CGFloat = 7
+    static let depthStep: CGFloat = 10
 
     /// The screen at its shape, with room for the caption.
     static func mapSize(_ map: LayerForecast) -> CGSize {
         let inner = mapWidth - mapInset * 2
-        let screen = min(max(inner / max(map.aspect, 0.5), 90), 200)
+        let screen = min(max(inner / max(map.aspect, 0.5), 140), 340)
         return CGSize(width: mapWidth, height: screen + mapInset * 2 + mapCaption)
     }
 
@@ -433,21 +446,131 @@ final class LayerBezelView: NSView {
             drawList(in: CGRect(x: bounds.midX - width / 2, y: bar.minY - Self.gap - height, width: width, height: height))
             bottom -= Self.gap + height
         }
-        if let footer {
-            let foot = CGRect(x: content.minX, y: bottom - Self.gap - Self.barHeight, width: content.width, height: Self.barHeight)
-            drawFooter(stay: footer, in: foot)
+        if let decision {
+            drawChoices(decision, in: choicesRect(below: bottom))
         }
     }
 
-    /// Return switches, Escape stays: two halves of one bar, the switch lit.
-    private func drawFooter(stay: String, in bar: CGRect) {
-        let half = (bar.width - Self.gap) / 2
+    // MARK: The choice
+
+    /// What letting go of ⌘⌥ asks: switch to `target` or stay on `current`.
+    /// With a `limit`, it stays once that runs out, and the stay button
+    /// drains to show it.
+    struct Decision {
+        let target: String
+        let current: String
+        let limit: TimeInterval?
+        let started: CFTimeInterval
+        let choose: (Choice) -> Void
+    }
+
+    enum Choice { case go, stay }
+
+    static let choiceHeight: CGFloat = 46
+
+    private func choicesRect(below bottom: CGFloat) -> CGRect {
+        let content = bounds.insetBy(dx: Self.pad, dy: Self.pad)
+        return CGRect(x: content.minX, y: bottom - Self.gap * 2 - Self.choiceHeight, width: content.width, height: Self.choiceHeight)
+    }
+
+    /// The two buttons' rects: switch on the left, stay on the right.
+    private func choiceRects() -> (go: CGRect, stay: CGRect)? {
+        guard decision != nil else { return nil }
+        let bar = choicesRect(below: bounds.minY + Self.pad + Self.choiceHeight + Self.gap * 2)
+        let half = (bar.width - Self.gap * 2) / 2
         let go = CGRect(x: bar.minX, y: bar.minY, width: half, height: bar.height)
-        let back = CGRect(x: go.maxX + Self.gap, y: bar.minY, width: half, height: bar.height)
+        return (go, CGRect(x: go.maxX + Self.gap * 2, y: bar.minY, width: half, height: bar.height))
+    }
+
+    /// Switch lit, stay dark; each names its layer and its key. The one
+    /// under the mouse lifts. With a limit, a coral line drains along the
+    /// stay button's foot.
+    private func drawChoices(_ decision: Decision, in bar: CGRect) {
+        guard let (go, stay) = choiceRects() else { return }
         drawBox(go, lit: true)
-        drawText("↩ Switch", font: Self.noteFont, colour: Self.darkInk, in: go.insetBy(dx: 6, dy: 0))
-        drawBox(back, lit: false)
-        drawText("esc \(stay)", font: Self.noteFont, colour: NSColor.white.withAlphaComponent(0.82), in: back.insetBy(dx: 6, dy: 0))
+        if hovered == .go {
+            NSColor.white.withAlphaComponent(0.5).setFill()
+            NSBezierPath(roundedRect: go.insetBy(dx: 1, dy: 1), xRadius: 9, yRadius: 9).fill()
+        }
+        drawChoice("Switch to \(decision.target)", key: "return", in: go, ink: Self.darkInk)
+
+        drawBox(stay, lit: false)
+        if hovered == .stay {
+            NSColor.white.withAlphaComponent(0.08).setFill()
+            NSBezierPath(roundedRect: stay.insetBy(dx: 1.2, dy: 1.2), xRadius: 9, yRadius: 9).fill()
+        }
+        drawChoice("Stay on \(decision.current)", key: "esc", in: stay, ink: NSColor.white.withAlphaComponent(0.9))
+
+        if let limit = decision.limit, limit > 0 {
+            let left = max(0, 1 - (CACurrentMediaTime() - decision.started) / limit)
+            let track = CGRect(x: stay.minX + 10, y: stay.minY + 5, width: stay.width - 20, height: 2)
+            NSColor.white.withAlphaComponent(0.1).setFill()
+            NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
+            LatticesPointer.coral.setFill()
+            NSBezierPath(roundedRect: CGRect(x: track.minX, y: track.minY, width: track.width * left, height: track.height), xRadius: 1, yRadius: 1).fill()
+        }
+    }
+
+    /// `title` on the left, `key` as a keycap on the right.
+    private func drawChoice(_ title: String, key: String, in rect: CGRect, ink: NSColor) {
+        let keyWidth = ceil((key as NSString).size(withAttributes: [.font: Self.keyFont]).width) + 12
+        let cap = CGRect(x: rect.maxX - 12 - keyWidth, y: rect.midY - 10, width: keyWidth, height: 20)
+        let capPath = NSBezierPath(roundedRect: cap, xRadius: 5, yRadius: 5)
+        ink.withAlphaComponent(0.1).setFill()
+        capPath.fill()
+        ink.withAlphaComponent(0.35).setStroke()
+        capPath.lineWidth = 0.8
+        capPath.stroke()
+        drawText(key, font: Self.keyFont, colour: ink.withAlphaComponent(0.8), in: cap)
+        let text = CGRect(x: rect.minX + 14, y: rect.minY, width: cap.minX - 10 - rect.minX - 14, height: rect.height)
+        drawText(title, font: Self.choiceFont, colour: ink, in: text, alignment: .left)
+    }
+
+    func endDecision() {
+        // Left drawn as it was while the pad fades; only the clock stops.
+        guard decision != nil else { return }
+        decision = nil
+        hovered = nil
+        link?.invalidate()
+        link = nil
+        pose = to
+    }
+
+    private func choice(at point: CGPoint) -> Choice? {
+        guard let (go, stay) = choiceRects() else { return nil }
+        if go.contains(point) { return .go }
+        if stay.contains(point) { return .stay }
+        return nil
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let decision, let picked = choice(at: convert(event.locationInWindow, from: nil)) else { return }
+        decision.choose(picked)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let now = choice(at: convert(event.locationInWindow, from: nil))
+        guard now != hovered else { return }
+        hovered = now
+        if now != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard hovered != nil else { return }
+        hovered = nil
+        NSCursor.arrow.set()
+        needsDisplay = true
     }
 
     /// The main screen at its shape, and on it the layer's windows where a
@@ -515,11 +638,11 @@ final class LayerBezelView: NSView {
         path.stroke()
 
         let alpha: CGFloat = tile.member ? 0.92 : 0.55
-        let label = rect.insetBy(dx: 5, dy: 3)
+        let label = rect.insetBy(dx: 7, dy: 4)
         guard label.width > 18, label.height > 10 else { return }
-        let lineHeight: CGFloat = 14
+        let lineHeight: CGFloat = 16
         let first = CGRect(x: label.minX, y: label.maxY - lineHeight, width: label.width, height: lineHeight)
-        drawText(tile.app, font: Self.noteFont, colour: NSColor.white.withAlphaComponent(alpha), in: first, alignment: .left)
+        drawText(tile.app, font: Self.tileFont, colour: NSColor.white.withAlphaComponent(alpha), in: first, alignment: .left)
         if !tile.title.isEmpty, tile.title != tile.app, label.height > lineHeight * 2 + 2 {
             let second = first.offsetBy(dx: 0, dy: -lineHeight + 1)
             drawText(tile.title, font: Self.titleFont, colour: NSColor.white.withAlphaComponent(alpha * 0.6), in: second, alignment: .left)

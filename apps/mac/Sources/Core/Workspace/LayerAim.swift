@@ -3,8 +3,10 @@ import AppKit
 /// A ⌘⌥ browse that moves nothing until you say so. While ⌘⌥ is held, the
 /// arrows and digits aim at a layer: the pad lights its slot and draws a
 /// map of where its windows would sit (`LayerForecast`); no window moves.
-/// Letting go of ⌘⌥ asks: Return switches to the layer aimed at, Escape,
-/// a click, another key or a few idle seconds stay on the layer you're on.
+/// Letting go of ⌘⌥ asks: Return or the switch button switches to the
+/// layer aimed at; Escape, the stay button, a click elsewhere, another key
+/// or the wait running out (`Preferences.layerSwitchConfirmSeconds`) stay
+/// on the layer you're on. A wait of 0 switches at once.
 /// ⌘⌥ again goes on browsing from the layer aimed at. Escape, the middle
 /// slot, or someone else's ⌘⌥ shortcut while held drops the aim.
 ///
@@ -27,9 +29,14 @@ final class LayerAim {
     private var timeout: DispatchWorkItem?
     private var keyTap: CFMachPort?
     private var mouseMonitor: Any?
+    private var decideStarted: CFTimeInterval = 0
 
-    /// How long the choice waits for a key before staying.
-    private static let decideLimit: TimeInterval = 6
+    /// How long the choice waits before staying; nil waits for a key, 0
+    /// doesn't ask.
+    private static var decideLimit: TimeInterval? {
+        let seconds = Preferences.shared.layerSwitchConfirmSeconds
+        return seconds < 0 ? nil : seconds
+    }
 
     private init() {}
 
@@ -88,7 +95,13 @@ final class LayerAim {
             if reconcile { workspace.focusLayer(index: index) }
             return false
         }
+        if Self.decideLimit == 0 {
+            reset()
+            workspace.focusLayer(index: index)
+            return false
+        }
         phase = .deciding
+        decideStarted = CACurrentMediaTime()
         present()
         listenForChoice()
         return true
@@ -144,10 +157,19 @@ final class LayerAim {
             workspace.showBezel(for: index, in: layers, edge: edge)
             return
         }
-        let deciding = phase == .deciding ? (current ?? "here") : nil
+        let decision = phase == .deciding ? LayerBezelView.Decision(
+            target: layers[index].label, current: current ?? "this layer",
+            limit: Self.decideLimit, started: decideStarted,
+            choose: { [weak self] choice in
+                switch choice {
+                case .go: self?.confirm()
+                case .stay: self?.cancel()
+                }
+            }
+        ) : nil
         LayerBezel.shared.showForecast(
             label: layers[index].label, index: index, total: layers.count,
-            forecast: forecast, edge: edge, deciding: deciding
+            forecast: forecast, edge: edge, decision: decision
         )
     }
 
@@ -191,10 +213,12 @@ final class LayerAim {
                 self?.cancel()
             }
         }
-        let stay = DispatchWorkItem { [weak self] in self?.cancel() }
         timeout?.cancel()
+        timeout = nil
+        guard let limit = Self.decideLimit else { return }
+        let stay = DispatchWorkItem { [weak self] in self?.cancel() }
         timeout = stay
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.decideLimit, execute: stay)
+        DispatchQueue.main.asyncAfter(deadline: .now() + limit, execute: stay)
     }
 
     private func endDeciding() {
