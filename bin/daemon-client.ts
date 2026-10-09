@@ -8,8 +8,20 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const DAEMON_HOST = "127.0.0.1";
-const DAEMON_PORT = 9399;
+const DEFAULT_DAEMON_HOST = "127.0.0.1";
+const DEFAULT_DAEMON_PORT = 9399;
+
+/**
+ * Where daemon calls go. Defaults to the local Mac daemon; set
+ * LATTICES_DAEMON_HOST (or pass `lats --host <name>`) to reach another
+ * lattices host, such as a Linux machine running lattices-host on the tailnet
+ * (LAT-013). Read per call so the CLI's --host flag can set it at startup.
+ */
+export function daemonEndpoint(): { host: string; port: number } {
+  const host = process.env.LATTICES_DAEMON_HOST?.trim() || DEFAULT_DAEMON_HOST;
+  const port = Number(process.env.LATTICES_DAEMON_PORT);
+  return { host, port: Number.isInteger(port) && port > 0 ? port : DEFAULT_DAEMON_PORT };
+}
 
 // The Voice helper (bundle dev.lattices.Speech) writes this capability when it
 // runs. The daemon forwards voice output verbs only for clients that present it.
@@ -134,7 +146,8 @@ async function sendRequest(
   const request = JSON.stringify({ id, method, params: params ?? null });
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host: DAEMON_HOST, port: DAEMON_PORT });
+    const { host, port } = daemonEndpoint();
+    const socket = createConnection({ host, port });
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
@@ -165,7 +178,7 @@ async function sendRequest(
       const key = randomBytes(16).toString("base64");
       const upgrade = [
         `GET / HTTP/1.1`,
-        `Host: ${DAEMON_HOST}:${DAEMON_PORT}`,
+        `Host: ${host}:${port}`,
         `Upgrade: websocket`,
         `Connection: Upgrade`,
         `Sec-WebSocket-Key: ${key}`,

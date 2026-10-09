@@ -29,6 +29,16 @@ import {
 } from "./cli/session.ts";
 
 const args: string[] = process.argv.slice(2);
+
+// `lats --host <name> ...` sends daemon calls to another lattices host, such as
+// a Linux machine running lattices-host on the tailnet (LAT-013).
+const hostFlag = args.indexOf("--host");
+if (hostFlag !== -1 && hostFlag < args.length - 1) {
+  const [, host] = args.splice(hostFlag, 2);
+  const [name, port] = host.split(":");
+  process.env.LATTICES_DAEMON_HOST = name;
+  if (port) process.env.LATTICES_DAEMON_PORT = port;
+}
 const command: string | undefined = args[0];
 
 // ── Helpers ──────────────────────────────────────────────────────────

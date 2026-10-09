@@ -1,0 +1,19 @@
+{
+  "name": "@lattices/host-linux",
+  "version": "0.1.0",
+  "description": "Expose a Linux (Hyprland) desktop to other lattices machines over the tailnet (LAT-013)",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "lattices-host": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "bun src/main.ts",
+    "describe": "bun src/main.ts --describe",
+    "test": "bun test"
+  },
+  "engines": {
+    "bun": ">=1.1"
+  }
+}

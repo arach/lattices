@@ -126,6 +126,13 @@ answers `Unknown method`.
   connections are dropped. Clients should reconnect and treat it as
   stateless. There is no session resumption.
 
+### Remote hosts
+
+A Linux machine running `lattices-host` ([LAT-013](proposals/LAT-013-linux-host.md))
+serves the same protocol on its tailnet address, port 9399. Point a client at it
+with `LATTICES_DAEMON_HOST` (and `LATTICES_DAEMON_PORT`), or `lats --host <name>`.
+Call `host.describe` first: it lists the host's platform, capabilities and methods.
+
 ## Node.js client
 
 lattices ships a zero-dependency WebSocket client that works with
