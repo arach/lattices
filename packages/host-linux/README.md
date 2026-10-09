@@ -41,7 +41,7 @@ on its methods; missing tools just hide them.
 
 | Capability | Backend | Methods |
 | --- | --- | --- |
-| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move`, `spaces.list`, `desktop.snapshot` |
+| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move/moveBack`, `spaces.list`, `desktop.snapshot` |
 | `capture.still` | `grim` | `capture.screenshotDisplay/Window/Region`, `capture.still` (inline JPEG) |
 | `capture.live` | `wayvnc`, started on demand on the host's address | `capture.live` returns a `vnc://` URL for Screen Sharing |
 | `input.keys` | `wtype` | `computer.typeText`, `computer.pressKey`, `computer.hotkey` |

@@ -5,6 +5,7 @@ import { hasCommand, run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
+import * as moves from "./moves.ts";
 import * as ocr from "./ocr.ts";
 import * as record from "./record.ts";
 import { closeSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
@@ -310,17 +311,17 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     capability: "windows.place",
     params: [
       ...targetParams,
-      { name: "display", type: "int", description: "Target display index" },
-      { name: "space", type: "int", description: "Target workspace id" },
+      { name: "display", type: "int", description: "Target display index (alias: displayIndex)" },
+      { name: "space", type: "int", description: "Target workspace id (alias: spaceId)" },
       { name: "placement", type: "string|object", description: "Optional placement on arrival" },
       { name: "dryRun", type: "bool", description: "Plan without moving" },
     ],
-    returns: "Receipt with target, destination and trace",
+    returns: "Receipt with target, destination, origin and trace; windows.moveBack undoes it",
     handler: async (params) => {
       const hasTarget = ["wid", "session", "app"].some((k) => params[k] != null);
       if (!hasTarget) throw new RouterError("windows.move requires a wid, session or app target");
-      const space = num(params, "space");
-      const displayIndex = num(params, "display");
+      const space = num(params, "space") ?? num(params, "spaceId");
+      const displayIndex = num(params, "display") ?? num(params, "displayIndex");
       if (space === undefined && displayIndex === undefined && params.placement == null) {
         throw new RouterError("windows.move needs a display, space or placement");
       }
@@ -330,6 +331,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
       const workspace = space ?? display?.currentSpaceId;
       const dryRun = bool(params, "dryRun") ?? false;
       const trace: string[] = [];
+      if (!dryRun) moves.record(window);
       if (workspace !== undefined && !window.spaceIds.includes(workspace)) {
         const ops: hypr.Op[] = [{ op: "toWorkspace", address: window.address, workspace }];
         trace.push(...(dryRun ? await hypr.plan(ops) : await hypr.apply(ops)));
@@ -339,7 +341,32 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
         const plan = await desktop.place(window, parsePlacement(params.placement), dest, dryRun);
         trace.push(...plan.commands);
       }
-      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid: window.wid }, space: workspace ?? null, trace });
+      const origin = moves.get(window.wid);
+      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid: window.wid }, space: workspace ?? null, origin: origin ?? null, trace });
+    },
+  });
+
+  router.register({
+    method: "windows.moveBack",
+    description: "Return a window to where windows.move took it from: its workspace, and its floating frame or tiled state",
+    access: "mutate",
+    capability: "windows.place",
+    params: [
+      { name: "wid", type: "uint32", required: true, description: "Window id" },
+      { name: "dryRun", type: "bool", description: "Plan without moving" },
+    ],
+    returns: "Receipt with target, origin and trace",
+    handler: async (params) => {
+      const wid = num(params, "wid");
+      if (wid === undefined) throw RouterError.missingParam("wid");
+      const origin = moves.get(wid);
+      if (!origin) throw RouterError.notFound(`a windows.move origin for window ${wid}`);
+      const { window } = await desktop.resolveTarget({ wid });
+      const dryRun = bool(params, "dryRun") ?? false;
+      const ops = moves.returnOps(window, origin);
+      const trace = dryRun ? await hypr.plan(ops) : await hypr.apply(ops);
+      if (!dryRun) moves.forget(wid);
+      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid }, origin, trace });
     },
   });
 
