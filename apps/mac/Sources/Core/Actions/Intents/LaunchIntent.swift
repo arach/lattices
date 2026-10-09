@@ -54,7 +54,7 @@ struct LaunchIntent: LatticeIntent {
             // Launch via session manager
             DiagnosticLog.shared.info("LaunchIntent: matched scanned project '\(found.name)' at \(found.path)")
             let result = try LatticesApi.shared.dispatch(
-                method: "session.launch",
+                method: "sessions.launch",
                 params: .object(["path": .string(found.path)])
             )
             return result

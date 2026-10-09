@@ -149,7 +149,7 @@ final class OmniSearchState: ObservableObject {
         selectedIndex = 0
     }
 
-    // MARK: - Search (delegates to unified lattices.search API)
+    // MARK: - Search (delegates to unified search.query API)
 
     private func search(_ query: String) {
         let q = query.lowercased()
@@ -158,7 +158,7 @@ final class OmniSearchState: ObservableObject {
         // ── Daemon search: windows, terminals, OCR — single source of truth ──
         // This is synchronous on the daemon's in-process API, not a network call.
         if let json = try? LatticesApi.shared.dispatch(
-            method: "lattices.search",
+            method: "search.query",
             params: .object(["query": .string(q)])
         ), case .array(let hits) = json {
             let desktop = DesktopModel.shared

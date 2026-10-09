@@ -40,7 +40,7 @@ struct KillIntent: LatticeIntent {
             throw IntentError.missingSlot("session")
         }
         return try LatticesApi.shared.dispatch(
-            method: "session.kill",
+            method: "sessions.kill",
             params: .object(["name": .string(session)])
         )
     }

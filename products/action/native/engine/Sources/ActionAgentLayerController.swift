@@ -684,7 +684,7 @@ enum ActionAgentLayerOwner {
         for instance in instances {
             let pids = ((instance["processes"] as? [[String: Any]]) ?? []).compactMap { ($0["pid"] as? NSNumber)?.intValue }
             guard pids.contains(where: owners.contains), let wid = (instance["windowId"] as? NSNumber)?.intValue else { continue }
-            return lattices(["call", "window.focus", "{\"wid\":\(wid)}"]) != nil
+            return lattices(["call", "windows.focus", "{\"wid\":\(wid)}"]) != nil
         }
         return false
     }

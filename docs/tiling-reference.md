@@ -156,13 +156,13 @@ The old split-brain tiling logic has been collapsed toward a shared path.
 The canonical mutation is now:
 
 ```json
-{ "method": "window.place", "params": { "placement": "left" } }
+{ "method": "windows.place", "params": { "placement": "left" } }
 ```
 
 All higher-level surfaces should compile into the same placement model:
 
-- **Daemon / CLI**: `window.place` is the canonical mutation
-- **Compatibility**: `window.tile` maps to `window.place`
+- **Daemon / CLI**: `windows.place` is the canonical mutation
+- **Compatibility**: `window.tile` maps to `windows.place`
 - **Voice / hands-off**: parse natural language, then emit a placement spec
 - **HUD**: still exposes a smaller shortcut set, but should target the same placement executor
 
@@ -238,4 +238,4 @@ When the LLM sends multiple `tile_window` actions targeting the **same position*
 
 1. **Voice extraction still needs to catch up**: the canonical executor understands horizontal thirds and edge quarters, but the local voice resolver still needs broader phrase coverage.
 2. **HUD coverage is narrower than the executor**: keyboard tiling exposes a small subset of the full placement vocabulary.
-3. **Optimization and layer actions are still wrapper-level**: `space.optimize` and `layer.activate` are now stable action IDs, but they currently wrap existing distributor and layer-switching behavior rather than a full planner.
+3. **Optimization and layer actions are still wrapper-level**: `spaces.optimize` and `layers.activate` are now stable action IDs, but they currently wrap existing distributor and layer-switching behavior rather than a full planner.

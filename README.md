@@ -201,8 +201,8 @@ if (!(await isDaemonRunning())) {
   throw new Error('start the app with: lats app')
 }
 
-await daemonCall('session.launch', { path: '/Users/you/dev/api' })
-await daemonCall('window.place', { session: 'api-a1b2c3', placement: 'right' })
+await daemonCall('sessions.launch', { path: '/Users/you/dev/api' })
+await daemonCall('windows.place', { session: 'api-a1b2c3', placement: 'right' })
 const hits = await daemonCall('windows.search', { query: 'api' })
 ```
 
@@ -212,7 +212,7 @@ lats call windows.search '{"query":"api"}'
 lats call api.schema
 ```
 
-Do not guess session hashes. Read them from `lats sessions --json` or `tmux.sessions`. Full catalog: [docs/api](https://lattices.dev/docs/api).
+Do not guess session hashes. Read them from `lats sessions --json` or `tmux.list`. Full catalog: [docs/api](https://lattices.dev/docs/api).
 
 ## Product family
 

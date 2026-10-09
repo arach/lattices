@@ -54,7 +54,7 @@ lats app
 | `lattices_computer_press_key` | `computer.pressKey` |
 | `lattices_computer_hotkey` | `computer.hotkey` |
 | `lattices_window_focus` | `computer.focusWindow` |
-| `lattices_window_place` | `window.place` |
+| `lattices_window_place` | `windows.place` |
 | `lattices_capture_window` | `capture.screenshotWindow` |
 | `lattices_capture_region` | `capture.screenshotRegion` |
 | `lattices_capture_zoom_artifact` | `capture.zoomArtifact` |

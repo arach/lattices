@@ -67,8 +67,8 @@ Agents get the same control programmatically:
 
 ```js
 import { daemonCall } from '@lattices/cli'
-await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('window.place', {
+await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
+await daemonCall('windows.place', {
   session: 'frontend-a1b2c3',
   placement: { kind: 'tile', value: 'left' }
 })

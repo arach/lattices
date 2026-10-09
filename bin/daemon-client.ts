@@ -61,6 +61,53 @@ interface ParsedFrame {
   rest: Buffer<ArrayBuffer>;
 }
 
+// LAT-012 renamed the daemon's methods into domains (window.place ->
+// windows.place). The daemon still accepts the old names, but a daemon from
+// before the rename does not know the new ones, so an `Unknown method` answer
+// for a new name is retried once under its old name.
+const LEGACY_METHOD_NAMES: Record<string, string> = {
+  "windows.focus": "window.focus",
+  "windows.move": "window.move",
+  "windows.place": "window.place",
+  "windows.present": "window.present",
+  "windows.resolve": "window.resolve",
+  "windows.pick": "window.pick.start",
+  "layers.activate": "layer.activate",
+  "layers.switch": "layer.switch",
+  "spaces.optimize": "space.optimize",
+  "sessions.launch": "session.launch",
+  "sessions.kill": "session.kill",
+  "sessions.detach": "session.detach",
+  "sessions.sync": "session.sync",
+  "sessions.restart": "session.restart",
+  "groups.launch": "group.launch",
+  "groups.kill": "group.kill",
+  "tabs.list": "tabStacks.list",
+  "tabs.stack": "tabStacks.create",
+  "tabs.add": "tabStacks.add",
+  "tabs.select": "tabStacks.select",
+  "tabs.layout": "tabStacks.layout",
+  "tabs.unstack": "tabStacks.delete",
+  "search.query": "lattices.search",
+  "solo.status": "focus.status",
+  "solo.enter": "focus.enter",
+  "solo.exit": "focus.exit",
+  "solo.toggle": "focus.toggle",
+  "intents.run": "intents.execute",
+  "history.list": "actions.history",
+  "history.undo": "actions.undo",
+};
+
+/** The pre-LAT-012 name to retry `method` under, or undefined. */
+export function legacyMethodName(
+  method: string,
+  params?: Record<string, unknown> | null
+): string | undefined {
+  if (method === "tmux.list") return params?.includeOrphans === true ? "tmux.inventory" : "tmux.sessions";
+  if (method === "ocr.history") return params?.wid == null ? "ocr.recent" : undefined;
+  return LEGACY_METHOD_NAMES[method];
+}
+
 /**
  * Send a JSON-RPC-style request to the daemon and return the response.
  */
@@ -68,6 +115,20 @@ export async function daemonCall(
   method: string,
   params?: Record<string, unknown> | null,
   timeoutMs = 3000
+): Promise<unknown> {
+  try {
+    return await sendRequest(method, params, timeoutMs);
+  } catch (err) {
+    const legacy = legacyMethodName(method, params);
+    if (!legacy || (err as Error).message !== `Unknown method: ${method}`) throw err;
+    return sendRequest(legacy, params, timeoutMs);
+  }
+}
+
+async function sendRequest(
+  method: string,
+  params: Record<string, unknown> | null | undefined,
+  timeoutMs: number
 ): Promise<unknown> {
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });

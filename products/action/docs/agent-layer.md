@@ -89,7 +89,7 @@ The layer captures its own display, not the subject app. A stream that targets a
 
 Hovering the viewer shows four controls:
 
-- **Go to owner.** Focuses whatever opened the layer. Action records the opener's process chain at `open` (`--owner-pids`), activates the nearest app in that chain, and otherwise asks Lattices (`terminals.search`, then `window.focus`) which terminal window shows it. An agent under a daemonized multiplexer has no app in its chain, so this needs the Lattices app running; if nothing resolves, the viewer beeps.
+- **Go to owner.** Focuses whatever opened the layer. Action records the opener's process chain at `open` (`--owner-pids`), activates the nearest app in that chain, and otherwise asks Lattices (`terminals.search`, then `windows.focus`) which terminal window shows it. An agent under a daemonized multiplexer has no app in its chain, so this needs the Lattices app running; if nothing resolves, the viewer beeps.
 - **Pause / resume.** While paused, `state.json` has `"paused": true` and `action.act.execute` refuses with a message saying so.
 - **Take over.** Ends the layer, puts the windows back, and leaves `handoff.json`. Until the next `layer open` or `layer close`, `action.act.execute` refuses and says the operator took over.
 - **×.** Hides the viewer.

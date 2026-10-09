@@ -25,7 +25,7 @@ public struct LatticesWindows: Sendable {
 
     @discardableResult
     public func focus(_ target: LatticesWindowTarget) async throws -> JSONValue {
-        try await call("window.focus", params: target.json)
+        try await call("windows.focus", params: target.json)
     }
 
     @discardableResult
@@ -41,10 +41,10 @@ public struct LatticesWindows: Sendable {
     @discardableResult
     public func tile(session: String, position: LatticesTilePosition) async throws -> JSONValue {
         try await call(
-            "window.tile",
+            "windows.place",
             params: jsonObject(
                 ("session", .string(session)),
-                ("position", .string(position.rawValue))
+                ("placement", .string(position.rawValue))
             )
         )
     }
@@ -60,7 +60,7 @@ public struct LatticesWindows: Sendable {
         fields["placement"] = .string(placement)
         fields.set("display", display.map { .int($0) })
         fields.set("dryRun", dryRun.map { .bool($0) })
-        return try await call("window.place", params: .object(fields))
+        return try await call("windows.place", params: .object(fields))
     }
 
     @discardableResult
@@ -69,7 +69,7 @@ public struct LatticesWindows: Sendable {
         position: LatticesTilePosition? = nil
     ) async throws -> JSONValue {
         try await call(
-            "window.present",
+            "windows.present",
             params: jsonObject(
                 ("wid", .int(wid)),
                 ("position", position.map { .string($0.rawValue) })
@@ -85,7 +85,7 @@ public struct LatticesWindows: Sendable {
         var fields = target.jsonFields
         fields.set("placement", placement.map { .string($0) })
         fields.set("display", display.map { .int($0) })
-        return try await call("window.resolve", params: .object(fields))
+        return try await call("windows.resolve", params: .object(fields))
     }
 
     /// Adds the window to a ⌘⌥ layer, by id or label.
@@ -133,12 +133,12 @@ public struct LatticesTmux: Sendable {
     let transport: LatticesTransport
 
     public func sessions() async throws -> [LatticesTmuxSession] {
-        let result = try await transport.call("tmux.sessions", params: nil, timeout: nil)
+        let result = try await transport.call("tmux.list", params: nil, timeout: nil)
         return try result.decoded(as: [LatticesTmuxSession].self)
     }
 
     public func inventory() async throws -> JSONValue {
-        try await transport.call("tmux.inventory", params: nil, timeout: nil)
+        try await transport.call("tmux.list", params: jsonObject(("includeOrphans", .bool(true))), timeout: nil)
     }
 }
 
@@ -147,18 +147,18 @@ public struct LatticesSessions: Sendable {
 
     @discardableResult
     public func launch(path: String) async throws -> JSONValue {
-        try await transport.call("session.launch", params: jsonObject(("path", .string(path))), timeout: 30)
+        try await transport.call("sessions.launch", params: jsonObject(("path", .string(path))), timeout: 30)
     }
 
     @discardableResult
     public func sync(path: String) async throws -> JSONValue {
-        try await transport.call("session.sync", params: jsonObject(("path", .string(path))), timeout: 30)
+        try await transport.call("sessions.sync", params: jsonObject(("path", .string(path))), timeout: 30)
     }
 
     @discardableResult
     public func restart(path: String, pane: String? = nil) async throws -> JSONValue {
         try await transport.call(
-            "session.restart",
+            "sessions.restart",
             params: jsonObject(("path", .string(path)), ("pane", pane.map { .string($0) })),
             timeout: 30
         )
@@ -166,12 +166,12 @@ public struct LatticesSessions: Sendable {
 
     @discardableResult
     public func kill(name: String) async throws -> JSONValue {
-        try await transport.call("session.kill", params: jsonObject(("name", .string(name))), timeout: 30)
+        try await transport.call("sessions.kill", params: jsonObject(("name", .string(name))), timeout: 30)
     }
 
     @discardableResult
     public func detach(name: String) async throws -> JSONValue {
-        try await transport.call("session.detach", params: jsonObject(("name", .string(name))), timeout: 30)
+        try await transport.call("sessions.detach", params: jsonObject(("name", .string(name))), timeout: 30)
     }
 
     public func layers() async throws -> JSONValue {
@@ -180,12 +180,12 @@ public struct LatticesSessions: Sendable {
 
     @discardableResult
     public func switchLayer(index: Int) async throws -> JSONValue {
-        try await transport.call("layer.switch", params: jsonObject(("index", .int(index))), timeout: 15)
+        try await transport.call("layers.switch", params: jsonObject(("index", .int(index))), timeout: 15)
     }
 
     @discardableResult
     public func switchLayer(name: String) async throws -> JSONValue {
-        try await transport.call("layer.switch", params: jsonObject(("name", .string(name))), timeout: 15)
+        try await transport.call("layers.switch", params: jsonObject(("name", .string(name))), timeout: 15)
     }
 }
 
@@ -414,6 +414,6 @@ public struct LatticesLayout: Sendable {
 
     @discardableResult
     public func optimize(params: JSONValue? = nil) async throws -> JSONValue {
-        try await transport.call("space.optimize", params: params, timeout: 30)
+        try await transport.call("spaces.optimize", params: params, timeout: 30)
     }
 }

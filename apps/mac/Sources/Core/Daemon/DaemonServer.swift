@@ -33,14 +33,14 @@ final class DaemonServer: ObservableObject {
         attributes: .concurrent
     )
     private static let blockingMethods: Set<String> = [
-        "window.pick.start",
-        "session.launch",
+        "windows.pick",
+        "sessions.launch",
         // Relocation and undo can carry windows across Spaces, taking seconds.
-        "window.move",
-        "window.place",
-        "window.present",
+        "windows.move",
+        "windows.place",
+        "windows.present",
         "actions.execute",
-        "actions.undo",
+        "history.undo",
     ]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -376,7 +376,7 @@ final class DaemonServer: ObservableObject {
 
         // These handlers can sleep or wait for the user. Keep them off the
         // serial socket queue so other clients, events, and RPCs still flow.
-        if Self.blockingMethods.contains(request.method) {
+        if Self.blockingMethods.contains(MethodAliases.canonical(request.method)) {
             blockingRequestQueue.async { [weak self] in
                 let response = LatticesApi.shared.handle(request)
                 self?.queue.async { [weak self] in

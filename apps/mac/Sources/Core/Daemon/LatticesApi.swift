@@ -165,10 +165,11 @@ final class LatticesApi {
     }
 
     func dispatch(method: String, params: JSON?) throws -> JSON {
-        guard let endpoint = endpoints[method] else {
+        let resolved = MethodAliases.resolve(method, params: params)
+        guard let endpoint = endpoints[resolved.method] else {
             throw RouterError.unknownMethod(method)
         }
-        return try endpoint.handler(params)
+        return try endpoint.handler(resolved.params)
     }
 
     func handle(_ request: DaemonRequest) -> DaemonResponse {
@@ -230,7 +231,10 @@ final class LatticesApi {
         return .object([
             "version": .string("1.0"),
             "models": .array(modelsList),
-            "methods": .array(methodsList)
+            "methods": .array(methodsList),
+            "aliases": .object(MethodAliases.table
+                .filter { endpoints[$0.value.method] != nil }
+                .mapValues { JSON.string($0.method) })
         ])
     }
 
@@ -443,8 +447,8 @@ final class LatticesApi {
             Field(name: "plan", type: "object", required: false, description: "Dry-run plan used before mutation"),
             Field(name: "mutations", type: "[object]", required: true, description: "Applied mutations and frame changes"),
             Field(name: "verified", type: "bool", required: true, description: "Whether the final state was verified"),
-            Field(name: "undoable", type: "bool", required: false, description: "Whether the receipt can be restored through actions.undo"),
-            Field(name: "undoOf", type: "[string]", required: false, description: "Receipt ids restored by an actions.undo receipt"),
+            Field(name: "undoable", type: "bool", required: false, description: "Whether the receipt can be restored through history.undo"),
+            Field(name: "undoOf", type: "[string]", required: false, description: "Receipt ids restored by a history.undo receipt"),
             Field(name: "trace", type: "[string]", required: true, description: "Human-readable execution trace"),
             Field(name: "events", type: "[object]", required: true, description: "Structured execution events"),
         ]))
@@ -675,7 +679,7 @@ final class LatticesApi {
         // MARK: - Unified Search
 
         api.register(Endpoint(
-            method: "lattices.search",
+            method: "search.query",
             description: "Unified search across windows, terminals, and OCR. Single entry point for all search surfaces.",
             access: .read,
             params: [
@@ -924,29 +928,24 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tmux.sessions",
-            description: "List all tmux sessions with child process enrichment",
+            method: "tmux.list",
+            description: "List tmux sessions with child process enrichment, or the full inventory including orphans",
             access: .read,
-            params: [],
-            returns: .array(model: "TmuxSession"),
-            handler: { _ in
+            params: [
+                Param(name: "includeOrphans", type: "bool", required: false,
+                      description: "Return the full inventory as {all, orphans} instead of the enriched session list"),
+            ],
+            returns: .custom("Array of TmuxSession; with includeOrphans, an object with 'all' and 'orphans' arrays of TmuxSession"),
+            handler: { params in
+                if params?["includeOrphans"]?.boolValue == true {
+                    let inv = InventoryManager.shared
+                    return .object([
+                        "all": .array(inv.allSessions.map { Encoders.session($0) }),
+                        "orphans": .array(inv.orphans.map { Encoders.session($0) })
+                    ])
+                }
                 let sessions = TmuxModel.shared.sessions
                 return .array(sessions.map { Encoders.enrichedSession($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "tmux.inventory",
-            description: "Get full tmux inventory including orphaned sessions",
-            access: .read,
-            params: [],
-            returns: .custom("Object with 'all' and 'orphans' arrays of TmuxSession"),
-            handler: { _ in
-                let inv = InventoryManager.shared
-                return .object([
-                    "all": .array(inv.allSessions.map { Encoders.session($0) }),
-                    "orphans": .array(inv.orphans.map { Encoders.session($0) })
-                ])
             }
         ))
 
@@ -1221,7 +1220,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.status",
+            method: "solo.status",
             description: "Check whether Focus Mode is active",
             access: .read,
             params: [],
@@ -1234,7 +1233,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.enter",
+            method: "solo.enter",
             description: "Enter Focus Mode for the frontmost window",
             access: .mutate,
             params: [],
@@ -1250,7 +1249,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.exit",
+            method: "solo.exit",
             description: "Exit Focus Mode and restore the original window frame",
             access: .mutate,
             params: [],
@@ -1262,7 +1261,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.toggle",
+            method: "solo.toggle",
             description: "Toggle Focus Mode for the frontmost window",
             access: .mutate,
             params: [],
@@ -1451,7 +1450,7 @@ final class LatticesApi {
         // ── Endpoints: Mutations ────────────────────────────────
 
         api.register(Endpoint(
-            method: "window.resolve",
+            method: "windows.resolve",
             description: "Resolve a window target and optional placement plan without moving anything",
             access: .read,
             params: [
@@ -1490,7 +1489,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "actions.history",
+            method: "history.list",
             description: "Return recent action execution receipts.",
             access: .read,
             params: [
@@ -1510,7 +1509,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "actions.undo",
+            method: "history.undo",
             description: "Restore the latest undoable window placement receipt, or a specific receipt/request group.",
             access: .mutate,
             params: [
@@ -2408,29 +2407,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.tile",
-            description: "Tile a session's terminal window to a position",
-            access: .mutate,
-            params: [
-                Param(name: "session", type: "string", required: true, description: "Tmux session name"),
-                Param(name: "position", type: "string", required: true,
-                      description: "Placement shorthand or grid syntax"),
-            ],
-            returns: .ok,
-            handler: { params in
-                guard case .object(var dict) = params else {
-                    throw RouterError.missingParam("session")
-                }
-                guard dict["session"]?.stringValue != nil else {
-                    throw RouterError.missingParam("session")
-                }
-                dict["placement"] = dict["placement"] ?? dict["position"]
-                return try Self.executeWindowPlacement(params: .object(dict))
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "window.focus",
+            method: "windows.focus",
             description: "Focus a window by wid or session name",
             access: .mutate,
             params: [
@@ -2525,7 +2502,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.place",
+            method: "windows.place",
             description: "Place a window or session using a typed placement spec",
             access: .mutate,
             params: [
@@ -2544,7 +2521,7 @@ final class LatticesApi {
 
         // ── Present Window ────────────────────────────────────────────
         api.register(Endpoint(
-            method: "window.present",
+            method: "windows.present",
             description: "Present a window: move to current space, bring to front, optionally position it",
             access: .mutate,
             params: [
@@ -2616,7 +2593,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.pick.start",
+            method: "windows.pick",
             description: "Open Lattices Hyperspace in read-only single-window grab mode and return the selected window",
             access: .read,
             params: [
@@ -2635,7 +2612,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.move",
+            method: "windows.move",
             description: "Move a window to another display, placement slot, or Space",
             access: .mutate,
             params: [
@@ -2665,7 +2642,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.launch",
+            method: "sessions.launch",
             description: "Launch a project's tmux session",
             access: .mutate,
             params: [Param(name: "path", type: "string", required: true, description: "Absolute project path")],
@@ -2693,7 +2670,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.kill",
+            method: "sessions.kill",
             description: "Kill a tmux session by name",
             access: .mutate,
             params: [Param(name: "name", type: "string", required: true, description: "Session name")],
@@ -2713,7 +2690,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.detach",
+            method: "sessions.detach",
             description: "Detach all clients from a tmux session",
             access: .mutate,
             params: [Param(name: "name", type: "string", required: true, description: "Session name")],
@@ -2728,7 +2705,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.sync",
+            method: "sessions.sync",
             description: "Sync a project's tmux session panes to match config",
             access: .mutate,
             params: [Param(name: "path", type: "string", required: true, description: "Absolute project path")],
@@ -2746,7 +2723,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.restart",
+            method: "sessions.restart",
             description: "Restart a project session or specific pane",
             access: .mutate,
             params: [
@@ -2768,7 +2745,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "layer.switch",
+            method: "layers.switch",
             description: "Switch to a workspace layer by index or name, as ⌘⌥ does (mode focus unless given)",
             access: .mutate,
             params: [
@@ -2786,7 +2763,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "layer.activate",
+            method: "layers.activate",
             description: "Activate a workspace layer using an explicit activation mode",
             access: .mutate,
             params: [
@@ -2801,7 +2778,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "group.launch",
+            method: "groups.launch",
             description: "Launch all sessions in a project group",
             access: .mutate,
             params: [Param(name: "id", type: "string", required: true, description: "Group identifier")],
@@ -2821,7 +2798,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "group.kill",
+            method: "groups.kill",
             description: "Kill all sessions in a project group",
             access: .mutate,
             params: [Param(name: "id", type: "string", required: true, description: "Group identifier")],
@@ -2839,7 +2816,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.list",
+            method: "tabs.list",
             description: "List runtime cross-app tab stacks",
             access: .read,
             params: [],
@@ -2850,7 +2827,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.create",
+            method: "tabs.stack",
             description: "Stack selected or explicit windows as live cross-app tabs",
             access: .mutate,
             params: [
@@ -2878,7 +2855,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.add",
+            method: "tabs.add",
             description: "Add selected or explicit windows to a live tab stack",
             access: .mutate,
             params: [
@@ -2898,7 +2875,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.select",
+            method: "tabs.select",
             description: "Select a tab by member index or window id",
             access: .mutate,
             params: [
@@ -2925,7 +2902,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.layout",
+            method: "tabs.layout",
             description: "Switch a live tab stack between collapsed tabs and an expanded grid",
             access: .mutate,
             params: [
@@ -2951,7 +2928,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.delete",
+            method: "tabs.unstack",
             description: "Remove a runtime tab stack without closing its windows",
             access: .mutate,
             params: [Param(name: "id", type: "string", required: false, description: "Group id; defaults to the active group")],
@@ -3010,7 +2987,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "space.optimize",
+            method: "spaces.optimize",
             description: "Optimize a set of windows using an explicit scope and strategy",
             access: .mutate,
             params: [
@@ -3197,7 +3174,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "intents.execute",
+            method: "intents.run",
             description: "Execute a structured intent (from voice, agent, or script)",
             access: .mutate,
             params: [
