@@ -1,9 +1,8 @@
 // Hyprland over hyprctl and its event socket. hyprctl -j gives structured
 // window, workspace and monitor state; `hyprctl dispatch` mutates it.
 
-import { connect } from "node:net";
-import { join } from "node:path";
 import { run } from "./exec.ts";
+import { initialEventHealth, subscribeEvents } from "./hyprland-events.ts";
 
 export interface HyprClient {
   address: string;
@@ -158,41 +157,16 @@ export function available(): boolean {
   return Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
 }
 
-/**
- * Subscribe to Hyprland's event socket (socket2). Each line is `EVENT>>DATA`.
- * Reconnects if Hyprland restarts. Returns a stop function.
- */
-export function onEvents(listener: (event: string, data: string) => void): () => void {
-  const signature = process.env.HYPRLAND_INSTANCE_SIGNATURE;
-  const runtime = process.env.XDG_RUNTIME_DIR;
-  if (!signature || !runtime) return () => {};
-  const path = join(runtime, "hypr", signature, ".socket2.sock");
-  let stopped = false;
-  let socket: ReturnType<typeof connect> | null = null;
+let eventStream: ReturnType<typeof subscribeEvents> | null = null;
 
-  const open = () => {
-    if (stopped) return;
-    let buffer = "";
-    socket = connect(path);
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk: string) => {
-      buffer += chunk;
-      let newline: number;
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newline);
-        buffer = buffer.slice(newline + 1);
-        const split = line.indexOf(">>");
-        if (split > 0) listener(line.slice(0, split), line.slice(split + 2));
-      }
-    });
-    socket.on("error", () => {});
-    socket.on("close", () => {
-      if (!stopped) setTimeout(open, 1000);
-    });
-  };
-  open();
-  return () => {
-    stopped = true;
-    socket?.destroy();
-  };
+export const getEventStreamHealth = () => eventStream?.health() ?? initialEventHealth();
+
+/** The existing stop-function API, with a ready promise for startup/describe. */
+export function onEvents(
+  listener: (event: string, data: string) => void,
+  options: Parameters<typeof subscribeEvents>[1] = {}
+): (() => void) & { ready: Promise<void> } {
+  eventStream?.stop();
+  eventStream = subscribeEvents(listener, options);
+  return Object.assign(eventStream.stop, { ready: eventStream.ready });
 }

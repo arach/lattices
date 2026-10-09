@@ -180,20 +180,22 @@ export type PointerStep =
 const now = () => Date.now() >>> 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Read the registry without creating a keyboard/pointer or sending input. */
+export async function waylandGlobals(): Promise<string[]> {
+  if (!process.env.WAYLAND_DISPLAY) throw new Error("WAYLAND_DISPLAY is not set");
+  const conn = await WaylandConnection.open();
+  try {
+    await conn.loadGlobals();
+    return conn.globals.map((g) => g.iface);
+  } finally {
+    conn.close();
+  }
+}
+
 /** True when the compositor offers the virtual pointer protocol. */
 export async function virtualPointerAvailable(): Promise<boolean> {
-  if (!process.env.WAYLAND_DISPLAY) return false;
-  try {
-    const conn = await WaylandConnection.open();
-    try {
-      await conn.loadGlobals();
-      return conn.globals.some((g) => g.iface === VIRTUAL_POINTER_MANAGER);
-    } finally {
-      conn.close();
-    }
-  } catch {
-    return false;
-  }
+  try { return (await waylandGlobals()).includes(VIRTUAL_POINTER_MANAGER); }
+  catch { return false; }
 }
 
 /**
