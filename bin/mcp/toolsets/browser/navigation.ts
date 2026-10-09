@@ -162,10 +162,7 @@ export function assessNavigation(input: NavigationInput): NavigationOutcome {
   return { ok: true, requestedUrl, finalUrl, diagnostics: successDiagnostics };
 }
 
-/** macOS clamps window-position (and CDP bounds) back onto a display.
- * Unified headless Chrome keeps rendering/DOM/CDP without a visible window.
- * This is launch-only: do not restart another session's shared browser.
- */
+/** Headed Chrome starts windowless; Action creates its first window on the virtual display. */
 export function actionChromeRenderingArgs(background: boolean): string[] {
-  return background ? ["--headless=new"] : [];
+  return background ? ["--no-startup-window"] : ["about:blank"];
 }

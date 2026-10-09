@@ -1,3 +1,4 @@
+import { HeadedBrowserLayer } from "./layer.ts";
 import { BrowserTimeoutError, CDPSession, deadlineFetchJson, withDeadline, checkDeadline, boundedWait, deadlineSleep, remainingTimeout } from "./transport.ts";
 
 import { mkdir } from "node:fs/promises";
@@ -405,7 +406,7 @@ export const tools = [
           type: "string",
           description: "Action mode only. Action browser identity to use, e.g. agent-browser (blank) or work (seeded from a regular Chrome profile). Created on first use.",
         },
-        background: { type: "boolean", default: true, description: "Action mode only: launch Chrome off-screen using unified headless rendering. Set false for a visible window on the next launch; close an already-running browser first. Regular mode is always visible." },
+        background: { type: "boolean", default: true, description: "Action mode only: launch real headed Chrome on an Action virtual display (requires Action runtime and signed app). Set false to explicitly launch a visible window; close an already-running browser first. Regular mode is always visible." },
         waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 15_000, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Zero fails immediately." },
         newTab: { type: "boolean", default: false, description: "Action mode only: create a separate tab instead of reusing this session's current tab." },
       },
@@ -985,12 +986,26 @@ async function companionStatus(): Promise<JsonObject> {
   };
 }
 
-async function ensureChrome(background = true): Promise<void> {
+const browserLayers = new Map<string, HeadedBrowserLayer>();
+function browserLayer(): HeadedBrowserLayer {
+  let layer = browserLayers.get(profileDir);
+  if (!layer) { layer = new HeadedBrowserLayer(resolveActionRoot(), profileDir); browserLayers.set(profileDir, layer); }
+  return layer;
+}
+
+async function ensureChrome(background?: boolean): Promise<string | undefined> {
   if (await chromeIsReady()) {
+    if (background === true || browserLayer().requiredFor(chromeProcessId())) {
+      const pid = chromeProcessId();
+      if (!pid) throw new Error("Could not identify the Action Chrome process.");
+      await browserLayer().status(pid);
+    }
     claimBrowser();
     return;
   }
 
+  background ??= true;
+  const launchApp = background ? await browserLayer().launchApp(process.env.ACTION_BROWSER_CHROME_APP) : chromeAppName;
   checkDeadline();
   await boundedWait(mkdir(profileDir, { recursive: true }), "Create Chrome profile");
   checkDeadline();
@@ -999,7 +1014,7 @@ async function ensureChrome(background = true): Promise<void> {
     "/usr/bin/open",
     "-n",
     "-a",
-    chromeAppName,
+    launchApp,
   ];
   if (background) {
     openArgs.push("-j", "-g");
@@ -1016,7 +1031,6 @@ async function ensureChrome(background = true): Promise<void> {
     "--disable-renderer-backgrounding",
     `--window-size=${DEFAULT_WINDOW_SIZE.width},${DEFAULT_WINDOW_SIZE.height}`,
     ...actionChromeRenderingArgs(background),
-    "about:blank",
   );
 
   checkDeadline();
@@ -1030,6 +1044,18 @@ async function ensureChrome(background = true): Promise<void> {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     if (await chromeIsReady()) {
       claimBrowser();
+      if (background) {
+        const pid = chromeProcessId();
+        if (!pid) throw new Error("Could not identify the Action Chrome process.");
+        try {
+          await browserLayer().open(pid);
+          return await browserLayer().createWindow(pid, debugPort);
+        } catch (error) {
+          // No fallback window. Stop this newly launched, owned browser on failure.
+          signalProcess(pid, "SIGTERM");
+          throw error;
+        }
+      }
       return;
     }
     await deadlineSleep(250);
@@ -1071,6 +1097,7 @@ async function withTarget<T>(tabId: unknown, work: (session: CDPSession, target:
   const target = await targetFor(tabId);
   const session = await CDPSession.connect(target.webSocketDebuggerUrl!);
   try {
+    if (browserLayer().requiredFor(chromeProcessId())) await browserLayer().verify(chromeProcessId()!, session);
     await applyViewportOverride(session, target.id);
     return await work(session, target);
   } finally {
@@ -1689,10 +1716,12 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       }
       const background = args.background !== false;
       const timeoutMs = Math.max(0, optionalNumber(args.waitMs, 15_000));
-      await ensureChrome(background);
-      let target: ChromeTarget | undefined;
+      const createdTargetId = await ensureChrome(background);
+      let target: ChromeTarget | undefined = createdTargetId
+        ? (await listTargets()).find(candidate => candidate.id === createdTargetId)
+        : undefined;
       let reusedTab = false;
-      if (shouldReuseCurrentTab({
+      if (!target && shouldReuseCurrentTab({
         currentTargetId,
         newTab: args.newTab === true,
       })) {
@@ -1709,6 +1738,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       currentTargetId = target.id;
       const session = await CDPSession.connect(target.webSocketDebuggerUrl);
       try {
+        if (background || browserLayer().requiredFor(chromeProcessId())) await browserLayer().verify(chromeProcessId()!, session);
         await session.call("Page.enable");
         // Install the console recorder before navigating, so it is in place before
         // the new document parses and browser_console can answer for the whole page
@@ -1770,6 +1800,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
             profile: profileName,
             profileDir,
             background,
+            virtualDisplay: browserLayer().requiredFor(chromeProcessId()),
             debugPort,
             session: sessionName,
           },
