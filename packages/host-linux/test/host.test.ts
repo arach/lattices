@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { admit, isLoopback } from "../src/auth.ts";
 import { grimArgs, imageSize } from "../src/capture.ts";
-import { toDisplays, toWindow, widFor } from "../src/desktop.ts";
+import { isVirtual, toDisplays, toWindow, widFor } from "../src/desktop.ts";
+import { monitorRule, nextName, validName } from "../src/displays.ts";
 import { spell, type HyprClient, type HyprMonitor, type HyprWorkspace } from "../src/hyprland.ts";
 import { keysym, parseShortcut, wtypeKeyArgs } from "../src/input.ts";
 import { parsePlacement, rectFor } from "../src/placement.ts";
@@ -263,5 +264,29 @@ describe("event subscriptions", () => {
     expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["windows.changed"]);
     expect(handleSubscription(conn, "events.unsubscribe", {})?.events).toEqual([]);
     expect(handleSubscription(conn, "windows.list", {})).toBeNull();
+  });
+});
+
+describe("virtual displays", () => {
+  test("names default to the next free LATS-n and must be safe to quote", () => {
+    expect(nextName(["HDMI-A-1"])).toBe("LATS-1");
+    expect(nextName(["LATS-1", "LATS-3"])).toBe("LATS-2");
+    expect(validName("LATS-1")).toBe(true);
+    expect(validName('x"; os.exit()')).toBe(false);
+    expect(validName("")).toBe(false);
+  });
+
+  test("the monitor rule is Lua on 0.55+ and a keyword before", () => {
+    const spec = { width: 2880, height: 1800, scale: 2, refresh: 60 };
+    expect(monitorRule("LATS-1", spec, true)).toEqual([
+      "eval",
+      'hl.monitor({ output = "LATS-1", mode = "2880x1800@60", position = "auto", scale = 2 })',
+    ]);
+    expect(monitorRule("LATS-1", spec, false)).toEqual(["keyword", "monitor", "LATS-1,2880x1800@60,auto,2"]);
+  });
+
+  test("headless outputs have no EDID identity", () => {
+    expect(isVirtual({ make: "", model: "", serial: "" })).toBe(true);
+    expect(isVirtual({ make: "Dell Inc.", model: "AW3425DWM", serial: "JWLC444" })).toBe(false);
   });
 });
