@@ -92,7 +92,7 @@ test("public queries, exec, dry runs and apply keep both dispatcher dialects", a
       }, async (path) => {
         process.env.XDG_RUNTIME_DIR = path.split("/hypr/")[0];
         process.env.HYPRLAND_INSTANCE_SIGNATURE = "test";
-        expect(await hyprctlJson("clients")).toEqual([]);
+        expect(await hyprctlJson<unknown[]>("clients")).toEqual([]);
         const ops = [{ op: "focus" as const, address: "0xab" }, { op: "float" as const, address: "0xab" }];
         const commands = await plan(ops);
         expect(received.length).toBe(2);
