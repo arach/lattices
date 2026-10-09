@@ -26,6 +26,81 @@ bun packages/host-linux/src/main.ts --describe  # print capabilities and exit
 
 Or as a systemd user service: see `systemd/lattices-host.service`.
 
+## Omarchy tray
+
+The tray is a small StatusNotifierItem and dbusmenu on the session D-Bus.
+Omarchy's existing Quickshell tray renders it (inside the tray drawer unless
+you pin it). Nothing is installed into `/usr/share/omarchy`, and no shell,
+monitor or lan-mouse configuration is changed.
+
+Install from this checkout, inside the graphical session:
+
+```sh
+bun install --cwd packages/host-linux --ignore-scripts --omit optional
+bun packages/host-linux/scripts/install-tray.ts
+```
+
+The installer renders units into `packages/host-linux/.systemd/`, with literal
+paths to this checkout and the current Bun executable, and links them through
+the systemd user manager. Keep this checkout in place. It enables and starts
+`lattices-tray.service` with `graphical-session.target`, and links
+`lattices-host.service` for the menu's Start/Stop controls. It leaves the host
+disabled at login until you choose to enable it. Existing units from another
+location are refused rather than replaced. Re-run the installer after moving
+the checkout or changing the Bun executable (remove the old unit links first
+if the checkout moved).
+
+For a foreground run:
+
+```sh
+bun packages/host-linux/src/main.ts tray
+```
+
+The menu contains Bring Cursor Home, a Share Pointer checkmark, host and
+companion pairing status, Start/Stop Host, and Quit. The lattice icon is
+monochrome; it becomes coral while pointer sharing is enabled. Quit exits
+only the tray, leaving the host and lan-mouse alone; start it again with
+`systemctl --user start lattices-tray`.
+
+State refreshes when the menu opens, on lan-mouse frontend events, and on
+systemd unit changes. Socket lifecycle notifications reconnect lan-mouse;
+the tray re-registers when Quickshell's tray watcher restarts. There is no
+background polling. Pairing status reads the host's existing trust records.
+If a host is already running outside `lattices-host.service`, Stop Host is
+disabled: quit that foreground host before starting the managed service.
+
+Bring Cursor Home also works without either the tray or the network host:
+
+```sh
+bun packages/host-linux/src/main.ts mouse-home
+lattices-host mouse-home                 # if the package's bin is on PATH
+lats --host archie call mouse.home       # when this host version is running
+```
+
+It lists lan-mouse clients and deactivates each with an 800 ms timeout. Only
+an unreachable daemon whose user service is active gets a restart fallback;
+startup clients are deactivated after that restart as well. A stopped or
+missing lan-mouse stays stopped. Release failures are included in the JSON
+receipt and do not prevent the cursor warp. The target is the focused real
+monitor, otherwise the first real monitor, excluding LATS/headless/virtual,
+disabled and mirrored outputs. Coordinates account for scaling and rotation.
+It tries `hyprctl dispatch movecursor X Y`, with the Lua cursor dispatcher
+fallback required by Hyprland 0.55+.
+
+`dbus-next` is the one direct dependency: it serves the notifier/menu and
+talks to the systemd user manager without a GUI toolkit. The install command
+omits its optional native Unix-FD addon and disables install scripts; these
+interfaces use the JavaScript Unix-socket transport and need no native addon.
+
+Remove the autostart and linked units with:
+
+```sh
+systemctl --user disable --now lattices-tray
+systemctl --user stop lattices-host
+rm ~/.config/systemd/user/lattices-tray.service ~/.config/systemd/user/lattices-host.service
+systemctl --user daemon-reload
+```
+
 ## Who can connect
 
 The host listens only on this machine's tailnet IPv4 address and on loopback.
