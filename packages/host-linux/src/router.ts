@@ -17,6 +17,8 @@ export interface Endpoint {
   method: string;
   description: string;
   access: "read" | "mutate";
+  /** Only loopback connections may call it (e.g. approving a pairing). */
+  loopbackOnly?: boolean;
   /** Capability this endpoint needs; the endpoint is hidden when the host lacks it. */
   capability?: string;
   params?: Param[];
@@ -90,6 +92,11 @@ export class Router {
     this.endpoints.set(endpoint.method, endpoint);
   }
 
+  /** The endpoint a method (or its alias) names, if any. */
+  lookup(method: string): Endpoint | undefined {
+    return this.endpoints.get(METHOD_ALIASES[method] ?? method);
+  }
+
   /** Endpoints this host can serve right now. */
   available(): Endpoint[] {
     const caps = this.capabilities();
@@ -122,6 +129,7 @@ export class Router {
       method: e.method,
       description: e.description,
       access: e.access,
+      ...(e.loopbackOnly ? { loopbackOnly: true } : {}),
       params: (e.params ?? []).map((p) => ({
         name: p.name,
         type: p.type,
