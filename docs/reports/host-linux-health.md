@@ -32,7 +32,7 @@ capabilities also require their desktop dependencies.
 - Missing tool/protocol/compositor tests cover truthful capabilities and hidden
   methods without sending input or changing any real window.
 - Real scratch instance: 127.0.0.1:19499, --no-bridge. Describe reported connected,
-  null lastEventAt (quiet stream), all 12 capabilities usable; 39 methods.
+  null lastEventAt (quiet stream), all 12 capabilities passed dependency probes; 39 methods.
   windows.list and subscription to host.healthChanged succeeded.
 - Removing HYPRLAND_INSTANCE_SIGNATURE, XDG_RUNTIME_DIR and WAYLAND_DISPLAY
   in a separate --describe process reported eventStream unavailable with the

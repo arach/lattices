@@ -51,8 +51,9 @@ test("socket loss, fragmented events and file-driven reconnection update health"
       sockets.add(socket);
       socket.on("close", () => sockets.delete(socket));
       socket.on("error", () => {});
-      socket.write("activewin");
-      setImmediate(() => socket.write("dow>>first\nworkspace>>2\npartial"));
+      const bytes = Buffer.from("activewindow>>日本語\nworkspace>>2\npartial");
+      socket.write(bytes.subarray(0, 16)); // Split inside a UTF-8 character.
+      setImmediate(() => socket.write(bytes.subarray(16)));
     });
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(path, resolve));
@@ -70,14 +71,14 @@ test("socket loss, fragmented events and file-driven reconnection update health"
     await until(() => events.length >= 2);
     expect(stream.health().state).toBe("connected");
     expect(stream.health().lastEventAt).not.toBeNull();
-    expect(events.slice(0, 2)).toEqual(["activewindow:first", "workspace:2"]);
+    expect(events.slice(0, 2)).toEqual(["activewindow:日本語", "workspace:2"]);
     for (const socket of sockets) socket.end();
     await until(() => stream.health().state === "disconnected");
     await new Promise<void>((resolve) => first.close(() => resolve()));
     await start();
     await until(() => events.length >= 4);
     expect(stream.health().state).toBe("connected");
-    expect(events.slice(2, 4)).toEqual(["activewindow:first", "workspace:2"]);
+    expect(events.slice(2, 4)).toEqual(["activewindow:日本語", "workspace:2"]);
     expect(logs.filter((line) => line === "event stream: connected").length).toBe(1);
     stream.stop();
     expect(stream.health().state).toBe("stopped");
