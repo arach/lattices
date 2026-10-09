@@ -12,11 +12,12 @@ import * as hypr from "./hyprland.ts";
 import * as live from "./live.ts";
 import { Router } from "./router.ts";
 import { serve } from "./server.ts";
+import { BRIDGE_PORT, registerBridgeEndpoints, startBridge } from "./bridge/server.ts";
 
 const DEFAULT_PORT = 9399;
 
 function parseArgs(argv: string[]) {
-  const opts = { binds: [] as string[], port: DEFAULT_PORT, allowUsers: [] as string[], allowTags: [] as string[], describe: false, quiet: false };
+  const opts = { binds: [] as string[], port: DEFAULT_PORT, allowUsers: [] as string[], allowTags: [] as string[], describe: false, quiet: false, bridge: true, bridgeBinds: [] as string[], bridgePort: BRIDGE_PORT };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
@@ -29,6 +30,9 @@ function parseArgs(argv: string[]) {
     else if (arg === "--allow-user") opts.allowUsers.push(value());
     else if (arg === "--allow-tag") opts.allowTags.push(value());
     else if (arg === "--describe") opts.describe = true;
+    else if (arg === "--no-bridge") opts.bridge = false;
+    else if (arg === "--bridge-bind") opts.bridgeBinds.push(value());
+    else if (arg === "--bridge-port") opts.bridgePort = Number(value());
     else if (arg === "--quiet") opts.quiet = true;
     else if (arg === "--version") {
       console.log(VERSION);
@@ -36,10 +40,16 @@ function parseArgs(argv: string[]) {
     } else if (arg === "--help" || arg === "-h") {
       console.log(`lattices-host ${VERSION}
 
-Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]... [--describe]
+Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
+                     [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
 
 By default listens on this machine's tailnet IPv4 address and on 127.0.0.1,
-port ${DEFAULT_PORT}, and admits only devices owned by this machine's Tailscale user.`);
+port ${DEFAULT_PORT}, and admits only devices owned by this machine's Tailscale user.
+
+The iOS companion bridge listens on the same addresses, port ${BRIDGE_PORT}. Devices
+pair with an approval on this desktop (or bridge.pairing.approve) and then sign
+and encrypt every request, as with a Mac. --bridge-bind adds addresses, such as
+a LAN IP for a phone without Tailscale.`);
       process.exit(0);
     } else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -79,6 +89,22 @@ async function main() {
     if (!opts.quiet) console.log(`[lattices-host] ${line}`);
   };
   const server = serve({ hosts: binds, port: opts.port, policy, router, log });
+
+  let bridge: ReturnType<typeof startBridge> | null = null;
+  if (opts.bridge) {
+    const bridgeHosts = [...new Set([...binds, ...opts.bridgeBinds])];
+    bridge = startBridge({
+      hosts: bridgeHosts,
+      port: opts.bridgePort,
+      name: self?.hostname,
+      version: VERSION,
+      trackpadAvailable: () => capabilities.has("input.pointer"),
+      hasTmux: () => capabilities.has("sessions.tmux"),
+      log: (line) => log(`bridge: ${line}`),
+    });
+    registerBridgeEndpoints(router, bridge, opts.bridgePort, bridgeHosts);
+    log(`companion bridge on ${bridgeHosts.map((h) => `http://${h}:${opts.bridgePort}`).join(", ")} (fingerprint ${bridge.security.fingerprint})`);
+  }
   clientCount = server.clientCount;
 
   // Hyprland events become the daemon's windows.changed / spaces.changed.
@@ -102,6 +128,7 @@ async function main() {
   const shutdown = () => {
     stopEvents();
     live.stop();
+    bridge?.stop();
     server.stop();
     process.exit(0);
   };

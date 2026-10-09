@@ -2489,6 +2489,12 @@ They have no `id` field — listen for messages with an `event` field.
 | `ocr.scanComplete` | OCR scan cycle finishes |
 | `processes.changed` | Developer processes start or stop |
 
+A connection receives every event until it filters them. `events.subscribe`
+takes `{ "events": ["windows.changed"] }` (or `["*"]` for all again);
+`events.unsubscribe` removes names, or every event when called without a
+list. Both act on the connection they arrive on and return its current
+filter. Linux hosts (LAT-013) push `windows.changed` and `spaces.changed`.
+
 #### `windows.changed`
 
 ```json

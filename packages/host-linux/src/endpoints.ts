@@ -172,6 +172,28 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     },
   });
 
+  // Answered by the server per connection (server.ts); registered here so
+  // api.schema and host.describe list them.
+  const connectionScoped = () => {
+    throw new RouterError("events.* acts on a WebSocket connection; send it over one");
+  };
+  router.register({
+    method: "events.subscribe",
+    description: "Receive only these events on this connection (windows.changed, spaces.changed); `*` for all, the default",
+    access: "read",
+    params: [{ name: "events", type: "[string]", description: "Event names, or [\"*\"]" }],
+    returns: "Object with ok and the connection's events",
+    handler: connectionScoped,
+  });
+  router.register({
+    method: "events.unsubscribe",
+    description: "Stop receiving these events on this connection; no list stops all",
+    access: "read",
+    params: [{ name: "events", type: "[string]", description: "Event names; omit for all" }],
+    returns: "Object with ok and the connection's events",
+    handler: connectionScoped,
+  });
+
   // ── Windows ─────────────────────────────────────────────────────────
   router.register({
     method: "windows.list",

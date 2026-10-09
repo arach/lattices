@@ -20,6 +20,7 @@ import { captureCommand } from "./cli/capture.ts";
 import { layerCommand } from "./cli/layer.ts";
 import { runsCommand } from "./cli/runs.ts";
 import { mapCommand, mapUsage } from "./cli/map.ts";
+import { hostsCommand } from "./cli/hosts.ts";
 import {
   esc,
   sessionExists,
@@ -3282,6 +3283,9 @@ switch (command) {
     break;
   case "call":
     await callCommand(args[1], ...args.slice(2));
+    break;
+  case "hosts":
+    await hostsCommand(args.slice(1));
     break;
   case "layer":
   case "layers":

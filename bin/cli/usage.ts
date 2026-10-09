@@ -110,6 +110,8 @@ Usage:
   lats hud publish [id|manifest]  Publish a registered/static HUD actor
   lats assistant plan <t> Preview the TS assistant planner
   lats call <method> [p]  Raw daemon API call (params as JSON)
+  lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
+  lats --host <name> ...  Send daemon calls to another host
   lats scan               Show text from all visible windows
   lats scan --full        Full text dump
   lats scan search <q>    Full-text search across scanned windows

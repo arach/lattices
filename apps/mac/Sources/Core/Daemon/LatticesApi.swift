@@ -3262,6 +3262,7 @@ final class LatticesApi {
 
         // Speaking: forwarded to the Voice helper by DaemonServer.
         VoiceHelperRouting.registerSchema(on: api)
+        EventSubscriptions.registerSchema(on: api)
 
         api.register(Endpoint(
             method: "voice.simulate",
