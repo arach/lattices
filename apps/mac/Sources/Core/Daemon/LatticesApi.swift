@@ -3710,6 +3710,7 @@ final class LatticesApi {
             }
         ))
 
+        DisplayGather.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
 
         api.register(Endpoint(

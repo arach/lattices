@@ -47,6 +47,7 @@ enum HotkeyBootstrap {
 
         registerLayerHotkeys(store: store)
         LayerChordMonitor.shared.start()
+        DisplayGather.shared.start()
         registerTilingHotkeys(store: store)
     }
 
