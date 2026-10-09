@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
+import { withDeadline, deadlineSleep } from "./transport.ts";
 
 import {
+  waitForInteractionTarget,
   NETWORK_IDLE_QUIET_MS,
   NetworkIdleTracker,
   parseSettleRequest,
@@ -79,4 +81,44 @@ test("a request finishing that we never saw start does not strand the wait", () 
   tracker.settled("unknown", 100);
   expect(tracker.pending).toBe(0);
   expect(tracker.isIdle(NETWORK_IDLE_QUIET_MS)).toBe(true);
+});
+
+test("interaction polls for delayed click and fill targets and acts only once", async () => {
+  for (const value of [{ text: "Clicked" }, { valueLength: 5 }]) {
+    let attempts = 0;
+    const result = await withDeadline(500, "interaction", () => waitForInteractionTarget(async () => {
+      attempts++;
+      return attempts < 3 ? null : value;
+    }, 500, "No target matched."));
+    expect(result).toEqual(value);
+    expect(attempts).toBe(3);
+  }
+});
+
+test("missing interaction targets preserve their diagnostic within the shared deadline", async () => {
+  for (const message of ["No clickable element matched.", "No field matched the selector."]) {
+    let attempts = 0;
+    const start = performance.now();
+    await expect(withDeadline(200, "interaction", async () => {
+      await deadlineSleep(60); // startup already spent part of the total budget
+      return waitForInteractionTarget(async () => { attempts++; return null; }, 200, message);
+    })).rejects.toThrow(message);
+    expect(performance.now() - start).toBeLessThan(240);
+    const stopped = attempts;
+    await Bun.sleep(80);
+    expect(attempts).toBe(stopped);
+  }
+});
+
+test("interaction does not retry exceptions or start with zero budget", async () => {
+  let attempts = 0;
+  await expect(withDeadline(200, "interaction", () => waitForInteractionTarget(async () => {
+    attempts++;
+    throw new Error("Matched element is not editable.");
+  }, 200, "No field matched the selector."))).rejects.toThrow("not editable");
+  expect(attempts).toBe(1);
+  await expect(withDeadline(0, "interaction", () => waitForInteractionTarget(async () => {
+    attempts++; return {};
+  }, 0, "Missing"))).rejects.toThrow("timed out");
+  expect(attempts).toBe(1);
 });

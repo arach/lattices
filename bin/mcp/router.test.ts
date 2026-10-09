@@ -136,3 +136,33 @@ test("a screenshot can name one element instead of the whole viewport", async ()
   expect(properties.clip).toBeDefined();
   expect(properties.padding).toBeDefined();
 });
+
+test("page exceptions reach the MCP caller with their real description and fallback text", async () => {
+  const { evaluateValue } = await import("./toolsets/browser/index.ts");
+  for (const [details, message] of [
+    [{ text: "Uncaught", exception: { description: "Error: Matched element is not editable.\n    at <anonymous>:1" } }, "Error: Matched element is not editable."],
+    [{ text: "Fallback diagnostic" }, "Fallback diagnostic"],
+    [{}, "Page evaluation failed."],
+  ] as const) {
+    const toolset = fakeToolset("page", ["page_evaluate"]);
+    toolset.callTool = async () => {
+      await evaluateValue({ call: async () => ({ exceptionDetails: details }) }, "throw new Error()");
+      throw new Error("Expected evaluation to throw");
+    };
+    const router = new McpRouter([toolset], "0");
+    const response = await router.handleRequest({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "page_evaluate", arguments: {} } }) as JsonObject;
+    const result = response.result as JsonObject;
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as JsonObject).error).toContain(message);
+  }
+});
+
+test("default Action launch renders off-screen; visible launches remain opt-in", async () => {
+  const { actionChromeRenderingArgs } = await import("./toolsets/browser/navigation.ts");
+  const [browser] = await loadToolsets(["browser"]);
+  const open = browser!.tools.find(tool => tool.name === "browser_open")!;
+  const background = (open.inputSchema.properties as JsonObject).background as JsonObject;
+  expect(background.default).toBe(true);
+  expect(actionChromeRenderingArgs(background.default as boolean)).toEqual(["--headless=new"]);
+  expect(actionChromeRenderingArgs(false)).toEqual([]);
+});

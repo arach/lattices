@@ -16,6 +16,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  actionChromeRenderingArgs,
   assessNavigation,
   browserOpenMode,
   navigationIsReady,
@@ -46,6 +47,7 @@ import {
   NETWORK_IDLE_QUIET_MS,
   NetworkIdleTracker,
   SETTLE_MODES,
+  waitForInteractionTarget,
   parseSettleRequest,
   parseWaitMs,
   POSTCONDITION_MARGIN_MS,
@@ -403,7 +405,7 @@ export const tools = [
           type: "string",
           description: "Action mode only. Action browser identity to use, e.g. agent-browser (blank) or work (seeded from a regular Chrome profile). Created on first use.",
         },
-        background: { type: "boolean", default: true, description: "Action mode only: keep Chrome hidden in the background. Regular mode is always visible." },
+        background: { type: "boolean", default: true, description: "Action mode only: launch Chrome off-screen using unified headless rendering. Set false for a visible window on the next launch; close an already-running browser first. Regular mode is always visible." },
         waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 15_000, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Zero fails immediately." },
         newTab: { type: "boolean", default: false, description: "Action mode only: create a separate tab instead of reusing this session's current tab." },
       },
@@ -1013,6 +1015,7 @@ async function ensureChrome(background = true): Promise<void> {
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
     `--window-size=${DEFAULT_WINDOW_SIZE.width},${DEFAULT_WINDOW_SIZE.height}`,
+    ...actionChromeRenderingArgs(background),
     "about:blank",
   );
 
@@ -1487,7 +1490,7 @@ async function currentLoaderId(session: CDPSession): Promise<string | undefined>
   }
 }
 
-async function evaluateValue(session: CDPSession, expression: string): Promise<unknown> {
+export async function evaluateValue(session: Pick<CDPSession, "call">, expression: string): Promise<unknown> {
   const response = await session.call("Runtime.evaluate", {
     expression,
     awaitPromise: true,
@@ -1496,7 +1499,7 @@ async function evaluateValue(session: CDPSession, expression: string): Promise<u
   });
   const exception = response.exceptionDetails as JsonObject | undefined;
   if (exception) {
-    throw new Error(String(exception.text ?? "Page evaluation failed."));
+    throw new Error(String((exception.exception as JsonObject | undefined)?.description ?? exception.text ?? "Page evaluation failed."));
   }
   return (response.result as JsonObject | undefined)?.value;
 }
@@ -1879,12 +1882,14 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           const element = selector
             ? document.querySelector(selector)
             : candidates.find((candidate) => (candidate.innerText || candidate.textContent || candidate.getAttribute("aria-label") || "").trim().toLowerCase().includes(text));
-          if (!(element instanceof HTMLElement)) throw new Error("No clickable element matched.");
+          if (!(element instanceof HTMLElement)) return null;
           element.scrollIntoView({ block: "center", inline: "center" });
           element.click();
           return { selector: selector || element.tagName.toLowerCase(), text: (element.innerText || element.textContent || "").trim().slice(0, 300) };
         })()`;
-        const result = await evaluateValue(session, expression) as JsonObject;
+        const result = await waitForInteractionTarget(
+          () => evaluateValue(session, expression), settle.waitMs, "No clickable element matched.",
+        ) as JsonObject;
         const settled = await settleInteraction(session, settle, "browser_click");
         return textResult({ ok: true, tabId: target.id, result, settle: settled });
       });
@@ -1901,7 +1906,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
         const value = stringValue(args.value, "value");
         const expression = `(() => {
           const element = document.querySelector(${JSON.stringify(selector)});
-          if (!(element instanceof HTMLElement)) throw new Error("No field matched the selector.");
+          if (!(element instanceof HTMLElement)) return null;
           if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
             const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
             setter ? setter.call(element, ${JSON.stringify(value)}) : element.value = ${JSON.stringify(value)};
@@ -1915,7 +1920,9 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           element.dispatchEvent(new Event("change", { bubbles: true }));
           return { selector: ${JSON.stringify(selector)}, valueLength: ${value.length} };
         })()`;
-        const result = await evaluateValue(session, expression) as JsonObject;
+        const result = await waitForInteractionTarget(
+          () => evaluateValue(session, expression), settle.waitMs, "No field matched the selector.",
+        ) as JsonObject;
         const settled = await settleInteraction(session, settle, "browser_fill");
         return textResult({ ok: true, tabId: target.id, result, settle: settled });
       });
