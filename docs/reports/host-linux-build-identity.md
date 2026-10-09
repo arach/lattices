@@ -21,8 +21,8 @@ Checks:
   Git metadata; frozen startup identity and both RPC responses verified.
 - Bundle test runs outside a checkout with no git on PATH and returns the
   baked version/hash/dirty value.
-- Actual host bundle built in /tmp and --describe verified the embedded
-  identity. This did not start a server, bridge, VNC, capture or input.
+- Actual host bundle and standalone compiled binary built in /tmp; their
+  --describe responses returned the same embedded identity without git. This did not start a server, bridge, VNC, capture or input.
 
 Running :9399 remains unchanged. A pre-metadata process remains unknown until
 a safe deployment/restart, after the Mac pairing implementation is ready.
