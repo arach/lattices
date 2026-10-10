@@ -213,7 +213,7 @@ Each client has a scope, matching LAT-014's grants:
 | --- | --- | --- |
 | `read` | `access: "read"` methods (listed in `api.schema`) | always |
 | `act` | focus, place, move, displays, sessions | by default |
-| `drive` | `computer.*` input, `capture.live` (VNC takes input), and `apps.open` (arbitrary command) | only when asked for (`--drive`, or `scope: "drive"`) |
+| `drive` | `computer.*` input, `capture.live` (VNC takes input), `apps.open` (arbitrary command), and `mouse.share` / `mouse.keep` | only when asked for (`--drive`, or `scope: "drive"`) |
 
 Each scope includes the ones above it. Clients that paired with `mutate`
 before the split are `act`, and a request for `mutate` means `act`. Asking
