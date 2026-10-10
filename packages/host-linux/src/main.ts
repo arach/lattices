@@ -119,7 +119,7 @@ async function main() {
   if (policy.allowUsers.length === 0 && self) policy.allowUsers.push(self.userId);
 
   const primary = binds.find((b) => b !== "127.0.0.1") ?? binds[0];
-  registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount() });
+  registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount(), emit: (event, data) => emit(event, data) });
 
   if (opts.describe) {
     console.log(JSON.stringify(await router.dispatch("host.describe", {}), null, 2));

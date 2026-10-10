@@ -1,6 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
+import { registerLayerEndpoints } from "./layers.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
@@ -25,6 +26,7 @@ export interface HostContext {
   tailnetName?: string;
   startedAt: number;
   clientCount: () => number;
+  emit?: (event: string, data: unknown) => void;
 }
 
 const asJson = (value: unknown) => value as Json;
@@ -103,6 +105,7 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
 }
 
 export function registerEndpoints(router: Router, ctx: HostContext, mouseDeps?: MouseDependencies) {
+  registerLayerEndpoints(router, ctx.emit);
   router.register({
     method: "mouse.share",
     description: "Share the pointer for a trial (five minutes by default)",

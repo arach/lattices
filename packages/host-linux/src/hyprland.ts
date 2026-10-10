@@ -72,7 +72,7 @@ export type Op =
   | { op: "float"; address: string }
   | { op: "resize"; address: string; w: number; h: number }
   | { op: "move"; address: string; x: number; y: number }
-  | { op: "toWorkspace"; address: string; workspace: number }
+  | { op: "toWorkspace"; address: string; workspace: number | string }
   | { op: "unfullscreen"; address: string }
   | { op: "close"; address: string }
   | { op: "focusWorkspace"; workspace: number }
@@ -80,6 +80,7 @@ export type Op =
 
 const luaString = (value: string) => JSON.stringify(value);
 const int = (n: number) => String(Math.round(n));
+const workspace = (value: number | string, lua: boolean) => typeof value === "number" ? int(value) : lua ? luaString(value) : value;
 
 export function spell(op: Op, lua: boolean): string {
   if (op.op === "focusWorkspace") return lua ? `hl.dsp.focus({ workspace = ${int(op.workspace)} })` : `workspace ${int(op.workspace)}`;
@@ -97,7 +98,7 @@ export function spell(op: Op, lua: boolean): string {
       case "move":
         return `hl.dsp.window.move({ x = ${int(op.x)}, y = ${int(op.y)}, ${w} })`;
       case "toWorkspace":
-        return `hl.dsp.window.move({ workspace = ${int(op.workspace)}, follow = false, ${w} })`;
+        return `hl.dsp.window.move({ workspace = ${workspace(op.workspace, true)}, follow = false, ${w} })`;
       case "unfullscreen":
         return `hl.dsp.window.fullscreen({ action = "unset", ${w} })`;
       case "close":
@@ -114,7 +115,7 @@ export function spell(op: Op, lua: boolean): string {
     case "move":
       return `movewindowpixel exact ${int(op.x)} ${int(op.y)},${win}`;
     case "toWorkspace":
-      return `movetoworkspacesilent ${int(op.workspace)},${win}`;
+      return `movetoworkspacesilent ${workspace(op.workspace, false)},${win}`;
     case "unfullscreen":
       return `fullscreenstate 0 0,${win}`;
     case "close":
