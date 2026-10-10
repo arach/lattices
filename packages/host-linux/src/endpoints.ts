@@ -12,7 +12,7 @@ import { sep } from "node:path";
 import { parsePlacement, type Rect } from "./placement.ts";
 import { Router, RouterError, bool, num, requireStr, str, type Json, type Params } from "./router.ts";
 import * as tmux from "./tmux.ts";
-import { capabilities, capabilityHealth } from "./host-capabilities.ts";
+import { capabilities, capabilityHealth, refreshCapabilities } from "./host-capabilities.ts";
 export { capabilities, refreshCapabilities } from "./host-capabilities.ts";
 
 export const VERSION = "0.1.0";
@@ -136,6 +136,9 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     access: "read",
     returns: "Object with platform, hostname, displays, capabilities, methods",
     handler: async () => {
+      if (!capabilities.has("spaces.read") && capabilityHealth["spaces.read"]?.available === false && hypr.available()) {
+        await refreshCapabilities();
+      }
       let displays: desktop.Display[] = [];
       if (capabilities.has("spaces.read")) {
         try { displays = (await desktop.snapshot()).displays; }
