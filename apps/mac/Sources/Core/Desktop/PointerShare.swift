@@ -9,6 +9,8 @@ import AppKit
 final class PointerShare {
     static let shared = PointerShare()
 
+    static let changed = Notification.Name("PointerShare.changed")
+
     static let trial: TimeInterval = 300
     static let watchEvery: TimeInterval = 15
     /// Unanswered checks in a row before the watchdog reverts.
@@ -64,6 +66,7 @@ final class PointerShare {
                     self.startedDaemon = self.startedDaemon || started
                     let until = Date().addingTimeInterval(duration)
                     self.arm(until: until)
+                    NotificationCenter.default.post(name: Self.changed, object: nil)
                     DiagnosticLog.shared.info("Pointer shared with \(hosts.joined(separator: ", ")) until \(Self.clock(until)) unless kept")
                     done?(.success(until))
                 }
@@ -76,7 +79,23 @@ final class PointerShare {
         dispatchPrecondition(condition: .onQueue(.main))
         guard until != nil else { return }
         disarm()
+        NotificationCenter.default.post(name: Self.changed, object: nil)
         DiagnosticLog.shared.success("Pointer sharing kept")
+    }
+
+    /// Stops only lan-mouse, without ending a visiting-cursor session or warping.
+    func stop(done: (() -> Void)? = nil) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        disarm()
+        let ours = takeStartedDaemon()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = PointerHome.release()
+            if ours && !result.stoppedDaemon { _ = PointerHome.stopDaemon() }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Self.changed, object: nil)
+                done?()
+            }
+        }
     }
 
     /// Hands back whether Lattices started the daemon, and forgets it.

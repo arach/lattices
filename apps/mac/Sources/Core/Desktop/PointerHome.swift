@@ -61,6 +61,7 @@ enum PointerHome {
                 if !result.deactivated.isEmpty { line += ", sharing off for \(result.deactivated.joined(separator: ", "))" }
                 if result.stoppedDaemon { line += ours ? ", lan-mouse stopped" : ", lan-mouse stopped (no answer)" }
                 DiagnosticLog.shared.info(line)
+                NotificationCenter.default.post(name: PointerShare.changed, object: nil)
                 completion?(result)
             }
         }

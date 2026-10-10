@@ -112,15 +112,62 @@ final class VisitTrust {
         hosts.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         let removed = hosts.count != before
         lock.unlock()
-        if removed { persist() }
+        if removed { persist(); notifyChange() }
         return removed
+    }
+
+    /// Moves a pairing without changing its keys. Occupied sides swap.
+    static func assigningSide(_ side: Side, to name: String, in hosts: [Host]) throws -> [Host] {
+        guard let index = hosts.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+            throw Failure.bad("No paired host named \(name)")
+        }
+        var result = hosts
+        let old = result[index].side
+        if let occupant = result.firstIndex(where: { $0.side == side }), occupant != index {
+            result[occupant].side = old
+        }
+        result[index].side = side
+        return result
+    }
+
+    func setSide(_ name: String, _ side: Side) throws {
+        lock.lock()
+        do { hosts = try Self.assigningSide(side, to: name, in: hosts) }
+        catch { lock.unlock(); throw error }
+        lock.unlock()
+        persist()
+        notifyChange()
+    }
+
+    private func notifyChange() {
+        DispatchQueue.main.async {
+            let status = VisitController.shared.status()
+            if let visiting = status.visiting,
+               self.host(named: visiting)?.side != status.side {
+                VisitController.shared.end(because: "arrangement changed")
+            }
+            VisitController.shared.refreshLayout()
+            NotificationCenter.default.post(name: VisitController.changed, object: nil)
+        }
+    }
+
+    static let healthPath = "health"
+
+    static func bridgeURL(_ address: String) -> URL? {
+        guard let parts = URLComponents(string: "http://\(address)"),
+              parts.host?.isEmpty == false, parts.user == nil, parts.password == nil,
+              parts.path.isEmpty, parts.query == nil, parts.fragment == nil else { return nil }
+        return parts.url
     }
 
     /// Pairs with a host's bridge. Blocks until someone approves or denies it
     /// on the host (the bridge waits up to two minutes); call off main.
     func pair(name: String, address: String, side: Side) -> Result<Host, Failure> {
-        guard let base = URL(string: "http://\(address)") else { return .failure(.bad("Bad address \(address)")) }
-        var health = URLRequest(url: base.appendingPathComponent("health"))
+        guard let base = Self.bridgeURL(address) else { return .failure(.bad("Bad address \(address)")) }
+        if let occupant = host(on: side), occupant.name.caseInsensitiveCompare(name) != .orderedSame {
+            return .failure(.bad("The \(side.rawValue) side is occupied. Move its machine first."))
+        }
+        var health = URLRequest(url: base.appendingPathComponent(Self.healthPath))
         health.timeoutInterval = 4
         guard case .success(let (data, _)) = Self.fetch(health),
               let info = try? JSONDecoder().decode(Health.self, from: data) else {
@@ -157,10 +204,16 @@ final class VisitTrust {
             pairedAt: self.host(named: name)?.pairedAt ?? Date()
         )
         lock.lock()
-        hosts.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame || $0.side == side }
+        // A new pairing must never silently delete the occupant's trust.
+        if hosts.contains(where: { $0.side == side && $0.name.caseInsensitiveCompare(name) != .orderedSame }) {
+            lock.unlock()
+            return .failure(.bad("The \(side.rawValue) side is occupied. Move its machine first."))
+        }
+        hosts.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         hosts.append(host)
         lock.unlock()
         persist()
+        notifyChange()
         DiagnosticLog.shared.success("Visit: paired with \(name) (\(response.bridgeFingerprint)) on the \(side.rawValue)")
         return .success(host)
     }

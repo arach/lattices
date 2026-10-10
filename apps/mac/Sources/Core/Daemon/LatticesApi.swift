@@ -3635,6 +3635,18 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "mouse.stop",
+            description: "Stop lan-mouse sharing without ending a visiting-cursor session or moving the cursor",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                DispatchQueue.main.async { PointerShare.shared.stop() }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "mouse.status",
             description: "lan-mouse's clients and whether the pointer is shared, plus a mouse.share trial's deadline",
             access: .read,
@@ -3694,6 +3706,45 @@ final class LatticesApi {
                     DispatchQueue.main.async { VisitController.shared.refreshLayout() }
                 }
                 return .object(["pairing": .string(name), "code": .string(VisitTrust.shared.fingerprint)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.forget",
+            description: "Forget a visit pairing and end any visit to it",
+            access: .mutate,
+            params: [Param(name: "host", type: "string", required: true, description: "Paired host name")],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                let work = { () -> Bool in
+                    if VisitController.shared.status().visiting?.caseInsensitiveCompare(name) == .orderedSame {
+                        VisitController.shared.end(because: "forgotten")
+                    }
+                    return VisitTrust.shared.forget(name)
+                }
+                let removed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["ok": .bool(removed)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.side",
+            description: "Move a paired machine to a side; occupied sides swap without losing keys",
+            access: .mutate,
+            params: [
+                Param(name: "host", type: "string", required: true, description: "Paired host name"),
+                Param(name: "side", type: "string", required: true, description: "left, right, top or bottom"),
+            ],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                guard let raw = params?["side"]?.stringValue, let side = VisitTrust.Side(rawValue: raw) else {
+                    throw RouterError.custom("side: expected left, right, top or bottom")
+                }
+                do { try VisitTrust.shared.setSide(name, side) }
+                catch { throw RouterError.custom(String(describing: error)) }
+                return .object(["ok": .bool(true)])
             }
         ))
 

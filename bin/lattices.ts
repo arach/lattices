@@ -879,6 +879,9 @@ async function mouseCommand(sub?: string, rest: string[] = []): Promise<void> {
       const result = await daemonCall("mouse.home") as any;
       const off = result.deactivated?.length ? `, sharing off for ${result.deactivated.join(", ")}` : "";
       console.log(`🏠 Pointer home${off}${result.stoppedDaemon ? ", lan-mouse stopped" : ""}`);
+    } else if (sub === "stop") {
+      await daemonCall("mouse.stop");
+      console.log("Stopping lan-mouse sharing");
     } else if (sub === "share") {
       const at = rest.indexOf("--for");
       const params = at >= 0 && rest[at + 1] ? { for: rest[at + 1] } : {};
@@ -913,6 +916,13 @@ async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
       if (!host) return console.log("Usage: lats visit pair <host> [host:port] [left|right|top|bottom]");
       const result = await daemonCall("visit.pair", { host, ...(address ? { address } : {}), ...(side ? { side } : {}) }) as any;
       console.log(`🔐 Approve ${result.code} on ${result.pairing}, then: lats visit status`);
+    } else if (sub === "forget" || sub === "side") {
+      const [host, side] = rest;
+      if (!host || (sub === "side" && !["left", "right", "top", "bottom"].includes(side))) {
+        return console.log(`Usage: lats visit ${sub} <host>${sub === "side" ? " <left|right|top|bottom>" : ""}`);
+      }
+      const result = await daemonCall(`visit.${sub}`, { host, ...(sub === "side" ? { side } : {}) }) as any;
+      console.log(result.ok ? (sub === "side" ? `${host}: ${side}` : `Forgot ${host}`) : `No paired host named ${host}`);
     } else if (sub === "on" || sub === "off") {
       const result = await daemonCall("visit.arm", { on: sub === "on" }) as any;
       console.log(result.armed ? "🖱️ Visiting armed: push past an edge facing a paired host" : "Visiting off");
