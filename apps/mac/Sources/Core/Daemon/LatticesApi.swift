@@ -3562,25 +3562,262 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "mouse.home",
-            description: "Turn off lan-mouse sharing (stopping a daemon that doesn't answer) and warp the cursor to the centre of the main display",
+            description: "End the current visit and return the cursor to the centre of this Mac's main display",
             access: .mutate,
             params: [],
             returns: .ok,
             handler: { _ in
-                if Thread.isMainThread {
-                    PointerHome.bringHome()
+                PointerHome.bringHome()
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "long.show",
+            description: "Show or hide Long, Lattices' desktop character; a click on him opens the controls",
+            access: .mutate,
+            params: [Param(name: "on", type: "bool", required: false, description: "Default true")],
+            returns: .custom("Object with 'shown'"),
+            handler: { params in
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in
+                    MainActor.assumeIsolated {
+                        on ? DesktopLong.shared.show() : DesktopLong.shared.hide()
+                        return DesktopLong.shared.shown
+                    }
+                }
+                let shown = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["shown": .bool(shown)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.pair",
+            description: "Pair this Mac with a host's companion bridge so it can visit it (docs/visit.md). Returns at once with the code to check on the host; approve it there within two minutes",
+            access: .mutate,
+            params: [
+                Param(name: "host", type: "string", required: true, description: "Name, e.g. archie"),
+                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:5287)"),
+                Param(name: "side", type: "string", required: false, description: "Side of this Mac's screens the host sits on: left, right, top, bottom (default right)"),
+            ],
+            returns: .custom("Object with 'pairing' and 'code'"),
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                let address = params?["address"]?.stringValue ?? "\(name):5287"
+                guard let side = VisitTrust.Side(rawValue: params?["side"]?.stringValue ?? "right") else {
+                    throw RouterError.custom("side: expected left, right, top or bottom")
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if case .failure(let error) = VisitTrust.shared.pair(name: name, address: address, side: side) {
+                        DiagnosticLog.shared.warn("Visit: pairing with \(name) failed: \(error)")
+                    }
+                    DispatchQueue.main.async { VisitController.shared.refreshLayout() }
+                }
+                return .object(["pairing": .string(name), "code": .string(VisitTrust.shared.fingerprint)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.forget",
+            description: "Forget a visit pairing and end any visit to it",
+            access: .mutate,
+            params: [Param(name: "host", type: "string", required: true, description: "Paired host name")],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                let work = { () -> Bool in
+                    if VisitController.shared.status().visiting?.caseInsensitiveCompare(name) == .orderedSame {
+                        VisitController.shared.end(because: "forgotten")
+                    }
+                    return VisitTrust.shared.forget(name)
+                }
+                let removed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["ok": .bool(removed)])
+            }
+        ))
+
+        for action in ["keep", "revert"] {
+            api.register(Endpoint(
+                method: "visit.arrangement.\(action)", description: "\(action.capitalized) the pending display trial",
+                access: .mutate, params: [], returns: .ok,
+                handler: { _ in
+                    let work: @MainActor () -> Void = {
+                        if action == "keep" { DisplayArrangement.shared.keep() } else { DisplayArrangement.shared.revert() }
+                    }
+                    if Thread.isMainThread { MainActor.assumeIsolated { work() } }
+                    else { DispatchQueue.main.sync { work() } }
                     return .object(["ok": .bool(true)])
                 }
-                let done = DispatchSemaphore(value: 0)
-                var outcome = PointerHome.Result()
-                PointerHome.bringHome { outcome = $0; done.signal() }
-                _ = done.wait(timeout: .now() + PointerHome.timeout * 3)
+            ))
+        }
+
+        api.register(Endpoint(
+            method: "visit.main",
+            description: "Make a display the main one (the menu bar's), keeping the arrangement; reverts after 15 s unless visit.arrangement.keep",
+            access: .mutate,
+            params: [Param(name: "screen", type: "int|string", required: true, description: "Display number or name fragment")],
+            returns: .ok,
+            handler: { params in
+                let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
+                let work: @MainActor () throws -> Void = { try DisplayArrangement.shared.makeMain(number) }
+                if Thread.isMainThread { try MainActor.assumeIsolated { try work() } }
+                else { try DispatchQueue.main.sync { try MainActor.assumeIsolated { try work() } } }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.place",
+            description: "Place a machine in global display coordinates",
+            access: .mutate,
+            params: [Param(name: "name", type: "string", required: true, description: "Machine name"),
+                     Param(name: "x", type: "number", required: true, description: "Global X"),
+                     Param(name: "y", type: "number", required: true, description: "Global Y")],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["name"]?.stringValue, !name.isEmpty,
+                      let x = params?["x"]?.numericDouble, let y = params?["y"]?.numericDouble,
+                      x.isFinite, y.isFinite else { throw RouterError.custom("name, x and y are required") }
+                let old = VisitTrust.shared.host(named: name)?.placement ?? MachineArrangementStore.placement(name)
+                let monitors = MachineArrangementStore.monitors(name)
+                let size = monitors.isEmpty ? (old?.rect.size ?? CGSize(width: 1920, height: 1080)) : monitors.reduce(CGRect.null) { $0.union($1.frame.rect) }.size
+                try MachineArrangementStore.place(name, CGRect(x: x, y: y, width: size.width, height: size.height))
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        api.register(Endpoint(
+            method: "hosts.add", description: "Add a Lattices host to hosts.json", access: .mutate,
+            params: [Param(name: "name", type: "string", required: true, description: "Name"),
+                     Param(name: "address", type: "string", required: true, description: "Hostname or IP"),
+                     Param(name: "port", type: "int", required: false, description: "Default 9399")],
+            returns: .ok, handler: { params in
+                guard let name = params?["name"]?.stringValue, let address = params?["address"]?.stringValue,
+                      let port = UInt16(exactly: params?["port"]?.intValue ?? 9399) else { throw RouterError.custom("name, address and valid port required") }
+                try MachineArrangementStore.addHost(name: name, address: address, port: port)
+                DispatchQueue.main.async { RemoteHostsModel.shared.reload() }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        #if LATTICES_BUNDLE
+        api.register(Endpoint(
+            method: "visit.host", description: "Enable or disable receiving visits on this Mac", access: .mutate,
+            params: [Param(name: "on", type: "bool", required: true, description: "Allow visits")], returns: .ok,
+            handler: { params in
+                guard let on = params?["on"]?.boolValue else { throw RouterError.missingParam("on") }
+                MacVisitHost.setEnabled(on)
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        #endif
+
+        api.register(Endpoint(
+            method: "visit.side",
+            description: "Place a paired machine beside the outermost display on a side",
+            access: .mutate,
+            params: [
+                Param(name: "host", type: "string", required: true, description: "Paired host name"),
+                Param(name: "side", type: "string", required: true, description: "left, right, top or bottom"),
+            ],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                guard let raw = params?["side"]?.stringValue, let side = VisitTrust.Side(rawValue: raw) else {
+                    throw RouterError.custom("side: expected left, right, top or bottom")
+                }
+                do { try VisitTrust.shared.setSide(name, side) }
+                catch { throw RouterError.custom(String(describing: error)) }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.status",
+            description: "Paired hosts, whether crossing an edge into them is armed, and the host being visited",
+            access: .read,
+            params: [],
+            returns: .custom("Object with 'armed', 'visiting', 'code' and 'hosts' (name, address, side, fingerprint)"),
+            handler: { _ in
+                let status = Thread.isMainThread ? VisitController.shared.status() : DispatchQueue.main.sync { VisitController.shared.status() }
+                let screenFrames = Thread.isMainThread ? VisitController.screens().map(\.frame) : DispatchQueue.main.sync { VisitController.screens().map(\.frame) }
                 return .object([
-                    "ok": .bool(true),
-                    "lanMouse": .bool(outcome.lanMouse),
-                    "deactivated": .array(outcome.deactivated.map { .string($0) }),
-                    "stoppedDaemon": .bool(outcome.stoppedDaemon),
+                    "armed": .bool(status.armed),
+                    "visiting": status.visiting.map { .string($0) } ?? .null,
+                    "code": .string(VisitTrust.shared.fingerprint),
+                    "placements": .object(Dictionary(uniqueKeysWithValues: RemoteHostsModel.configuredHosts().compactMap { host -> (String, JSON)? in
+                        guard let p = MachineArrangementStore.placement(host.name) else { return nil }
+                        return (host.name, .object(["x": .double(p.x), "y": .double(p.y), "width": .double(p.width), "height": .double(p.height)]))
+                    })),
+                    "hosts": .array(status.hosts.map {
+                        .object(["name": .string($0.name), "address": .string($0.address), "side": MachineArrangementStore.side(for: $0, displays: screenFrames).map { .string($0.rawValue) } ?? .null, "fingerprint": .string($0.bridgeFingerprint),
+                                 "placement": $0.placement.map { .object(["x": .double($0.x), "y": .double($0.y), "width": .double($0.width), "height": .double($0.height)]) } ?? .null])
+                    }),
                 ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.arm",
+            description: "Arm or disarm visiting: while armed, pushing the pointer past an edge that faces a paired host starts a visit",
+            access: .mutate,
+            params: [Param(name: "on", type: "bool", required: false, description: "Default true")],
+            returns: .custom("Object with 'armed'"),
+            handler: { params in
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in VisitController.shared.arm(on); return VisitController.shared.armed }
+                let armed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["armed": .bool(armed)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.screens",
+            description: "This Mac's displays, using display.gather indices, and which are marked elsewhere (plugged into another machine)",
+            access: .read,
+            params: [],
+            returns: .custom("Array of objects with 'number', 'name', 'frame', 'main' and 'elsewhere'"),
+            handler: { _ in
+                let screens = Thread.isMainThread ? VisitController.screens() : DispatchQueue.main.sync { VisitController.screens() }
+                return .array(screens.map {
+                    .object([
+                        "number": .int($0.number), "machine": $0.machine.map { .string($0) } ?? .null, "name": .string($0.name), "main": .bool($0.main), "elsewhere": .bool($0.elsewhere),
+                        "frame": .object(["x": .double($0.frame.minX), "y": .double($0.frame.minY), "w": .double($0.frame.width), "h": .double($0.frame.height)]),
+                    ])
+                })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.elsewhere",
+            description: "Mark a display as elsewhere (plugged into another machine): the pointer is kept off it, and sliding into it toward a paired host starts a visit",
+            access: .mutate,
+            params: [
+                Param(name: "screen", type: "int|string", required: true, description: "Display number or name fragment"),
+                Param(name: "on", type: "bool", required: false, description: "Default true; false brings it back"),
+                Param(name: "name", type: "string", required: false, description: "Machine shown on this display; empty clears"),
+            ],
+            returns: .custom("Object with 'ok'"),
+            handler: { params in
+                let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in
+                    guard VisitController.shared.setElsewhere(number, on) else { return false }
+                    if let name = params?["name"]?.stringValue { return VisitController.shared.setDisplayMachine(number, name: name.isEmpty ? nil : name) }
+                    return true
+                }
+                let ok = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["ok": .bool(ok)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.end",
+            description: "End the current visit; the cursor stays where it was parked",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                VisitController.shared.end(because: "ended")
+                return .object(["ok": .bool(true)])
             }
         ))
 
@@ -3713,6 +3950,8 @@ final class LatticesApi {
         ))
 
         DisplayGather.registerEndpoints(api)
+        ClusterVerbs.register(api)
+        StateHistory.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
 
         api.register(Endpoint(

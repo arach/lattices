@@ -12,7 +12,26 @@ enum BrowseMenu {
         out += layersSection()
         out += groupsSection()
         out += appSection()
+        out += machinesSection()
         return out
+    }
+
+    static func machinesSection(screens: [DisplayGather.Screen] = DisplayGather.screens(), hosts: [VisitTrust.Host] = VisitTrust.shared.list()) -> [OmniResult] {
+        var rows: [OmniResult] = []
+        func add(_ title: String, _ method: String, _ params: JSON? = nil) {
+            rows.append(OmniResult(kind: .action, title: title, subtitle: "", icon: "desktopcomputer", score: 10) { ClusterVerbs.run(method, params) })
+        }
+        for screen in screens {
+            let params: JSON = .object(["display": .int(screen.index)])
+            add("Bring everything to \(screen.name)", "bring", params)
+            add("Make \(screen.name) main", "main", params)
+            add("\(screen.name) elsewhere", "elsewhere", params)
+            add("\(screen.name) here", "here", params)
+        }
+        for host in hosts { add("Visit \(host.name)", "visit.start", .object(["host": .string(host.name)])) }
+        add("Home — end visit", "home")
+        add("Undo bring", "bring", .object(["undo": .bool(true)]))
+        return rows
     }
 
     // MARK: - Window (act on the frontmost window captured at open time)

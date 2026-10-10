@@ -12,6 +12,8 @@ enum AppPage: String, CaseIterable {
     /// (`desktopInventory`).
     case overview
     case layers
+    /// Nearby machines, visiting cursor and display arrangement.
+    case machines
     case activity
     case runs
     case assistant
@@ -24,6 +26,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "Home"
         case .overview:         return "Overview"
         case .layers:           return "Layers"
+        case .machines:         return "Machines"
         case .activity:         return "Activity"
         case .runs:             return "Runs"
         case .assistant:        return "Assistant"
@@ -38,6 +41,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "house"
         case .overview:         return "rectangle.3.group"
         case .layers:           return "square.3.layers.3d"
+        case .machines:         return "display.2"
         case .activity:         return "list.bullet.rectangle"
         case .runs:             return "record.circle"
         case .assistant:        return "bubble.left.and.bubble.right"
@@ -51,7 +55,7 @@ enum AppPage: String, CaseIterable {
     /// places you work, agent surfaces, system state — so Runs and Activity stop
     /// reading as peers of Home.
     static let navigationGroups: [(title: String, pages: [AppPage])] = [
-        ("Workspace", [.home, .overview, .layers]),
+        ("Workspace", [.home, .overview, .layers, .machines]),
         ("Agents",    [.assistant, .runs]),
         ("System",    [.activity]),
     ]
@@ -64,6 +68,7 @@ enum AppPage: String, CaseIterable {
     static func named(_ raw: String) -> AppPage? {
         switch raw {
         case "screenMap", "desktopInventory": return .overview
+        case "hosts": return .machines
         default: return AppPage(rawValue: raw)
         }
     }
@@ -96,7 +101,7 @@ struct AppShellView: View {
     @ObservedObject private var desktop = DesktopModel.shared
 
     private var manifest: HudAppManifest {
-        HudAppManifest(name: "Lattices", accent: Palette.running, targetLabel: "Machine")
+        HudAppManifest(name: "Lattices", accent: Palette.textDim, targetLabel: "Machine")
     }
 
     /// Hudson rail ↔ our `activePage`. Selecting a rail item routes through the
@@ -182,7 +187,7 @@ struct AppShellView: View {
             selection: selection,
             entries: entries,
             isCompact: sidebarCompact,
-            accent: Palette.running,
+            accent: Palette.textDim,
             labelWidth: CGFloat(sidebarLabelWidth),
             onHeaderTap: nil
         ) {
@@ -224,7 +229,7 @@ struct AppShellView: View {
                     isActive: windowController.activePage == .settings,
                     isCompact: sidebarCompact,
                     labelWidth: CGFloat(sidebarLabelWidth),
-                    accent: Palette.running
+                    accent: Palette.textDim
                 ) {
                     windowController.showPage(.settings)
                 }
@@ -442,6 +447,8 @@ struct AppShellView: View {
             OverviewView(model: overview, controller: controller)
         case .layers:
             LayersPage()
+        case .machines:
+            MachinesPageView()
         case .activity:
             ActivityPageView()
         case .runs:

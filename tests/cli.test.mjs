@@ -843,5 +843,5 @@ test("search --deep: exits non-zero with friendly message when daemon is down", 
   const combined = `${stdout}\n${stderr}`.trim();
   assert.equal(status, 1, `expected exit 1, got ${status}: ${combined}`);
   assert.match(combined, /Daemon not running/i);
-  assert.match(combined, /lattices app/i);
+  assert.match(combined, /(?:lats|lattices) app/i);
 });
