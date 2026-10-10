@@ -32,13 +32,13 @@ final class MachinesTests: XCTestCase {
         XCTAssertEqual(MachineInventory.addressKey("[::1]:5287"), "::1")
         XCTAssertEqual(MachineInventory.addressKey("ARCHIE.local.:9399"), "archie.local")
     }
-    func testSideSwapPreservesAllTrust() throws {
+    func testSideShortcutAllowsSharedSideAndPreservesAllTrust() throws {
         let a = host("a", .left), b = host("b", .right)
         let moved = try VisitTrust.assigningSide(.right, to: "A", in: [a, b])
         var expectedA = a, expectedB = b
-        expectedA.side = .right; expectedB.side = .left
+        expectedA.side = .right; expectedB.side = .right
         XCTAssertEqual(moved, [expectedA, expectedB])
-        XCTAssertEqual(Set(moved.map(\.side)).count, 2)
+        XCTAssertEqual(Set(moved.map(\.side)).count, 1)
         XCTAssertEqual(try VisitTrust.assigningSide(.right, to: "a", in: moved), moved)
     }
     func testVacantSideAndMissingHost() throws {

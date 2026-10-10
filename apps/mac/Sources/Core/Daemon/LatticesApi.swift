@@ -3728,9 +3728,68 @@ final class LatticesApi {
             }
         ))
 
+        for action in ["keep", "revert"] {
+            api.register(Endpoint(
+                method: "visit.arrangement.\(action)", description: "\(action.capitalized) the pending display trial",
+                access: .mutate, params: [], returns: .ok,
+                handler: { _ in
+                    let work: @MainActor () -> Void = {
+                        if action == "keep" { DisplayArrangement.shared.keep() } else { DisplayArrangement.shared.revert() }
+                    }
+                    if Thread.isMainThread { MainActor.assumeIsolated { work() } }
+                    else { DispatchQueue.main.sync { work() } }
+                    return .object(["ok": .bool(true)])
+                }
+            ))
+        }
+
+        api.register(Endpoint(
+            method: "visit.place",
+            description: "Place a machine in global display coordinates",
+            access: .mutate,
+            params: [Param(name: "name", type: "string", required: true, description: "Machine name"),
+                     Param(name: "x", type: "number", required: true, description: "Global X"),
+                     Param(name: "y", type: "number", required: true, description: "Global Y")],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["name"]?.stringValue, !name.isEmpty,
+                      let x = params?["x"]?.numericDouble, let y = params?["y"]?.numericDouble,
+                      x.isFinite, y.isFinite else { throw RouterError.custom("name, x and y are required") }
+                let old = VisitTrust.shared.host(named: name)?.placement ?? MachineArrangementStore.placement(name)
+                let monitors = MachineArrangementStore.monitors(name)
+                let size = monitors.isEmpty ? (old?.rect.size ?? CGSize(width: 1920, height: 1080)) : monitors.reduce(CGRect.null) { $0.union($1.frame.rect) }.size
+                try MachineArrangementStore.place(name, CGRect(x: x, y: y, width: size.width, height: size.height))
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        api.register(Endpoint(
+            method: "hosts.add", description: "Add a Lattices host to hosts.json", access: .mutate,
+            params: [Param(name: "name", type: "string", required: true, description: "Name"),
+                     Param(name: "address", type: "string", required: true, description: "Hostname or IP"),
+                     Param(name: "port", type: "int", required: false, description: "Default 9399")],
+            returns: .ok, handler: { params in
+                guard let name = params?["name"]?.stringValue, let address = params?["address"]?.stringValue,
+                      let port = UInt16(exactly: params?["port"]?.intValue ?? 9399) else { throw RouterError.custom("name, address and valid port required") }
+                try MachineArrangementStore.addHost(name: name, address: address, port: port)
+                DispatchQueue.main.async { RemoteHostsModel.shared.reload() }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        #if LATTICES_BUNDLE
+        api.register(Endpoint(
+            method: "visit.host", description: "Enable or disable receiving visits on this Mac", access: .mutate,
+            params: [Param(name: "on", type: "bool", required: true, description: "Allow visits")], returns: .ok,
+            handler: { params in
+                guard let on = params?["on"]?.boolValue else { throw RouterError.missingParam("on") }
+                MacVisitHost.setEnabled(on)
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        #endif
+
         api.register(Endpoint(
             method: "visit.side",
-            description: "Move a paired machine to a side; occupied sides swap without losing keys",
+            description: "Place a paired machine beside the outermost display on a side",
             access: .mutate,
             params: [
                 Param(name: "host", type: "string", required: true, description: "Paired host name"),
@@ -3756,12 +3815,14 @@ final class LatticesApi {
             returns: .custom("Object with 'armed', 'visiting', 'code' and 'hosts' (name, address, side, fingerprint)"),
             handler: { _ in
                 let status = Thread.isMainThread ? VisitController.shared.status() : DispatchQueue.main.sync { VisitController.shared.status() }
+                let screenFrames = Thread.isMainThread ? VisitController.screens().map(\.frame) : DispatchQueue.main.sync { VisitController.screens().map(\.frame) }
                 return .object([
                     "armed": .bool(status.armed),
                     "visiting": status.visiting.map { .string($0) } ?? .null,
                     "code": .string(VisitTrust.shared.fingerprint),
                     "hosts": .array(status.hosts.map {
-                        .object(["name": .string($0.name), "address": .string($0.address), "side": .string($0.side.rawValue), "fingerprint": .string($0.bridgeFingerprint)])
+                        .object(["name": .string($0.name), "address": .string($0.address), "side": MachineArrangementStore.side(for: $0, displays: screenFrames).map { .string($0.rawValue) } ?? .null, "fingerprint": .string($0.bridgeFingerprint),
+                                 "placement": $0.placement.map { .object(["x": .double($0.x), "y": .double($0.y), "width": .double($0.width), "height": .double($0.height)]) } ?? .null])
                     }),
                 ])
             }
@@ -3791,7 +3852,7 @@ final class LatticesApi {
                 let screens = Thread.isMainThread ? VisitController.screens() : DispatchQueue.main.sync { VisitController.screens() }
                 return .array(screens.map {
                     .object([
-                        "number": .int($0.number), "name": .string($0.name), "main": .bool($0.main), "elsewhere": .bool($0.elsewhere),
+                        "number": .int($0.number), "machine": $0.machine.map { .string($0) } ?? .null, "name": .string($0.name), "main": .bool($0.main), "elsewhere": .bool($0.elsewhere),
                         "frame": .object(["x": .double($0.frame.minX), "y": .double($0.frame.minY), "w": .double($0.frame.width), "h": .double($0.frame.height)]),
                     ])
                 })
@@ -3805,12 +3866,17 @@ final class LatticesApi {
             params: [
                 Param(name: "screen", type: "int", required: true, description: "Display number from visit.screens"),
                 Param(name: "on", type: "bool", required: false, description: "Default true; false brings it back"),
+                Param(name: "name", type: "string", required: false, description: "Machine shown on this display; empty clears"),
             ],
             returns: .custom("Object with 'ok'"),
             handler: { params in
                 guard let number = params?["screen"]?.intValue else { throw RouterError.missingParam("screen") }
                 let on = params?["on"]?.boolValue ?? true
-                let work = { VisitController.shared.setElsewhere(number, on) }
+                let work = { () -> Bool in
+                    guard VisitController.shared.setElsewhere(number, on) else { return false }
+                    if let name = params?["name"]?.stringValue { return VisitController.shared.setDisplayMachine(number, name: name.isEmpty ? nil : name) }
+                    return true
+                }
                 let ok = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
                 return .object(["ok": .bool(ok)])
             }

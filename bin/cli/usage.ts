@@ -141,10 +141,14 @@ Usage:
   lats mouse home         Sharing off, cursor to the main display
   lats visit pair <host> [host:port] [side]  Pair with a host to visit it with a second cursor
   lats visit forget <host>  Forget a visit pairing
-  lats visit side <host> <side>  Move a pairing; occupied sides swap
+  lats visit side <host> <side>  Place beside the outermost display
   lats visit on|off       Arm crossing into paired hosts at the screen edge
   lats visit status       Paired hosts and this Mac's code
   lats visit end          End a visit (or ⌃⌥⌘ Home)
+  lats visit place <name> <x> <y>  Place in global display coordinates
+  lats visit arrangement <keep|revert>  Resolve a display trial started with Apply
+  lats visit host <on|off>  Allow receiving visits on this Mac (bundle)
+  lats hosts add <name> [address] [port]  Add a Lattices host
   lats visit screens      This Mac's displays, and which are elsewhere
   lats visit elsewhere <n>  Display n is plugged into another machine; "here <n>" undoes it
   lats long [show|hide]   Long, on the desktop; click him for controls

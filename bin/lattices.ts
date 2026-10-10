@@ -916,6 +916,22 @@ async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
       if (!host) return console.log("Usage: lats visit pair <host> [host:port] [left|right|top|bottom]");
       const result = await daemonCall("visit.pair", { host, ...(address ? { address } : {}), ...(side ? { side } : {}) }) as any;
       console.log(`🔐 Approve ${result.code} on ${result.pairing}, then: lats visit status`);
+    } else if (sub === "arrangement") {
+      if (!["keep", "revert"].includes(rest[0])) throw new Error("Usage: lats visit arrangement <keep|revert>");
+      await daemonCall(`visit.arrangement.${rest[0]}`);
+      console.log(`Arrangement: ${rest[0]}`);
+    } else if (sub === "place") {
+      const [name, rawX, rawY] = rest;
+      const x = Number(rawX), y = Number(rawY);
+      if (!name || rawX === undefined || rawY === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error("Usage: lats visit place <name> <x> <y>");
+      }
+      await daemonCall("visit.place", { name, x, y });
+      console.log(`${name}: (${x}, ${y})`);
+    } else if (sub === "host") {
+      if (!["on", "off"].includes(rest[0])) throw new Error("Usage: lats visit host <on|off>");
+      await daemonCall("visit.host", { on: rest[0] === "on" });
+      console.log(`Receiving visits ${rest[0]}`);
     } else if (sub === "forget" || sub === "side") {
       const [host, side] = rest;
       if (!host || (sub === "side" && !["left", "right", "top", "bottom"].includes(side))) {
@@ -933,14 +949,14 @@ async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
       const n = Number(rest[0]);
       if (sub !== "screens") {
         if (!n) return console.log(`Usage: lats visit ${sub} <display number>  (see: lats visit screens)`);
-        const result = await daemonCall("visit.elsewhere", { screen: n, on: sub === "elsewhere" }) as any;
+        const result = await daemonCall("visit.elsewhere", { screen: n, on: sub === "elsewhere", ...(rest[1] ? { name: rest[1] === "--clear" ? "" : rest[1] } : {}) }) as any;
         if (!result.ok) return console.log(`No display ${n}. See: lats visit screens`);
       }
       const screens = await daemonCall("visit.screens") as any[];
-      for (const d of screens) console.log(`  ${d.number}  ${d.name}  ${d.frame.w}×${d.frame.h}${d.main ? "  main" : ""}${d.elsewhere ? "  elsewhere" : ""}`);
+      for (const d of screens) console.log(`  ${d.number}  ${d.name}  ${d.frame.w}×${d.frame.h}${d.main ? "  main" : ""}${d.elsewhere ? "  elsewhere" : ""}${d.machine ? ` · ${d.machine}` : ""}`);
     } else {
       const s = await daemonCall("visit.status") as any;
-      for (const h of s.hosts) console.log(`  ${s.visiting === h.name ? "●" : "○"} ${h.name}  ${h.side}  ${h.address}  ${h.fingerprint}`);
+      for (const h of s.hosts) console.log(`  ${s.visiting === h.name ? "●" : "○"} ${h.name}  ${h.side ?? "unplaced"}  ${h.address}  ${h.fingerprint}`);
       if (!s.hosts.length) console.log("No paired hosts. Pair with: lats visit pair <host>");
       console.log(`${s.armed ? "Armed" : "Off"} · this Mac's code ${s.code}`);
     }

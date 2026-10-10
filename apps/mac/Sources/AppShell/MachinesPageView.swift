@@ -23,13 +23,18 @@ struct MachinesPageView: View {
                     }.disabled(model.visit.hosts.isEmpty && !model.visit.armed)
                     Button("End visit") { VisitController.shared.end(because: "ended") }
                         .disabled(model.visit.visiting == nil)
-                    Button("Pair machine") { pairing = true }
+                    Button("Add machine") { pairing = true }
                 }
-                arrangement
+                MachineArrangementCanvas(model: model, machines: machines, onlineNames: Set(hosts.hosts.filter { $0.status == .online }.map(\.name)))
                 HudDivider(color: Palette.border)
                 machineList
                 HudDivider(color: Palette.border)
                 displays
+                #if LATTICES_BUNDLE
+                Toggle("Let other machines visit this Mac", isOn: Binding(
+                    get: { MacVisitHost.enabled }, set: { MacVisitHost.setEnabled($0); model.refresh() }
+                )).toggleStyle(.checkbox)
+                #endif
                 if let selected { detail(selected) }
                 if model.pointer.lanMouse && model.pointer.clients.isEmpty {
                     HudDivider(color: Palette.border)
@@ -66,62 +71,6 @@ struct MachinesPageView: View {
         .sheet(isPresented: $pairing) { MachinePairSheet { model.refresh() } }
     }
 
-    private var arrangement: some View {
-        VStack(spacing: 8) {
-            side(.top)
-            HStack(spacing: 12) {
-                side(.left).frame(width: 130)
-                displayMap.frame(maxWidth: .infinity).frame(height: 150)
-                side(.right).frame(width: 130)
-            }
-            side(.bottom)
-        }
-        .frame(maxWidth: .infinity)
-    }
-    private func side(_ side: VisitTrust.Side) -> some View {
-        let host = model.visit.hosts.first { $0.side == side }
-        return VStack(spacing: 4) {
-            Text(side.rawValue.capitalized).font(Typo.body(10)).foregroundStyle(Palette.textMuted)
-            if let host {
-                Text(host.name)
-                    .font(Typo.heading(12))
-                    .foregroundStyle(model.visit.visiting == host.name ? Long.coral : Palette.text)
-                    .lineLimit(1)
-                    .onDrag { NSItemProvider(object: host.name as NSString) }
-                    .accessibilityLabel("\(host.name), \(side.rawValue). Use the Side menu to move.")
-            } else {
-                Text("—").foregroundStyle(Palette.textMuted)
-            }
-        }
-        .frame(width: 130, height: 48)
-        .background(Palette.surface)
-        .hudsonHairlineBorder(radius: 6, color: Palette.border)
-        .dropDestination(for: String.self) { names, _ in
-            guard let name = names.first, model.visit.hosts.contains(where: { $0.name == name }) else { return false }
-            model.move(name, to: side)
-            return true
-        }
-        .help("Drop a paired machine here. Occupied sides swap.")
-    }
-    private var displayMap: some View {
-        GeometryReader { geometry in
-            let bounds = model.screens.reduce(CGRect.null) { $0.union($1.frame) }
-            let scale = min(geometry.size.width / max(bounds.width, 1), geometry.size.height / max(bounds.height, 1)) * 0.9
-            ZStack {
-                ForEach(model.screens, id: \.number) { screen in
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Palette.surface)
-                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.textMuted, lineWidth: 1))
-                        .overlay(Text("\(screen.number)\(screen.main ? " · This Mac" : "")").font(Typo.body(10)).lineLimit(1))
-                        .frame(width: screen.frame.width * scale, height: screen.frame.height * scale)
-                        .opacity(screen.elsewhere ? 0.35 : 1)
-                        .position(x: geometry.size.width / 2 + (screen.frame.midX - bounds.midX) * scale,
-                                  y: geometry.size.height / 2 + (screen.frame.midY - bounds.midY) * scale)
-                        .accessibilityLabel("\(screen.name), \(screen.elsewhere ? "elsewhere" : "here")")
-                }
-            }
-        }
-    }
     private var machineList: some View {
         VStack(spacing: 0) {
             if machines.isEmpty {
@@ -134,7 +83,7 @@ struct MachinesPageView: View {
                         Text(machine.address).font(Typo.mono(10)).frame(maxWidth: .infinity, alignment: .leading)
                         Text(reachability(machine)).frame(width: 82, alignment: .leading)
                         Text(machine.visit == nil ? "Unpaired" : "Paired").frame(width: 58, alignment: .leading)
-                        Text(machine.visit?.side.rawValue ?? "—").frame(width: 48, alignment: .leading)
+                        Text(machine.visit.flatMap { MachineArrangementStore.side(for: $0, displays: model.screens.map(\.frame)) }?.rawValue ?? "Unplaced").frame(width: 58, alignment: .leading)
                         Text(model.visit.visiting == machine.visit?.name && machine.visit != nil ? "Visiting" : "—")
                             .foregroundStyle(model.visit.visiting == machine.visit?.name && machine.visit != nil ? Long.coral : Palette.textMuted)
                             .frame(width: 52, alignment: .leading)
@@ -179,7 +128,7 @@ struct MachinesPageView: View {
             if let visit = machine.visit {
                 Text(visit.bridgeFingerprint).font(Typo.mono(10)).foregroundStyle(Palette.textDim).textSelection(.enabled)
                 Spacer()
-                Picker("Side", selection: Binding(get: { visit.side }, set: { model.move(visit.name, to: $0) })) {
+                Picker("Side", selection: Binding(get: { MachineArrangementStore.side(for: visit, displays: model.screens.map(\.frame)) ?? visit.side }, set: { model.move(visit.name, to: $0) })) {
                     ForEach(VisitTrust.Side.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
                 }.frame(width: 150)
                 Button("Forget") { model.forget(visit.name) }
@@ -207,20 +156,21 @@ private struct MachinePairSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var address = ""
-    @State private var side = VisitTrust.Side.right
+    @State private var kind = "both"
     @State private var waiting = false
     @State private var error: String?
     let done: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Pair machine").font(Typo.heading(15))
+            Text("Add machine").font(Typo.heading(15))
             TextField("Name", text: $name).disabled(waiting)
             TextField("Bridge address · host:5287", text: $address).disabled(waiting)
-            Picker("Side", selection: $side) {
-                ForEach(VisitTrust.Side.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-            }
-            .disabled(waiting)
+            Picker("Type", selection: $kind) {
+                Text("Lattices host").tag("host")
+                Text("Visit host").tag("visit")
+                Text("Both").tag("both")
+            }.disabled(waiting)
             if waiting {
                 Text("Approve code on \(name)").font(Typo.body(12))
                 Text(VisitTrust.shared.fingerprint).font(Typo.mono(14)).textSelection(.enabled)
@@ -230,7 +180,7 @@ private struct MachinePairSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.disabled(waiting).keyboardShortcut(.cancelAction)
-                Button("Pair") { pair() }.keyboardShortcut(.defaultAction)
+                Button("Add") { pair() }.keyboardShortcut(.defaultAction)
                     .disabled(waiting || name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
@@ -242,15 +192,24 @@ private struct MachinePairSheet: View {
     private func pair() {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let address = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        let side = side
-        guard VisitTrust.shared.host(on: side).map({ $0.name.caseInsensitiveCompare(name) == .orderedSame }) ?? true else {
-            error = "The \(side.rawValue) side is occupied. Move its machine first."
-            return
+        let side = VisitTrust.Side.right
+        let target = address.isEmpty ? name : address
+        guard let base = VisitTrust.bridgeURL(target), let hostname = base.host,
+              let port = UInt16(exactly: base.port ?? 9399), port > 0 else { error = "Invalid address"; return }
+        if kind != "visit" {
+            do {
+                try MachineArrangementStore.addHost(name: name, address: hostname, port: kind == "host" ? port : 9399)
+                RemoteHostsModel.shared.reload()
+            } catch { self.error = String(describing: error); return }
         }
+        if kind == "host" { done(); dismiss(); return }
+        var bridge = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        bridge.port = base.port ?? 5287
+        let bridgeAddress = String(bridge.url!.absoluteString.dropFirst("http://".count))
         waiting = true
         error = nil
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = VisitTrust.shared.pair(name: name, address: address.isEmpty ? "\(name):5287" : address, side: side)
+            let result = VisitTrust.shared.pair(name: name, address: bridgeAddress, side: side)
             DispatchQueue.main.async {
                 waiting = false
                 switch result {

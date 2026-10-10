@@ -18,6 +18,8 @@ final class VisitTrust {
         var bridgeFingerprint: String
         var capabilities: [String]
         var pairedAt: Date
+        var placement: MachineGeometry.Placement? = nil
+        var unplaced: Bool? = nil
     }
 
     enum Side: String, Codable, CaseIterable {
@@ -116,17 +118,14 @@ final class VisitTrust {
         return removed
     }
 
-    /// Moves a pairing without changing its keys. Occupied sides swap.
+    /// Side remains a convenience shortcut; multiple hosts may share an edge.
     static func assigningSide(_ side: Side, to name: String, in hosts: [Host]) throws -> [Host] {
         guard let index = hosts.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
             throw Failure.bad("No paired host named \(name)")
         }
         var result = hosts
-        let old = result[index].side
-        if let occupant = result.firstIndex(where: { $0.side == side }), occupant != index {
-            result[occupant].side = old
-        }
         result[index].side = side
+        result[index].placement = nil
         return result
     }
 
@@ -135,15 +134,45 @@ final class VisitTrust {
         do { hosts = try Self.assigningSide(side, to: name, in: hosts) }
         catch { lock.unlock(); throw error }
         lock.unlock()
-        persist()
-        notifyChange()
+        let screens = Thread.isMainThread ? VisitController.screens() : DispatchQueue.main.sync { VisitController.screens() }
+        try setPlacement(name, MachineGeometry.Placement(MachineGeometry.migrate(side: side, displays: screens.map(\.frame), size: Self.monitorSize(name))))
+    }
+
+    func setPlacement(_ name: String, _ placement: MachineGeometry.Placement) throws {
+        guard placement.valid else { throw Failure.bad("Invalid placement") }
+        lock.lock()
+        guard let i = hosts.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+            lock.unlock(); throw Failure.bad("No paired host named \(name)")
+        }
+        hosts[i].placement = placement
+        hosts[i].unplaced = false
+        var labels = UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String] ?? [:]
+        labels = labels.filter { $0.value.caseInsensitiveCompare(name) != .orderedSame }
+        UserDefaults.standard.set(labels, forKey: "visit.displayMachines")
+        lock.unlock()
+        persist(); notifyChange()
+    }
+
+    private static func monitorSize(_ name: String) -> CGSize {
+        let monitors = MachineArrangementStore.monitors(name)
+        return monitors.isEmpty ? CGSize(width: 1920, height: 1080) : monitors.reduce(CGRect.null) { $0.union($1.frame.rect) }.size
+    }
+
+    func migratePlacements(displays: [CGRect]) {
+        lock.lock()
+        var changed = false
+        for i in hosts.indices where hosts[i].placement == nil && hosts[i].unplaced != true {
+            hosts[i].placement = .init(MachineGeometry.migrate(side: hosts[i].side, displays: displays, size: Self.monitorSize(hosts[i].name)))
+            changed = true
+        }
+        lock.unlock()
+        if changed { persist() }
     }
 
     private func notifyChange() {
         DispatchQueue.main.async {
             let status = VisitController.shared.status()
-            if let visiting = status.visiting,
-               self.host(named: visiting)?.side != status.side {
+            if status.visiting != nil {
                 VisitController.shared.end(because: "arrangement changed")
             }
             VisitController.shared.refreshLayout()
@@ -164,9 +193,6 @@ final class VisitTrust {
     /// on the host (the bridge waits up to two minutes); call off main.
     func pair(name: String, address: String, side: Side) -> Result<Host, Failure> {
         guard let base = Self.bridgeURL(address) else { return .failure(.bad("Bad address \(address)")) }
-        if let occupant = host(on: side), occupant.name.caseInsensitiveCompare(name) != .orderedSame {
-            return .failure(.bad("The \(side.rawValue) side is occupied. Move its machine first."))
-        }
         var health = URLRequest(url: base.appendingPathComponent(Self.healthPath))
         health.timeoutInterval = 4
         guard case .success(let (data, _)) = Self.fetch(health),
@@ -201,14 +227,11 @@ final class VisitTrust {
             bridgePublicKey: response.bridgePublicKey,
             bridgeFingerprint: response.bridgeFingerprint,
             capabilities: response.grantedCapabilities,
-            pairedAt: self.host(named: name)?.pairedAt ?? Date()
+            pairedAt: self.host(named: name)?.pairedAt ?? Date(),
+            placement: self.host(named: name)?.placement,
+            unplaced: self.host(named: name)?.unplaced ?? (self.host(named: name) == nil)
         )
         lock.lock()
-        // A new pairing must never silently delete the occupant's trust.
-        if hosts.contains(where: { $0.side == side && $0.name.caseInsensitiveCompare(name) != .orderedSame }) {
-            lock.unlock()
-            return .failure(.bad("The \(side.rawValue) side is occupied. Move its machine first."))
-        }
         hosts.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         hosts.append(host)
         lock.unlock()

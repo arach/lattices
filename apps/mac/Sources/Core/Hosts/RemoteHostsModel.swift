@@ -33,6 +33,7 @@ final class RemoteHostsModel: ObservableObject {
         var compositor: String?
         var capabilities: [String] = []
         var windows: [Window] = []
+        var monitors: [MachineArrangementStore.Monitor] = []
         var still: NSImage?
         var stillAt: Date?
         /// Round trip of the last still, so a slow link shows itself.
@@ -148,6 +149,11 @@ final class RemoteHostsModel: ObservableObject {
 
     // MARK: - Private
 
+    func reload() {
+        for connection in connections.values { connection.cancel() }; connections.removeAll()
+        if viewers > 0 { connectAll() }
+    }
+
     private func connectAll() {
         let configured = Self.configuredHosts()
         hosts = configured.map { entry in
@@ -187,7 +193,16 @@ final class RemoteHostsModel: ObservableObject {
     private func describe(_ name: String) async {
         guard let connection = connections[name],
               let result = try? await connection.call("host.describe") as? [String: Any] else { return }
+        let monitors = MachineArrangementStore.parseMonitors(result["displays"])
+        MachineArrangementStore.cache(monitors, for: name)
+        if let remote = hosts.first(where: { $0.name == name }) {
+            for paired in VisitTrust.shared.list() where paired.name.caseInsensitiveCompare(name) == .orderedSame || MachineInventory.addressKey(paired.address) == MachineInventory.addressKey(remote.address) {
+                MachineArrangementStore.cache(monitors, for: paired.name)
+            }
+        }
+        VisitController.shared.refreshLayout()
         update(name) {
+            $0.monitors = monitors
             $0.platform = result["platform"] as? String
             $0.compositor = result["compositor"] as? String
             $0.capabilities = (result["capabilities"] as? [String]) ?? []

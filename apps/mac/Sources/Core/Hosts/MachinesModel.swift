@@ -60,6 +60,7 @@ final class MachinesModel: ObservableObject {
     private var visible = false
     private var generation = 0
     private var probes: [URLSessionDataTask] = []
+    private var descriptions: [RemoteHostConnection] = []
 
     func appear() { visible = true; refresh() }
     func disappear() {
@@ -67,6 +68,7 @@ final class MachinesModel: ObservableObject {
         generation += 1
         probes.forEach { $0.cancel() }
         probes.removeAll()
+        descriptions.forEach { $0.cancel() }; descriptions.removeAll()
     }
     func refresh() {
         guard visible else { return }
@@ -74,6 +76,8 @@ final class MachinesModel: ObservableObject {
         let version = generation
         probes.forEach { $0.cancel() }
         probes.removeAll()
+        descriptions.forEach { $0.cancel() }; descriptions.removeAll()
+        VisitController.shared.refreshLayout()
         visit = VisitController.shared.status()
         screens = VisitController.screens()
         DispatchQueue.global(qos: .utility).async {
@@ -85,6 +89,25 @@ final class MachinesModel: ObservableObject {
         }
         for host in visit.hosts {
             guard let base = VisitTrust.bridgeURL(host.address) else { reachable[host.name] = false; continue }
+            if let address = base.host {
+                let connection = RemoteHostConnection(address: address, port: 9399)
+                connection.onReady = { [weak self, weak connection] in
+                    guard let self, let connection else { return }
+                    Task { @MainActor in
+                        defer { connection.cancel() }
+                        guard let info = try? await connection.call("host.describe", timeout: 3) as? [String: Any],
+                              self.visible, self.generation == version else { return }
+                        MachineArrangementStore.cache(MachineArrangementStore.parseMonitors(info["displays"]), for: host.name)
+                        VisitController.shared.refreshLayout()
+                        self.objectWillChange.send()
+                    }
+                }
+                descriptions.append(connection); connection.start()
+                Task { @MainActor [weak connection] in
+                    try? await Task.sleep(for: .seconds(4))
+                    connection?.cancel()
+                }
+            }
             let url = base.appendingPathComponent(VisitTrust.healthPath)
             var request = URLRequest(url: url)
             request.timeoutInterval = 3

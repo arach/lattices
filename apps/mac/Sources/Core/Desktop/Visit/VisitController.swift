@@ -61,7 +61,8 @@ final class VisitController {
     /// Displays marked elsewhere: plugged into another machine, so the pointer
     /// is kept off them and sliding into one is a crossing.
     private var away: [CGRect] = []
-    private var sides: Set<VisitTrust.Side> = []
+    private var placements: [(String, CGRect)] = []
+    private var pushedTarget: String?
     private var pushed: Double = 0
     private var pushedAt: TimeInterval = 0
     private var quietUntil: TimeInterval = 0
@@ -121,11 +122,16 @@ final class VisitController {
         var rects = all.filter { !gone.contains($0.0) }.map(\.1)
         var awayRects = all.filter { gone.contains($0.0) }.map(\.1)
         if rects.isEmpty { rects = awayRects; awayRects = [] }
-        let paired = Set(VisitTrust.shared.list().map(\.side))
+        VisitTrust.shared.migratePlacements(displays: rects)
+        let labels = UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String] ?? [:]
+        let paired = VisitTrust.shared.list().compactMap { host -> (String, CGRect)? in
+            if let display = all.first(where: { labels[$0.0] == host.name && gone.contains($0.0) }) { return (host.name, display.1) }
+            return MachineArrangementStore.rect(for: host).map { (host.name, $0) }
+        }
         lock.lock()
         displays = rects
         away = awayRects
-        sides = paired
+        placements = paired
         lock.unlock()
     }
 
@@ -137,6 +143,8 @@ final class VisitController {
         var frame: CGRect
         var main: Bool
         var elsewhere: Bool
+        var displayID: CGDirectDisplayID = 0
+        var machine: String? = nil
     }
 
     /// This Mac's displays, the main one first, then left to right.
@@ -153,7 +161,8 @@ final class VisitController {
         }
         return sorted.enumerated().map { i, pair in
             Screen(number: i + 1, name: pair.0.localizedName, frame: CGDisplayBounds(pair.1),
-                   main: pair.1 == main, elsewhere: gone.contains(uuid(pair.1)))
+                   main: pair.1 == main, elsewhere: gone.contains(uuid(pair.1)), displayID: pair.1,
+                   machine: (UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String])?[uuid(pair.1)])
         }
     }
 
@@ -169,6 +178,15 @@ final class VisitController {
         refreshLayout()
         DiagnosticLog.shared.info("Visit: \(screen.name) is \(on ? "elsewhere" : "here")")
         Self.announce()
+        return true
+    }
+
+    func setDisplayMachine(_ number: Int, name: String?) -> Bool {
+        guard let screen = Self.screens().first(where: { $0.number == number }) else { return false }
+        var labels = UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String] ?? [:]
+        labels[Self.uuid(screen.displayID)] = name
+        UserDefaults.standard.set(labels, forKey: "visit.displayMachines")
+        refreshLayout(); Self.announce()
         return true
     }
 
@@ -201,11 +219,15 @@ final class VisitController {
     func start(side: VisitTrust.Side, at point: CGPoint) {
         dispatchPrecondition(condition: .onQueue(.main))
         defer { lock.lock(); crossing = false; lock.unlock() }
-        guard armed, visit == nil, let host = VisitTrust.shared.host(on: side) else { return }
+        guard armed, visit == nil else { return }
         lock.lock()
         let rects = displays
+        let machines = placements
         lock.unlock()
         guard let display = rects.first(where: { $0.insetBy(dx: -1, dy: -1).contains(point) }) else { return }
+        guard let (name, contact) = MachineGeometry.owner(at: point, side: side, display: display, machines: machines),
+              var host = VisitTrust.shared.host(named: name) else { return }
+        host.side = side
         let channel: VisitChannel
         do {
             channel = try VisitChannel(host: host, crypto: VisitTrust.shared.crypto(for: host))
@@ -221,13 +243,11 @@ final class VisitController {
             return
         }
         CGAssociateMouseAndMouseCursorPosition(0)
-        visit = Visit(host: host, channel: channel, parked: point, display: display)
+        visit = Visit(host: host, channel: channel, parked: point, display: contact.span(in: display))
         let hold = VisitKeys.fabHoldKey()
         lock.lock(); forward = channel; holdKey = hold; lock.unlock()
 
-        let along: Double = (side == .left || side == .right)
-            ? (point.y - display.minY) / max(display.height, 1)
-            : (point.x - display.minX) / max(display.width, 1)
+        let along = contact.fraction(point)
         channel.open()
         channel.send(["t": "enter", "name": VisitTrust.Host.localName, "edge": side.opposite.rawValue, "at": min(max(along, 0), 1)])
         DiagnosticLog.shared.info("Visit: on \(host.name)")
@@ -345,18 +365,20 @@ final class VisitController {
         lock.lock()
         defer { lock.unlock() }
         if forward == nil, away.contains(where: { $0.contains(p) }), !displays.contains(where: { $0.contains(p) }) {
-            return leaveAway(p, now: now)
+            return leaveAway(p, dx: dx, dy: dy, now: now)
         }
         guard !crossing, forward == nil, now >= quietUntil else { return }
         guard let display = displays.first(where: { $0.insetBy(dx: -1, dy: -1).contains(p) }) else { return }
         let free = { (q: CGPoint) in !self.displays.contains { $0.contains(q) } }
         var side: VisitTrust.Side?
         var into: Double = 0
-        if sides.contains(.right), p.x >= display.maxX - 1.5, free(CGPoint(x: display.maxX + 1, y: p.y)) { side = .right; into = dx }
-        else if sides.contains(.left), p.x <= display.minX + 0.5, free(CGPoint(x: display.minX - 1, y: p.y)) { side = .left; into = -dx }
-        else if sides.contains(.bottom), p.y >= display.maxY - 1.5, free(CGPoint(x: p.x, y: display.maxY + 1)) { side = .bottom; into = dy }
-        else if sides.contains(.top), p.y <= display.minY + 0.5, free(CGPoint(x: p.x, y: display.minY - 1)) { side = .top; into = -dy }
-        guard let side, into > 0 else { pushed = 0; return }
+        if p.x >= display.maxX - 1.5, free(CGPoint(x: display.maxX + 1, y: p.y)) { side = .right; into = dx }
+        else if p.x <= display.minX + 0.5, free(CGPoint(x: display.minX - 1, y: p.y)) { side = .left; into = -dx }
+        else if p.y >= display.maxY - 1.5, free(CGPoint(x: p.x, y: display.maxY + 1)) { side = .bottom; into = dy }
+        else if p.y <= display.minY + 0.5, free(CGPoint(x: p.x, y: display.minY - 1)) { side = .top; into = -dy }
+        guard let side, into > 0, let owner = MachineGeometry.owner(at: p, side: side, display: display, machines: placements) else { pushed = 0; pushedTarget = nil; return }
+        let target = "\(owner.0):\(side.rawValue)"
+        if pushedTarget != target { pushed = 0; pushedTarget = target }
         if now - pushedAt > Self.pushWindow { pushed = 0 }
         pushed += into
         pushedAt = now
@@ -369,13 +391,20 @@ final class VisitController {
     /// Tap thread, under `lock`. The pointer slid onto a display that's
     /// elsewhere: put it back just inside the display it came from, and if a
     /// paired host sits that way, that's a crossing.
-    private func leaveAway(_ p: CGPoint, now: TimeInterval) {
+    private func leaveAway(_ p: CGPoint, dx: Double, dy: Double, now: TimeInterval) {
         let clamp = { (r: CGRect) in CGPoint(x: min(max(p.x, r.minX + 2), r.maxX - 3), y: min(max(p.y, r.minY + 2), r.maxY - 3)) }
         let distance = { (q: CGPoint) in hypot(q.x - p.x, q.y - p.y) }
         guard let display = displays.min(by: { distance(clamp($0)) < distance(clamp($1)) }) else { return }
         let inside = clamp(display)
         let side: VisitTrust.Side = p.x >= display.maxX ? .right : p.x < display.minX ? .left : p.y >= display.maxY ? .bottom : .top
-        let cross = sides.contains(side) && !crossing && now >= quietUntil
+        let into = side == .right ? dx : side == .left ? -dx : side == .bottom ? dy : -dy
+        let owner = MachineGeometry.owner(at: inside, side: side, display: display, machines: placements)
+        let owns = owner != nil
+        let target = owner.map { "\($0.0):\(side.rawValue)" }
+        if pushedTarget != target { pushed = 0; pushedTarget = target }
+        if now - pushedAt > Self.pushWindow { pushed = 0 }
+        if owns && into > 0 { pushed += into; pushedAt = now } else { pushed = 0 }
+        let cross = owns && pushed >= Self.push && !crossing && now >= quietUntil
         if cross { crossing = true; pushed = 0 }
         DispatchQueue.main.async {
             CGWarpMouseCursorPosition(inside)

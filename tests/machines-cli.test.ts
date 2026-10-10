@@ -1,5 +1,28 @@
-import { expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { test, expect } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+test("hosts add preserves config and never probes a host", () => {
+  const home = mkdtempSync(join(tmpdir(), "machines-cli-"));
+  try {
+    mkdirSync(join(home, ".lattices"));
+    const file = join(home, ".lattices/hosts.json");
+    writeFileSync(file, JSON.stringify({ version: 7, hosts: { existing: { address: "offline.invalid" } } }));
+    const run = (...args: string[]) => Bun.spawnSync([process.execPath, resolve("bin/lattices.ts"), "hosts", "add", ...args], {
+      env: { ...process.env, HOME: home, LATTICES_HOSTS: "" }, timeout: 5000,
+    });
+    const result = run("fixture", "unreachable.invalid", "9500");
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ version: 7, hosts: {
+      existing: { address: "offline.invalid" }, fixture: { address: "unreachable.invalid", port: 9500 },
+    } });
+    expect(run("bad", "offline.invalid", "99999").exitCode).not.toBe(0);
+    writeFileSync(file, "broken");
+    expect(run("fixture").exitCode).not.toBe(0);
+    expect(readFileSync(file, "utf8")).toBe("broken");
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
 
 test("Machines CLI routes mutations to an isolated mock daemon", async () => {
   const requests: { method: string; params: unknown }[] = [];
@@ -19,6 +42,8 @@ test("Machines CLI routes mutations to an isolated mock daemon", async () => {
   });
   try {
     for (const [args, method, params] of [
+      [["visit", "place", "fixture", "2560", "-300"], "visit.place", { name: "fixture", x: 2560, y: -300 }],
+      [["visit", "host", "on"], "visit.host", { on: true }],
       [["visit", "side", "fixture", "left"], "visit.side", { host: "fixture", side: "left" }],
       [["visit", "forget", "fixture"], "visit.forget", { host: "fixture" }],
       [["mouse", "stop"], "mouse.stop", null],

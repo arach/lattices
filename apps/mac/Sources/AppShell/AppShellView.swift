@@ -101,7 +101,7 @@ struct AppShellView: View {
     @ObservedObject private var desktop = DesktopModel.shared
 
     private var manifest: HudAppManifest {
-        HudAppManifest(name: "Lattices", accent: Palette.running, targetLabel: "Machine")
+        HudAppManifest(name: "Lattices", accent: Palette.textDim, targetLabel: "Machine")
     }
 
     /// Hudson rail ↔ our `activePage`. Selecting a rail item routes through the
@@ -187,7 +187,7 @@ struct AppShellView: View {
             selection: selection,
             entries: entries,
             isCompact: sidebarCompact,
-            accent: Palette.running,
+            accent: Palette.textDim,
             labelWidth: CGFloat(sidebarLabelWidth),
             onHeaderTap: nil
         ) {
@@ -229,7 +229,7 @@ struct AppShellView: View {
                     isActive: windowController.activePage == .settings,
                     isCompact: sidebarCompact,
                     labelWidth: CGFloat(sidebarLabelWidth),
-                    accent: Palette.running
+                    accent: Palette.textDim
                 ) {
                     windowController.showPage(.settings)
                 }
