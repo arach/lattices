@@ -9,6 +9,7 @@
 import { selfIdentity, type Policy } from "./auth.ts";
 import { VERSION, capabilities, refreshCapabilities, registerEndpoints } from "./endpoints.ts";
 import * as hypr from "./hyprland.ts";
+import { updateEventHealth } from "./host-capabilities.ts";
 import * as live from "./live.ts";
 import { Router } from "./router.ts";
 import { serve } from "./server.ts";
@@ -64,6 +65,16 @@ a LAN IP for a phone without Tailscale.`);
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   await refreshCapabilities();
+  let emit = (_event: string, _data: unknown) => {};
+  let onDesktopEvent = (_event: string) => {};
+  const stopEvents = hypr.onEvents((event) => onDesktopEvent(event), {
+    onHealth: (health) => {
+      updateEventHealth(health);
+      emit("host.healthChanged", { eventStream: health });
+    },
+    log: (line) => { if (!opts.quiet) console.error("[lattices-host] " + line); },
+  });
+  await stopEvents.ready;
 
   const router = new Router(() => capabilities);
   let clientCount = () => 0;
@@ -87,6 +98,7 @@ async function main() {
 
   if (opts.describe) {
     console.log(JSON.stringify(await router.dispatch("host.describe", {}), null, 2));
+    stopEvents();
     process.exit(0);
   }
 
@@ -113,11 +125,12 @@ async function main() {
     log(`companion bridge on ${bridgeHosts.map((h) => `http://${h}:${opts.bridgePort}`).join(", ")} (fingerprint ${bridge.security.fingerprint})`);
   }
   clientCount = server.clientCount;
+  emit = server.broadcast;
 
   // Hyprland events become the daemon's windows.changed / spaces.changed.
   let pending: ReturnType<typeof setTimeout> | null = null;
   const changed = new Set<string>();
-  const stopEvents = hypr.onEvents((event) => {
+  onDesktopEvent = (event) => {
     if (/^(openwindow|closewindow|movewindow|windowtitle|activewindow|changefloatingmode|fullscreen)/.test(event)) changed.add("windows.changed");
     if (/^(workspace|createworkspace|destroyworkspace|focusedmon|monitoradded|monitorremoved|moveworkspace)/.test(event)) changed.add("spaces.changed");
     if (changed.size === 0 || pending) return;
@@ -126,7 +139,7 @@ async function main() {
       changed.clear();
       pending = null;
     }, 150);
-  });
+  };
 
   log(`v${VERSION} listening on ${binds.map((b) => `ws://${b}:${opts.port}`).join(", ")}`);
   log(`capabilities: ${[...capabilities].sort().join(", ") || "none"}`);
@@ -139,6 +152,7 @@ async function main() {
 
   const shutdown = () => {
     stopEvents();
+    if (pending) clearTimeout(pending);
     live.stop();
     bridge?.stop();
     server.stop();

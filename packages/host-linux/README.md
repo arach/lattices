@@ -141,3 +141,32 @@ it off.
 ```sh
 bun test --cwd packages/host-linux
 ```
+
+### Health is not an empty change stream
+
+The additive fields in **host.describe** distinguish a healthy, quiet desktop
+from a host that cannot observe it:
+
+- **eventStream**: source (hyprland), state (not_started, connecting, connected,
+  unavailable, disconnected or stopped), reason (null when connected), and
+  lastEventAt (ISO timestamp; null until the first actual event).
+- **events.desktop** is advertised only while socket2 is connected. The
+  events.subscribe / events.unsubscribe methods still exist when it is not:
+  clients can subscribe to **host.healthChanged** to see stream state changes.
+- **capabilityHealth** maps capability names to available and reason. Missing
+  grim/wtype/etc., a failing desktop query, or an absent Wayland protocol
+  removes the capability and hides dependent methods in api.schema.
+
+A null lastEventAt with state connected means no event has been observed yet,
+not that observation is broken. Disconnection immediately removes events.desktop
+and publishes host.healthChanged. Query host.describe again after that event.
+
+Startup probes only read the desktop and Wayland registry; they do not capture,
+send input, start VNC or modify a window. Probes run at startup or an explicit
+refresh, never periodically. If the compositor becomes unreachable between
+startup and a describe call, describe still returns health, not a failed RPC.
+
+Socket2 state is logged once per distinct status/reason (no recurring retry
+noise). Recovery watches the runtime/Hyprland socket directories and reconnects
+when socket2 is created/replaced. There is no reconnect timer or polling loop.
+A stopped subscription closes its socket and all filesystem watchers.
