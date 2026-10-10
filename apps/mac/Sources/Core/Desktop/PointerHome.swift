@@ -48,21 +48,24 @@ enum PointerHome {
 
     /// Releases lan-mouse off the main thread, then warps on it.
     static func bringHome(completion: ((Result) -> Void)? = nil) {
+        PointerShare.shared.disarm()
+        let ours = PointerShare.shared.takeStartedDaemon()
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = release()
+            var result = release()
+            if ours, !result.stoppedDaemon { result.stoppedDaemon = stopDaemon() }
             DispatchQueue.main.async {
                 let main = NSScreen.screens.first?.frame ?? .zero
                 MouseFinder.shared.summon(to: NSPoint(x: main.midX, y: main.midY))
                 var line = "Pointer home"
                 if !result.deactivated.isEmpty { line += ", sharing off for \(result.deactivated.joined(separator: ", "))" }
-                if result.stoppedDaemon { line += ", lan-mouse stopped (no answer)" }
+                if result.stoppedDaemon { line += ours ? ", lan-mouse stopped" : ", lan-mouse stopped (no answer)" }
                 DiagnosticLog.shared.info(line)
                 completion?(result)
             }
         }
     }
 
-    private static func release() -> Result {
+    static func release() -> Result {
         guard let bin = binary() else { return Result(lanMouse: false) }
         var result = Result()
         guard let list = run(bin, ["cli", "list"]) else {
@@ -78,17 +81,24 @@ enum PointerHome {
         return result
     }
 
-    private static func stopDaemon() -> Bool {
-        guard let found = ProcessQuery.shell(["/usr/bin/pgrep", "-x", "lan-mouse"]).nilIfEmpty else { return false }
+    /// SIGTERM, then SIGKILL for one that's still there a second later,
+    /// since a hung daemon is the case this exists for.
+    static func stopDaemon() -> Bool {
+        let pids = daemonPids()
         var stopped = false
-        for pid in found.split(separator: "\n").compactMap({ pid_t($0) }) where kill(pid, SIGTERM) == 0 {
-            stopped = true
-        }
-        return stopped
+        for pid in pids where kill(pid, SIGTERM) == 0 { stopped = true }
+        guard stopped else { return false }
+        Thread.sleep(forTimeInterval: 1)
+        for pid in daemonPids() where pids.contains(pid) { kill(pid, SIGKILL) }
+        return true
+    }
+
+    static func daemonPids() -> [pid_t] {
+        ProcessQuery.shell(["/usr/bin/pgrep", "-x", "lan-mouse"]).split(separator: "\n").compactMap { pid_t($0) }
     }
 
     /// Runs a command, giving up after `timeout`. nil on failure or timeout.
-    private static func run(_ path: String, _ args: [String]) -> String? {
+    static func run(_ path: String, _ args: [String]) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = args
@@ -106,8 +116,4 @@ enum PointerHome {
         guard process.terminationStatus == 0 else { return nil }
         return String(data: data, encoding: .utf8) ?? ""
     }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

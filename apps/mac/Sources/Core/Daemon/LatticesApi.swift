@@ -3585,6 +3585,74 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "mouse.share",
+            description: "Share the pointer with lan-mouse on a trial: records the desktop as 'before-pointer-share', starts lan-mouse if needed and activates its clients. Unless mouse.keep is called before the deadline, or if lan-mouse stops answering, sharing goes off, the cursor comes home and the desktop is restored",
+            access: .mutate,
+            params: [Param(name: "for", type: "string", required: false, description: "Trial length: seconds, or 30s, 5m, 1h (default 5m)")],
+            returns: .custom("Object with 'sharing' and 'until'"),
+            handler: { params in
+                var seconds = PointerShare.trial
+                if let text = params?["for"]?.stringValue ?? params?["for"]?.intValue.map(String.init) {
+                    guard let parsed = StateHistory.duration(text), parsed > 0 else { throw RouterError.custom("for: expected seconds or 30s, 5m, 1h") }
+                    seconds = parsed
+                }
+                if Thread.isMainThread {
+                    PointerShare.shared.share(for: seconds)
+                    return .object(["sharing": .bool(true)])
+                }
+                let done = DispatchSemaphore(value: 0)
+                var outcome: Result<Date, PointerShare.ShareError> = .failure(.noAnswer)
+                DispatchQueue.main.async {
+                    PointerShare.shared.share(for: seconds) { outcome = $0; done.signal() }
+                }
+                // The CLI gives up after 3s; a cold daemon start finishes after this returns.
+                guard done.wait(timeout: .now() + 2.5) == .success else {
+                    return .object(["sharing": .bool(true), "starting": .bool(true)])
+                }
+                switch outcome {
+                case .failure(let error): throw RouterError.custom(error.description)
+                case .success(let until):
+                    return .object(["sharing": .bool(true), "until": .string(ISO8601DateFormatter().string(from: until))])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.keep",
+            description: "Keep pointer sharing on: cancels the mouse.share trial's deadline and watchdog",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with 'kept': false when no trial was armed"),
+            handler: { _ in
+                let work = { () -> Bool in
+                    let armed = PointerShare.shared.armed
+                    PointerShare.shared.keep()
+                    return armed
+                }
+                let kept = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["kept": .bool(kept)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "mouse.status",
+            description: "lan-mouse's clients and whether the pointer is shared, plus a mouse.share trial's deadline",
+            access: .read,
+            params: [],
+            returns: .custom("Object with 'lanMouse', 'running', 'sharing', 'clients' (id, host, active) and 'until'"),
+            handler: { _ in
+                let status = PointerShare.status()
+                return .object([
+                    "lanMouse": .bool(status.lanMouse),
+                    "running": .bool(status.running),
+                    "sharing": .bool(status.sharing),
+                    "clients": .array(status.clients.map { .object(["id": .int($0.id), "host": .string($0.host), "active": .bool($0.active)]) }),
+                    "until": status.until.map { .string(ISO8601DateFormatter().string(from: $0)) } ?? .null,
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "mouse.summon",
             description: "Warp the mouse cursor to screen center (or a given point) and show a sonar pulse",
             access: .mutate,

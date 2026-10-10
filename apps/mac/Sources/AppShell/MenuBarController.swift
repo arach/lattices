@@ -12,6 +12,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private var popover: NSPopover?
     private var contextMenu: NSMenu?
     private weak var actionMenuItem: NSMenuItem?
+    private weak var shareMenuItem: NSMenuItem?
+    private weak var keepMenuItem: NSMenuItem?
 
     var isPopoverShown: Bool {
         popover?.isShown == true
@@ -177,6 +179,17 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         FrontWindowPlacementMenu.attach(to: menu)
         CompanionAppsMenu.attach(to: menu)
 
+        let share = NSMenuItem(title: "Share Pointer", action: #selector(menuSharePointer), keyEquivalent: "")
+        share.target = self
+        menu.addItem(share)
+        shareMenuItem = share
+
+        let keep = NSMenuItem(title: "Keep Sharing", action: #selector(menuKeepSharing), keyEquivalent: "")
+        keep.target = self
+        keep.isHidden = true
+        menu.addItem(keep)
+        keepMenuItem = keep
+
         let home = NSMenuItem(title: "Bring Cursor Home", action: #selector(menuCursorHome), keyEquivalent: "")
         home.target = self
         menu.addItem(home)
@@ -237,6 +250,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
     @objc private func menuCursorHome() { PointerHome.bringHome() }
+    @objc private func menuKeepSharing() { PointerShare.shared.keep() }
+    @objc private func menuSharePointer() {
+        if shareMenuItem?.state == .on { PointerHome.bringHome() } else { PointerShare.shared.share() }
+    }
+
+    /// lan-mouse answers off main; the open menu updates when it does.
+    private func refreshPointerItems() {
+        keepMenuItem?.isHidden = !PointerShare.shared.armed
+        DispatchQueue.global(qos: .userInitiated).async {
+            let status = PointerShare.status()
+            DispatchQueue.main.async {
+                self.shareMenuItem?.isHidden = !status.lanMouse
+                self.shareMenuItem?.state = status.sharing ? .on : .off
+                self.keepMenuItem?.isHidden = !PointerShare.shared.armed
+            }
+        }
+    }
     @objc private func menuRuns() { ScreenMapWindowController.shared.showPage(.runs) }
     @objc private func menuActivityLog() { ScreenMapWindowController.shared.showPage(.activity) }
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
@@ -247,6 +277,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         actionMenuItem?.title = actionMenuTitle()
+        refreshPointerItems()
     }
 
     @objc private func menuAction() {

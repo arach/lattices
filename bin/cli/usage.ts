@@ -134,6 +134,10 @@ Usage:
   lats dev type           Print detected project type
   lats mouse              Find mouse — sonar pulse at cursor position
   lats mouse summon       Summon mouse to screen center
+  lats mouse share [--for 5m]  Share the pointer with lan-mouse; reverts unless kept
+  lats mouse keep         Keep pointer sharing on
+  lats mouse status       lan-mouse clients and any trial deadline
+  lats mouse home         Sharing off, cursor to the main display
   lats mcp                MCP server over stdio (agent config: command "lattices", args ["mcp"])
   lats mcp --list         List MCP toolsets and their tools
   lats mcp --print-config <harness>  Print the agent config snippet
