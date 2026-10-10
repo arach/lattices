@@ -36,3 +36,29 @@ final class MachinesRenderTests: XCTestCase {
         }
     }
 }
+
+@MainActor
+final class ClusterRowsRenderTests: XCTestCase {
+    func testOfflineRows() throws {
+        guard let dir = ProcessInfo.processInfo.environment["MACHINES_RENDER_DIR"] else { throw XCTSkip("Opt-in offline render") }
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        for width in [720.0, 1100.0] {
+            let view = VStack(spacing: 0) {
+                MachineRow(name: "archie", address: "100.64.0.1", reachability: "Reachable", build: "0.13.2 · a1234567 · Behind",
+                    paired: true, placement: "right", visiting: true, selected: true, canVisit: false, canOpen: true,
+                    select: {}, visit: {}, open: {})
+                MachineRow(name: "arts-mini", address: "arts-mini.local", reachability: "Unreachable", build: "? · ?",
+                    paired: true, placement: "left", visiting: false, selected: false, canVisit: true, canOpen: true,
+                    select: {}, visit: {}, open: {})
+                MachineRow(name: "MacBook Air", address: "air.local", reachability: "Connecting", build: "0.13.3 · abcdef01",
+                    paired: false, placement: "Unplaced", visiting: false, selected: false, canVisit: false, canOpen: true,
+                    select: {}, visit: {}, open: {})
+            }.padding(16).frame(width: width).foregroundStyle(Palette.text).background(Palette.bg)
+                .buttonStyle(.bordered).controlSize(.small).tint(Palette.textDim).environment(\.colorScheme, .dark)
+            let renderer = ImageRenderer(content: view); renderer.scale = 2
+            let image = try XCTUnwrap(renderer.cgImage)
+            let data = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+            try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("cluster-rows-\(Int(width)).png"))
+        }
+    }
+}

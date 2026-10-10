@@ -58,7 +58,7 @@ struct MachinesPageView: View {
         .onDisappear { model.disappear(); hosts.release() }
         .onReceive(NotificationCenter.default.publisher(for: VisitController.changed)) { _ in model.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in model.refresh() }
-        .sheet(isPresented: $pairing) { MachinePairSheet { model.refresh() } }
+        .sheet(isPresented: $pairing) { MachinePairSheet { model.refresh(); hosts.reload() } }
     }
 
     private var machineList: some View {
@@ -67,25 +67,21 @@ struct MachinesPageView: View {
                 Text("No machines").foregroundStyle(Palette.textMuted).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
             }
             ForEach(machines) { machine in
-                Button { selection = machine.id } label: {
-                    HStack(spacing: 10) {
-                        Text(machine.name).font(Typo.heading(12)).frame(width: 120, alignment: .leading)
-                        Text(machine.address).font(Typo.mono(10)).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(reachability(machine)).frame(width: 82, alignment: .leading)
-                        Text(machine.visit == nil ? "Unpaired" : "Paired").frame(width: 58, alignment: .leading)
-                        Text(machine.visit.flatMap { MachineArrangementStore.side(for: $0, displays: model.screens.map(\.frame)) }?.rawValue ?? "Unplaced").frame(width: 58, alignment: .leading)
-                        Text(model.visit.visiting == machine.visit?.name && machine.visit != nil ? "Visiting" : "—")
-                            .foregroundStyle(model.visit.visiting == machine.visit?.name && machine.visit != nil ? Long.coral : Palette.textMuted)
-                            .frame(width: 52, alignment: .leading)
-                    }
-                    .lineLimit(1)
-                    .padding(.horizontal, 8)
-                    .frame(height: 36)
-                    .contentShape(Rectangle())
-                    .background(selected?.id == machine.id ? Palette.surface : Color.clear)
-                }.buttonStyle(.plain)
+                MachineRow(name: machine.name, address: machine.address, reachability: reachability(machine),
+                    build: build(machine).label, paired: machine.visit != nil,
+                    placement: machine.visit.flatMap { MachineArrangementStore.side(for: $0, displays: model.screens.map(\.frame)) }?.rawValue ?? "Unplaced",
+                    visiting: model.visit.visiting == machine.visit?.name && machine.visit != nil,
+                    selected: selected?.id == machine.id, canVisit: machine.visit != nil && model.visit.visiting == nil,
+                    canOpen: machine.remote != nil,
+                    select: { selection = machine.id },
+                    visit: { model.perform("visit.start", .object(["host": .string(machine.name)])) },
+                    open: { selection = machine.id })
             }
         }
+    }
+    private func build(_ machine: MachineInventory.Machine) -> MachineBuild {
+        if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }) { return host.build }
+        return model.builds[machine.name] ?? MachineBuild([:])
     }
     private func reachability(_ machine: MachineInventory.Machine) -> String {
         if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }), host.status == .online { return "Reachable" }
@@ -97,6 +93,9 @@ struct MachinesPageView: View {
         }
         return "Unknown"
     }
+    private func displayParams(_ screen: VisitController.Screen) -> JSON {
+        .object(["display": .int(screen.number)])
+    }
     private var displays: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Displays").font(Typo.heading(13))
@@ -104,14 +103,13 @@ struct MachinesPageView: View {
                 HStack {
                     Text("\(screen.number) · \(screen.name)").frame(maxWidth: .infinity, alignment: .leading)
                     Text("\(Int(screen.frame.width)) × \(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                    Button("Make main") {
-                        do { try DisplayArrangement.shared.makeMain(screen.number) } catch { model.error = "\(error)" }
-                    }
+                    Button("Bring everything here") { model.perform("bring", displayParams(screen)) }.frame(width: 140)
+                    Button("Make main") { model.perform("main", displayParams(screen)) }
                     .buttonStyle(.borderless).font(Typo.body(11))
                     .opacity(screen.main ? 0 : 1).disabled(screen.main || DisplayArrangement.shared.pending)
                     .frame(width: 80)
                     Toggle("Elsewhere", isOn: Binding(get: { screen.elsewhere }, set: {
-                        if !VisitController.shared.setElsewhere(screen.number, $0) { model.error = "Display changed. Refresh and try again." }
+                        model.perform($0 ? "elsewhere" : "here", displayParams(screen))
                     })).toggleStyle(.checkbox).frame(width: 100)
                 }.frame(height: 28)
             }
@@ -202,5 +200,50 @@ private struct MachinePairSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Fixed two-line rows keep long identities readable at the page's narrow width.
+struct MachineRow: View {
+    let name: String
+    let address: String
+    let reachability: String
+    let build: String
+    let paired: Bool
+    let placement: String
+    let visiting: Bool
+    let selected: Bool
+    let canVisit: Bool
+    let canOpen: Bool
+    let select: () -> Void
+    let visit: () -> Void
+    let open: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: select) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 10) {
+                        Text(name).font(Typo.heading(12)).frame(width: 120, alignment: .leading)
+                        Text(address).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+                        Spacer(minLength: 0)
+                        Text(visiting ? "Visiting" : "—")
+                            .foregroundStyle(visiting ? Long.coral : Palette.textMuted).frame(width: 52, alignment: .leading)
+                    }
+                    HStack(spacing: 10) {
+                        Text(reachability).frame(width: 120, alignment: .leading)
+                        Text(build).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+                        Spacer(minLength: 0)
+                        Text(paired ? "Paired" : "Unpaired").frame(width: 58, alignment: .leading)
+                        Text(placement).frame(width: 58, alignment: .leading)
+                    }
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            Button("Visit now", action: visit).disabled(!canVisit).frame(width: 72)
+            Button("Open", action: open).disabled(!canOpen).frame(width: 48)
+        }
+        .font(Typo.body(11)).lineLimit(1)
+        .padding(.horizontal, 8).frame(height: 56)
+        .background(selected ? Palette.surface : Color.clear)
     }
 }

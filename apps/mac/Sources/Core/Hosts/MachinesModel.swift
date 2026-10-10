@@ -51,6 +51,7 @@ final class MachinesModel: ObservableObject {
     @Published var visit = VisitController.Status(armed: false, visiting: nil, hosts: [])
     @Published var screens: [VisitController.Screen] = []
     @Published var reachable: [String: Bool] = [:]
+    @Published var builds: [String: MachineBuild] = [:]
     @Published var error: String?
     private var visible = false
     private var generation = 0
@@ -85,6 +86,7 @@ final class MachinesModel: ObservableObject {
                         defer { connection.cancel() }
                         guard let info = try? await connection.call("host.describe", timeout: 3) as? [String: Any],
                               self.visible, self.generation == version else { return }
+                        self.builds[host.name] = MachineBuild(info)
                         MachineArrangementStore.cache(MachineArrangementStore.parseMonitors(info["displays"]), for: host.name)
                         VisitController.shared.refreshLayout()
                         self.objectWillChange.send()
@@ -115,6 +117,10 @@ final class MachinesModel: ObservableObject {
             visit.hosts.map { .init(name: $0.name, address: $0.address, visit: $0) }
             + hosts.map { .init(name: $0.name, address: $0.address, remote: $0.name) }
         )
+    }
+    func perform(_ method: String, _ params: JSON? = nil) {
+        do { _ = try LatticesApi.shared.dispatch(method: method, params: params); error = nil; refresh() }
+        catch { self.error = error.localizedDescription }
     }
     func move(_ name: String, to side: VisitTrust.Side) {
         do { try VisitTrust.shared.setSide(name, side); error = nil; refresh() }

@@ -29,6 +29,7 @@ final class RemoteHostsModel: ObservableObject {
         let address: String
         let port: UInt16
         var status: Status = .connecting
+        var build = MachineBuild([:])
         var platform: String?
         var compositor: String?
         var capabilities: [String] = []
@@ -155,7 +156,12 @@ final class RemoteHostsModel: ObservableObject {
     }
 
     private func connectAll() {
-        let configured = Self.configuredHosts()
+        var configured = Self.configuredHosts()
+        for paired in VisitTrust.shared.list() {
+            guard let address = VisitTrust.bridgeURL(paired.address)?.host else { continue }
+            guard !configured.contains(where: { MachineInventory.key($0.name) == MachineInventory.key(paired.name) || MachineInventory.addressKey($0.address) == MachineInventory.addressKey(address) }) else { continue }
+            configured.append((name: paired.name, address: address, port: 9399))
+        }
         hosts = configured.map { entry in
             var host = hosts.first { $0.name == entry.name } ?? Host(name: entry.name, address: entry.address, port: entry.port)
             host.status = .connecting
@@ -203,6 +209,7 @@ final class RemoteHostsModel: ObservableObject {
         VisitController.shared.refreshLayout()
         update(name) {
             $0.monitors = monitors
+            $0.build = MachineBuild(result)
             $0.platform = result["platform"] as? String
             $0.compositor = result["compositor"] as? String
             $0.capabilities = (result["capabilities"] as? [String]) ?? []

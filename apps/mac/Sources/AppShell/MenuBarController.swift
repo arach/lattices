@@ -178,6 +178,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
         FrontWindowPlacementMenu.attach(to: menu)
         CompanionAppsMenu.attach(to: menu)
+        let machines = NSMenuItem(title: "Machines", action: nil, keyEquivalent: "")
+        machines.submenu = NSMenu(title: "Machines")
+        menu.addItem(machines)
 
         let long = NSMenuItem(title: "Long", action: #selector(menuLong), keyEquivalent: "")
         long.target = self
@@ -268,6 +271,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         actionMenuItem?.title = actionMenuTitle()
         refreshPointerItems()
+        if let submenu = menu.items.first(where: { $0.title == "Machines" })?.submenu {
+            submenu.removeAllItems()
+            for row in BrowseMenu.machinesSection().filter({ $0.title.hasPrefix("Visit ") || $0.title.hasPrefix("Bring everything to ") }) {
+                let item = NSMenuItem(title: row.title, action: #selector(menuMachineAction(_:)), keyEquivalent: "")
+                item.target = self; item.representedObject = row.action
+                submenu.addItem(item)
+            }
+        }
+    }
+
+    @objc private func menuMachineAction(_ sender: NSMenuItem) {
+        (sender.representedObject as? () -> Void)?()
     }
 
     @objc private func menuAction() {
