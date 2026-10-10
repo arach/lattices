@@ -3,9 +3,10 @@ import ScreenCaptureKit
 
 // MARK: - Layer Preview
 
-/// The frozen side of a ⌘⌥ flip. A flip lands on its layer at once, as it
-/// always has; pressing Space while ⌘⌥ is still down freezes there and lays
-/// the whole layer out like Mission Control: every window it matched,
+/// The frozen side of a ⌘⌥ flip. A flip aims at its layer and moves
+/// nothing until ⌘⌥ comes up (`LayerAim`); pressing Space while ⌘⌥ is
+/// still down freezes on the layer aimed at instead, and lays the whole
+/// layer out like Mission Control: every window it matched,
 /// wherever it is, then what it shows beyond its entries (its scene, drawn
 /// with a dashed edge) and what it keeps put away, each captured and scaled
 /// without changing its shape. What it keeps put away is dimmed; a window
@@ -226,7 +227,9 @@ final class LayerPreview {
         DesktopModel.shared.refreshNow()
         let live = Set(DesktopModel.shared.windows.keys)
         captures = captures.filter { live.contains($0.key) }
-        show(index: min(max(workspace.activeLayerIndex, 0), layers.count - 1))
+        // The layer the flip aimed at; this freeze owns the aim now.
+        let aimed = LayerAim.shared.take() ?? workspace.activeLayerIndex
+        show(index: min(max(aimed, 0), layers.count - 1))
 
         lock.lock()
         pending = false
