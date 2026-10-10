@@ -1053,6 +1053,25 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "layers.undo",
+            description: "Take back the last layer edit or switch this launch. An edit (create, add, remove, move, rename, delete, layout) writes the layers as they were and moves no window; a switch goes back to the layer you were on and puts its windows where they sat",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with 'undone' (what it took back, or null with nothing to undo) and 'remaining'"),
+            handler: { _ in
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    let undone = try wm.undoLayerEdit()
+                    return .object([
+                        "ok": .bool(true),
+                        "undone": undone.map { .string($0) } ?? .null,
+                        "remaining": .bool(wm.canUndoLayerEdit),
+                    ])
+                }
+            }
+        ))
+
+        api.register(Endpoint(
             method: "layers.reveal",
             description: "Show All: put back every window a layer switch parked and unhide every app it hid",
             access: .mutate,
@@ -3542,6 +3561,30 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "mouse.home",
+            description: "Turn off lan-mouse sharing (stopping a daemon that doesn't answer) and warp the cursor to the centre of the main display",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                if Thread.isMainThread {
+                    PointerHome.bringHome()
+                    return .object(["ok": .bool(true)])
+                }
+                let done = DispatchSemaphore(value: 0)
+                var outcome = PointerHome.Result()
+                PointerHome.bringHome { outcome = $0; done.signal() }
+                _ = done.wait(timeout: .now() + PointerHome.timeout * 3)
+                return .object([
+                    "ok": .bool(true),
+                    "lanMouse": .bool(outcome.lanMouse),
+                    "deactivated": .array(outcome.deactivated.map { .string($0) }),
+                    "stoppedDaemon": .bool(outcome.stoppedDaemon),
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "mouse.summon",
             description: "Warp the mouse cursor to screen center (or a given point) and show a sonar pulse",
             access: .mutate,
@@ -3669,6 +3712,7 @@ final class LatticesApi {
             }
         ))
 
+        DisplayGather.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
 
         api.register(Endpoint(

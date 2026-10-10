@@ -178,6 +178,12 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(spaceSwitchGlideEnabled, forKey: "spaceSwitchKeys.glide") }
     }
 
+    /// How long letting go of ⌘⌥ on another layer waits for Return before
+    /// staying put (`LayerAim`). 0 switches at once; below 0 waits for a key.
+    @Published var layerSwitchConfirmSeconds: Double {
+        didSet { UserDefaults.standard.set(layerSwitchConfirmSeconds, forKey: "layers.confirmSeconds") }
+    }
+
     // MARK: - Search & OCR
 
     @Published var ocrEnabled: Bool {
@@ -373,6 +379,11 @@ class Preferences: ObservableObject {
             self.spaceSwitchGlideEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.glide")
         } else {
             self.spaceSwitchGlideEnabled = true
+        }
+        if UserDefaults.standard.object(forKey: "layers.confirmSeconds") != nil {
+            self.layerSwitchConfirmSeconds = UserDefaults.standard.double(forKey: "layers.confirmSeconds")
+        } else {
+            self.layerSwitchConfirmSeconds = 5
         }
         // Search & OCR. Default off until the user explicitly enables it from
         // the Permissions Assistant or Search settings. Honors any explicit
