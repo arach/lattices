@@ -65,6 +65,7 @@ final class RemoteHostsModel: ObservableObject {
         guard viewers == 0 else { return }
         for connection in connections.values { connection.cancel() }
         connections.removeAll()
+        dirty.removeAll()
     }
 
     func reconnect(_ name: String) {
@@ -195,7 +196,8 @@ final class RemoteHostsModel: ObservableObject {
 
     private func load(_ name: String) async {
         guard let connection = connections[name] else { return }
-        if let list = try? await connection.call("windows.list") as? [[String: Any]] {
+        if let list = try? await connection.call("windows.list") as? [[String: Any]],
+           connections[name] === connection {
             let windows = list.compactMap { item -> Window? in
                 guard let wid = (item["wid"] as? NSNumber)?.uint32Value else { return nil }
                 return Window(
@@ -208,11 +210,13 @@ final class RemoteHostsModel: ObservableObject {
             }
             update(name) { $0.windows = windows }
         }
-        guard hosts.first(where: { $0.name == name })?.capabilities.contains("capture.still") == true else { return }
+        guard connections[name] === connection,
+              hosts.first(where: { $0.name == name })?.capabilities.contains("capture.still") == true else { return }
         let started = Date()
         do {
             let result = try await connection.call("capture.still", params: ["maxWidth": 1600, "quality": 70], timeout: 15) as? [String: Any]
-            guard let encoded = result?["data"] as? String,
+            guard connections[name] === connection,
+                  let encoded = result?["data"] as? String,
                   let data = Data(base64Encoded: encoded),
                   let image = NSImage(data: data) else { return }
             let elapsed = Int(Date().timeIntervalSince(started) * 1000)

@@ -1,53 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Other machines running lattices: a still of each screen, kept current by
-/// the host's window events, and its windows. Clicking the still opens the
-/// live view.
-struct HostsPageView: View {
-    @ObservedObject private var model = RemoteHostsModel.shared
-
-    var body: some View {
-        Group {
-            if model.hosts.isEmpty {
-                emptyState
-            } else {
-                ScrollView {
-                    VStack(spacing: Chrome.inset) {
-                        ForEach(model.hosts) { host in
-                            HostCard(host: host, model: model)
-                        }
-                    }
-                    .padding(Chrome.inset)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(PanelBackground())
-        .pageActions(model.hosts.map { host in
-            PageAction(id: "refresh-\(host.name)", title: model.hosts.count == 1 ? "Refresh" : "Refresh \(host.name)", icon: "arrow.clockwise") {
-                if host.status == .online { model.refresh(host.name) } else { model.reconnect(host.name) }
-            }
-        })
-        .onAppear { model.retain() }
-        .onDisappear { model.release() }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Text("No hosts")
-                .font(Typo.heading(13))
-                .foregroundColor(Palette.text)
-            Text(verbatim: "~/.lattices/hosts.json  {\"hosts\":{\"archie\":{\"address\":\"archie\"}}}")
-                .font(Typo.mono(11))
-                .foregroundColor(Palette.textDim)
-                .textSelection(.enabled)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct HostCard: View {
+struct MachineHostDetail: View {
     let host: RemoteHostsModel.Host
     @ObservedObject var model: RemoteHostsModel
 
@@ -72,7 +26,7 @@ private struct HostCard: View {
     private var header: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(host.status == .online ? Palette.running : Palette.textMuted)
+                .fill(host.status == .online ? Palette.textDim : Palette.textMuted)
                 .frame(width: 6, height: 6)
             Text(host.name)
                 .font(Typo.heading(13))
