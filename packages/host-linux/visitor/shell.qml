@@ -46,34 +46,46 @@ ShellRoot {
                 visible: panel.area !== undefined && x >= 0 && y >= 0 && x < panel.width && y < panel.height
                 width: 120
                 height: 46
+                // A small rounded dart, tip on the point, with a soft coral glow.
                 Canvas {
-                    width: 24
-                    height: 30
+                    x: -8
+                    y: -8
+                    width: 34
+                    height: 34
                     onPaint: {
                         const c = getContext("2d");
                         c.clearRect(0, 0, width, height);
+                        c.save();
+                        c.translate(8, 8);
                         c.beginPath();
-                        c.moveTo(1, 1); c.lineTo(1, 24); c.lineTo(7, 18);
-                        c.lineTo(12, 29); c.lineTo(17, 27); c.lineTo(12, 16);
-                        c.lineTo(22, 16); c.closePath();
+                        c.moveTo(0, 0); c.lineTo(4, 15.5); c.lineTo(7.6, 9.4); c.lineTo(14.5, 7.6);
+                        c.closePath();
+                        c.lineJoin = "round";
+                        c.shadowColor = "#99ef6a47";
+                        c.shadowBlur = 9;
+                        c.strokeStyle = "#ffffff"; c.lineWidth = 4; c.stroke();
+                        c.shadowBlur = 0;
                         c.fillStyle = "#ef6a47"; c.fill();
-                        c.strokeStyle = "#ffffff"; c.lineWidth = 1.5; c.stroke();
+                        c.strokeStyle = "#ef6a47"; c.lineWidth = 1.6; c.stroke();
+                        c.restore();
                     }
                 }
                 Rectangle {
-                    x: 19
-                    y: 25
+                    x: 15
+                    y: 17
                     width: label.implicitWidth + 12
-                    height: 20
-                    radius: 5
+                    height: 17
+                    radius: height / 2
                     color: "#ef6a47"
+                    border.color: "#59ffffff"
+                    border.width: 1
                     Text {
                         id: label
                         anchors.centerIn: parent
                         text: root.visit.name
                         textFormat: Text.PlainText
                         color: "#ffffff"
-                        font.pixelSize: 11
+                        font.pixelSize: 10
                         font.weight: Font.DemiBold
                     }
                 }
