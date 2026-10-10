@@ -22,11 +22,11 @@ Four waveform bars on the Lattices grid, the first two lit: a readout part-way t
 | Queued bars on light | `#101518 at 22%` |
 | Ink on dark | `#f2f2f2` |
 | Queued bars on dark | `#ffffff at 35%` |
-| Icon tile | `#141416` |
+| Icon tile | `#101518` |
 
 ## App icon
 
-An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattices product. The glyph's longer side spans 56% of the tile. The favicon drops the margin and grows the glyph 18%.
+An 824 px tile in a 1024 canvas with continuous corners, shared by every Lattices product. The glyph's longer side spans 56% of the tile, as in every product icon. The favicon drops the margin and grows the glyph 18%.
 
 Measured glyph bounds in viewBox units: 1.992, 1.992, 16.016 × 16.016.
 

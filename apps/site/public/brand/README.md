@@ -17,10 +17,11 @@ Every product icon shares one grid, so they sit together in the Dock:
 
 - An 824 px tile inset 100 px in a 1024 px canvas: Apple's macOS icon grid.
 - Continuous corners: superellipse quadrants reaching 34.5% along each edge with exponent 2.85, fitted to the mask macOS 26 draws around system icons.
-- A 2 px hairline on the tile edge, so a dark tile holds its shape on a dark Dock.
-- The glyph centred on its measured bounds, its longer side a set share of the tile. Each kit's README gives the share.
+- One tile colour, the family's light ink `#101518`, with the mark in its dark-background ink.
+- A 2 px hairline on the tile edge, so the tile holds its shape on a dark Dock.
+- The glyph centred on its measured bounds, its longer side 56% of the tile. Every mark fills the same square of its box, the 16 units of the Lattices grid's 20, so overlaid the glyphs touch the same guides.
 
-Favicons drop the margin: the tile runs edge to edge and the glyph grows 18%, with no hairline or wash. The touch icon is square and opaque, because iOS applies its own mask.
+Favicons drop the margin: the tile runs edge to edge and the glyph grows 18%, with no hairline. The touch icon is square and opaque, because iOS applies its own mask.
 
 ## Where they are used
 

@@ -273,6 +273,7 @@ function speechPreview() {
 }
 
 // ── Pages config ────────────────────────────────────────────────
+// Every card, product or not, carries the family green.
 const latticesAccent = ["#33c773", "#1a8f4a"];
 
 const pages = [
@@ -315,7 +316,6 @@ const pages = [
     title: "action",
     subtitle:
       "Native macOS automation, capture, and review for agents.",
-    accent: ["#c58a70", "#9a6450"],
     preview: () =>
       artPreview("products/action/assets/brand/landing/landing-hero-observe-act-record.webp", "85% center"),
   },
@@ -326,7 +326,6 @@ const pages = [
     title: "blink",
     subtitle:
       "Spatial notes: each note is a floating panel, and the desktop is the workspace.",
-    accent: ["#f0b45a", "#c2872f"],
     preview: () => artPreview("products/blink/landing/public/hero-desk.png"),
   },
   {
@@ -343,7 +342,7 @@ const pages = [
 // ── HTML builder ────────────────────────────────────────────────
 function buildHTML(config) {
   const { tag, title, subtitle, product } = config;
-  const [accentFrom, accentTo] = config.accent ?? latticesAccent;
+  const [accentFrom, accentTo] = latticesAccent;
 
   return `<!DOCTYPE html>
 <html>
