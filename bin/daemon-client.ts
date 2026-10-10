@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pairingHeaders } from "./host-pairing.ts";
 
 const DEFAULT_DAEMON_HOST = "127.0.0.1";
 const DEFAULT_DAEMON_PORT = 9399;
@@ -198,6 +199,9 @@ async function sendRequest(
         `Sec-WebSocket-Version: 13`,
         ...voiceTokenHeader(method),
         ...callerHeader(),
+        // A paired remote host needs every connection signed (LAT-013). A
+        // pairing request goes unsigned so a host that forgot us can re-pair.
+        ...(method === "clients.pair" ? [] : pairingHeaders(endpoint)),
         ``,
         ``,
       ].join("\r\n");
@@ -214,7 +218,10 @@ async function sendRequest(
         if (!header.includes("101")) {
           settled = true;
           cleanup();
-          reject(new Error("WebSocket upgrade failed"));
+          // lattices-host explains a 401/403 in the body (unpaired, revoked, bad signature).
+          const status = header.split("\r\n")[0]!.split(" ")[1];
+          const reason = (status === "401" || status === "403") ? buffer.subarray(headerEnd + 4).toString().trim() : "";
+          reject(new Error(reason ? `WebSocket upgrade failed (${status}): ${reason}` : "WebSocket upgrade failed"));
           return;
         }
         upgraded = true;
@@ -269,8 +276,10 @@ export async function isDaemonRunning(): Promise<boolean> {
   try {
     await daemonCall("daemon.status", null, 1000);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    // A lattices-host that answers but refuses this client (unpaired, revoked)
+    // is running; the caller's own request will surface why.
+    return /^(pairing_required|scope_denied|loopback_only)|upgrade failed \((401|403)\)/.test((err as Error).message);
   }
 }
 

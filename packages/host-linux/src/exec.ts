@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 /** Run a command and resolve with stdout; rejects with stderr on failure. */
 export function run(
@@ -42,14 +42,7 @@ export function runBuffer(command: string, args: string[], timeoutMs = 15_000): 
   });
 }
 
-const found = new Map<string, boolean>();
-
-/** True when `command` is on PATH. Cached for the life of the process. */
+/** Check current PATH, not a cached shell result, so re-probes are honest. */
 export function hasCommand(command: string): boolean {
-  let ok = found.get(command);
-  if (ok === undefined) {
-    ok = spawnSync("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
-    found.set(command, ok);
-  }
-  return ok;
+  return Bun.which(command) !== null;
 }

@@ -1045,7 +1045,7 @@ class WorkspaceManager: ObservableObject {
     /// had showing (see `LayerStage`), from a fresh inventory. Staging the
     /// active layer again reconciles it the same way.
     @discardableResult
-    private func stageSwitch(to index: Int, in layers: [Layer], persistRebinds: Bool = true) -> LayerStage.Outcome {
+    func stageSwitch(to index: Int, in layers: [Layer], persistRebinds: Bool = true) -> LayerStage.Outcome {
         let windows = DesktopModel.shared.refreshNow()
         let resolution = LayerMembership.resolve(layers, windows: windows, sources: membershipSources)
         var members: [String: Set<UInt32>] = [:]
@@ -1076,6 +1076,7 @@ class WorkspaceManager: ObservableObject {
         place: (_ held: [LayerMembership.Member], _ pinned: Set<UInt32>, _ tucked: Set<UInt32>) -> Void = { _, _, _ in }
     ) -> LayerStage.Outcome {
         let layer = layers[index]
+        noteSwitch(to: index, in: layers)
         let outcome = stageSwitch(to: index, in: layers, persistRebinds: persistRebinds)
 
         let windows = DesktopModel.shared.refreshNow()

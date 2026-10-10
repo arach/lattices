@@ -9,6 +9,7 @@ the same LAT-012 method names, and the same response shapes. Point the CLI at
 it and the usual commands work:
 
 ```sh
+lats --host archie pair                         # once per client machine; approve on archie
 lats --host archie call host.describe
 lats --host archie call windows.list
 lats --host archie call windows.place '{"app":"firefox","placement":"left"}'
@@ -25,6 +26,35 @@ bun packages/host-linux/src/main.ts --describe  # print capabilities and exit
 ```
 
 Or as a systemd user service: see `systemd/lattices-host.service`.
+
+### Which build is running?
+
+Both **host.describe.build** and **daemon.status.build** contain:
+
+    { "version": "0.1.0", "commit": "<full Git revision>", "dirty": false }
+
+The existing top-level version stays intact. The version comes from this
+package's package.json, not a second hard-coded constant. A source run snapshots
+HEAD and the host package's tracked/untracked dirty state **once at startup**;
+editing the checkout or moving HEAD later cannot make an old process report
+new code. If Git metadata is absent/unreadable, commit and dirty are null,
+rather than a fabricated revision.
+
+For a relocatable build with its identity embedded:
+
+    bun packages/host-linux/scripts/build.ts
+    bun packages/host-linux/dist/lattices-host.js --describe
+
+Or inside the package: bun run build. Pass an output file as the script's first
+argument to put it elsewhere. Building requires a known source commit and
+preserves dirty: true when building uncommitted work. The emitted bundle can
+run without Git/a checkout; optionally compile **that bundle** with
+bun build --compile to make a standalone executable with the same identity.
+
+Clients should compare build.commit as well as build.version; null is unknown,
+not current. These fields cannot retrospectively identify an older running host
+that predates this change. Deploy/restart only after its clients are ready for
+the pairing protocol; do not restart the everyday host just to obtain metadata.
 
 ## Visiting cursor
 
@@ -198,6 +228,50 @@ untagged devices owned by this machine's Tailscale user get in. Widen it with
 `--allow-user <id|login>` or `--allow-tag tag:name`. Loopback is trusted, as
 on the Mac.
 
+Past whois, a remote client must be **paired** before any method runs; being
+on the tailnet is not enough. This is the companion bridge's scheme (below)
+applied to the daemon socket:
+
+1. From the client: `lats --host archie pair` (or `--read-only`, or `--drive`). The CLI
+   makes an X25519 key and id for this machine and calls `clients.pair`, the
+   only method an unpaired client may call. It prints a code; wait.
+2. On the host, a notification shows the client's name, its tailnet node and
+   the same code: Approve or Deny. Or, on the host itself:
+   `lats call clients.list` then `lats call clients.approve '{"clientID":"…"}'`.
+   Approval is never accepted from a remote connection (`clients.approve`,
+   `clients.deny`, and companion `bridge.pairing.approve` / `deny` are loopback-only), so a client cannot approve itself.
+   Undecided requests are denied after two minutes.
+3. Every later connection is signed: the WebSocket upgrade carries
+   `x-lattices-device-id`, `-timestamp`, `-nonce` and `-signature`, an
+   HMAC-SHA256 keyed by HKDF-SHA256 over the X25519 shared secret, over
+   `GET`, the path, client id, timestamp, nonce and the empty body's hash.
+   Timestamps must be within 2 minutes; a nonce is accepted once. A bad or
+   revoked signature gets a 401/403 before the socket opens.
+
+Each client has a scope, matching LAT-014's grants:
+
+| Scope | Runs | Granted |
+| --- | --- | --- |
+| `read` | `access: "read"` methods (listed in `api.schema`) | always |
+| `act` | focus, place, move, displays, sessions | by default |
+| `drive` | `computer.*` input, `capture.live` (VNC takes input), `apps.open` (arbitrary command), and `mouse.share` / `mouse.keep` | only when asked for (`--drive`, or `scope: "drive"`) |
+
+Each scope includes the ones above it. Clients that paired with `mutate`
+before the split are `act`, and a request for `mutate` means `act`. Asking
+for more scope later, such as `drive`, needs a new approval. `clients.list` shows each client's name, node, scope, created
+and last-seen times; `clients.revoke '{"clientID":"…"}'` forgets one and closes
+its open connections.
+
+The host side lives in `~/.lattices/host/` (`daemon-key.json`,
+`daemon-clients.json`, 0600). The client side lives in `~/.lattices/client.json`
+(its key and id) and `~/.lattices/paired-hosts.json` (each host's public key
+and the scope it granted), keyed by `address:port` and matched by the host's
+tailnet name too, so `--host archie` and `--host 100.x.y.z` share a pairing.
+This works the same from macOS or Linux.
+
+`--no-pairing` turns this off for development: whois-admitted clients then get
+full access, as before. Loopback-only methods stay loopback-only.
+
 ## What it can do
 
 `host.describe` reports what this machine actually has. Each capability turns
@@ -260,3 +334,32 @@ it off.
 ```sh
 bun test --cwd packages/host-linux
 ```
+
+### Health is not an empty change stream
+
+The additive fields in **host.describe** distinguish a healthy, quiet desktop
+from a host that cannot observe it:
+
+- **eventStream**: source (hyprland), state (not_started, connecting, connected,
+  unavailable, disconnected or stopped), reason (null when connected), and
+  lastEventAt (ISO timestamp; null until the first actual event).
+- **events.desktop** is advertised only while socket2 is connected. The
+  events.subscribe / events.unsubscribe methods still exist when it is not:
+  clients can subscribe to **host.healthChanged** to see stream state changes.
+- **capabilityHealth** maps capability names to available and reason. Missing
+  grim/wtype/etc., a failing desktop query, or an absent Wayland protocol
+  removes the capability and hides dependent methods in api.schema.
+
+A null lastEventAt with state connected means no event has been observed yet,
+not that observation is broken. Disconnection immediately removes events.desktop
+and publishes host.healthChanged. Query host.describe again after that event.
+
+Startup probes only read the desktop and Wayland registry; they do not capture,
+send input, start VNC or modify a window. Probes run at startup or an explicit
+refresh, never periodically. If the compositor becomes unreachable between
+startup and a describe call, describe still returns health, not a failed RPC.
+
+Socket2 state is logged once per distinct status/reason (no recurring retry
+noise). Recovery watches the runtime/Hyprland socket directories and reconnects
+when socket2 is created/replaced. There is no reconnect timer or polling loop.
+A stopped subscription closes its socket and all filesystem watchers.

@@ -2806,6 +2806,16 @@ struct SettingsContentView: View {
                                 actions: HotkeyAction.layerActions + [.layerPrev, .layerNext, .layerUp, .layerDown, .layerTag]
                             )
 
+                            settingsPrefRow(
+                                "Confirm a layer switch",
+                                caption: "After letting go of ⌘⌥ on another layer: how long Return has before you stay where you are."
+                            ) {
+                                SettingsChoiceBar(
+                                    selection: $prefs.layerSwitchConfirmSeconds,
+                                    options: [(0, "Switch at once"), (3, "3s"), (5, "5s"), (10, "10s"), (-1, "Until I choose")]
+                                )
+                            }
+
                             shortcutSectionCard(
                                 title: "Tiling",
                                 eyebrow: "Desktop Layout",
