@@ -168,8 +168,9 @@ export function registerBridgeEndpoints(router: Router, bridge: ReturnType<typeo
   });
   router.register({
     method: "bridge.pairing.approve",
-    description: "Approve a pending companion pairing (check its fingerprint code first)",
+    description: "Approve a pending companion pairing (check its fingerprint code first). Loopback only",
     access: "mutate",
+    loopbackOnly: true,
     params: [{ name: "deviceID", type: "string", required: true, description: "From bridge.status pending" }],
     returns: "Object with ok",
     handler: (params) => {
@@ -179,8 +180,9 @@ export function registerBridgeEndpoints(router: Router, bridge: ReturnType<typeo
   });
   router.register({
     method: "bridge.pairing.deny",
-    description: "Deny a pending companion pairing",
+    description: "Deny a pending companion pairing. Loopback only",
     access: "mutate",
+    loopbackOnly: true,
     params: [{ name: "deviceID", type: "string", required: true, description: "From bridge.status pending" }],
     returns: "Object with ok",
     handler: (params) => {

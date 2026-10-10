@@ -9,6 +9,7 @@ the same LAT-012 method names, and the same response shapes. Point the CLI at
 it and the usual commands work:
 
 ```sh
+lats --host archie pair                         # once per client machine; approve on archie
 lats --host archie call host.describe
 lats --host archie call windows.list
 lats --host archie call windows.place '{"app":"firefox","placement":"left"}'
@@ -33,6 +34,50 @@ Every tailnet connection is checked with `tailscale whois`: by default only
 untagged devices owned by this machine's Tailscale user get in. Widen it with
 `--allow-user <id|login>` or `--allow-tag tag:name`. Loopback is trusted, as
 on the Mac.
+
+Past whois, a remote client must be **paired** before any method runs; being
+on the tailnet is not enough. This is the companion bridge's scheme (below)
+applied to the daemon socket:
+
+1. From the client: `lats --host archie pair` (or `--read-only`, or `--drive`). The CLI
+   makes an X25519 key and id for this machine and calls `clients.pair`, the
+   only method an unpaired client may call. It prints a code; wait.
+2. On the host, a notification shows the client's name, its tailnet node and
+   the same code: Approve or Deny. Or, on the host itself:
+   `lats call clients.list` then `lats call clients.approve '{"clientID":"…"}'`.
+   Approval is never accepted from a remote connection (`clients.approve`,
+   `clients.deny`, and companion `bridge.pairing.approve` / `deny` are loopback-only), so a client cannot approve itself.
+   Undecided requests are denied after two minutes.
+3. Every later connection is signed: the WebSocket upgrade carries
+   `x-lattices-device-id`, `-timestamp`, `-nonce` and `-signature`, an
+   HMAC-SHA256 keyed by HKDF-SHA256 over the X25519 shared secret, over
+   `GET`, the path, client id, timestamp, nonce and the empty body's hash.
+   Timestamps must be within 2 minutes; a nonce is accepted once. A bad or
+   revoked signature gets a 401/403 before the socket opens.
+
+Each client has a scope, matching LAT-014's grants:
+
+| Scope | Runs | Granted |
+| --- | --- | --- |
+| `read` | `access: "read"` methods (listed in `api.schema`) | always |
+| `act` | focus, place, move, displays, sessions | by default |
+| `drive` | `computer.*` input, `capture.live` (VNC takes input), and `apps.open` (arbitrary command) | only when asked for (`--drive`, or `scope: "drive"`) |
+
+Each scope includes the ones above it. Clients that paired with `mutate`
+before the split are `act`, and a request for `mutate` means `act`. Asking
+for more scope later, such as `drive`, needs a new approval. `clients.list` shows each client's name, node, scope, created
+and last-seen times; `clients.revoke '{"clientID":"…"}'` forgets one and closes
+its open connections.
+
+The host side lives in `~/.lattices/host/` (`daemon-key.json`,
+`daemon-clients.json`, 0600). The client side lives in `~/.lattices/client.json`
+(its key and id) and `~/.lattices/paired-hosts.json` (each host's public key
+and the scope it granted), keyed by `address:port` and matched by the host's
+tailnet name too, so `--host archie` and `--host 100.x.y.z` share a pairing.
+This works the same from macOS or Linux.
+
+`--no-pairing` turns this off for development: whois-admitted clients then get
+full access, as before. Loopback-only methods stay loopback-only.
 
 ## What it can do
 

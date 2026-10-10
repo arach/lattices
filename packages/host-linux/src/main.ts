@@ -12,12 +12,13 @@ import * as hypr from "./hyprland.ts";
 import * as live from "./live.ts";
 import { Router } from "./router.ts";
 import { serve } from "./server.ts";
+import { DaemonPairing, registerPairingEndpoints } from "./pairing.ts";
 import { BRIDGE_PORT, registerBridgeEndpoints, startBridge } from "./bridge/server.ts";
 
 const DEFAULT_PORT = 9399;
 
 function parseArgs(argv: string[]) {
-  const opts = { binds: [] as string[], port: DEFAULT_PORT, allowUsers: [] as string[], allowTags: [] as string[], describe: false, quiet: false, bridge: true, bridgeBinds: [] as string[], bridgePort: BRIDGE_PORT };
+  const opts = { binds: [] as string[], port: DEFAULT_PORT, allowUsers: [] as string[], allowTags: [] as string[], describe: false, quiet: false, pairing: true, bridge: true, bridgeBinds: [] as string[], bridgePort: BRIDGE_PORT };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
@@ -31,6 +32,7 @@ function parseArgs(argv: string[]) {
     else if (arg === "--allow-tag") opts.allowTags.push(value());
     else if (arg === "--describe") opts.describe = true;
     else if (arg === "--no-bridge") opts.bridge = false;
+    else if (arg === "--no-pairing") opts.pairing = false;
     else if (arg === "--bridge-bind") opts.bridgeBinds.push(value());
     else if (arg === "--bridge-port") opts.bridgePort = Number(value());
     else if (arg === "--quiet") opts.quiet = true;
@@ -41,10 +43,13 @@ function parseArgs(argv: string[]) {
       console.log(`lattices-host ${VERSION}
 
 Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
-                     [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
+                     [--no-pairing] [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
 
 By default listens on this machine's tailnet IPv4 address and on 127.0.0.1,
 port ${DEFAULT_PORT}, and admits only devices owned by this machine's Tailscale user.
+Past that, a remote client must pair once (\`lats --host <this host> pair\`,
+approved on this desktop or with \`lats call clients.approve\` here) and then
+signs every connection. Loopback is trusted. --no-pairing skips pairing (dev).
 
 The iOS companion bridge listens on the same addresses, port ${BRIDGE_PORT}. Devices
 pair with an approval on this desktop (or bridge.pairing.approve) and then sign
@@ -88,7 +93,9 @@ async function main() {
   const log = (line: string) => {
     if (!opts.quiet) console.log(`[lattices-host] ${line}`);
   };
-  const server = serve({ hosts: binds, port: opts.port, policy, router, log });
+  const pairing = opts.pairing ? new DaemonPairing(self?.hostname ?? "lattices-host") : null;
+  const server = serve({ hosts: binds, port: opts.port, policy, router, pairing, log });
+  if (pairing) registerPairingEndpoints(router, pairing, server.disconnect);
 
   let bridge: ReturnType<typeof startBridge> | null = null;
   if (opts.bridge) {
@@ -124,6 +131,11 @@ async function main() {
   log(`v${VERSION} listening on ${binds.map((b) => `ws://${b}:${opts.port}`).join(", ")}`);
   log(`capabilities: ${[...capabilities].sort().join(", ") || "none"}`);
   log(`admits: ${[...policy.allowUsers, ...policy.allowTags].join(", ") || "loopback only"}${self?.login ? ` (owner ${self.login})` : ""}`);
+  log(
+    pairing
+      ? `pairing required for remote clients (fingerprint ${pairing.security.fingerprint}, ${pairing.clients().length} paired)`
+      : "pairing OFF: admitted remote clients get full access"
+  );
 
   const shutdown = () => {
     stopEvents();
