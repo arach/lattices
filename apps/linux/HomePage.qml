@@ -49,6 +49,30 @@ ScrollView {
             AppText { visible: home.controller.state.sessions.length === 0; text: "No sessions running"; color: Theme.dim; Layout.topMargin: 5 }
         }
         ColumnLayout {
+            visible: home.controller.state.layersSupported
+            Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16; spacing: 10
+            RowLayout {
+                AppText { text: "Layouts"; font.pixelSize: 13; font.weight: Font.DemiBold }
+                Item { Layout.fillWidth: true }
+                ActionButton { text: "Manage layers"; quiet: true; onClicked: home.controller.page = "Layers" }
+            }
+            Flow {
+                Layout.fillWidth: true; spacing: 8
+                Repeater {
+                    model: home.controller.state.layers || []
+                    ActionButton {
+                        required property var modelData
+                        text: modelData.label; selected: modelData.active
+                        enabled: !home.controller.busy && modelData.entries.some(e => e.windows.length)
+                        onClicked: home.controller.call("layers.activate", { layer: modelData.id, mode: "tile" })
+                        ToolTip.visible: hovered; ToolTip.text: modelData.active ? "Gather this layer" : "Switch to this layer"
+                    }
+                }
+                ActionButton { text: "New layer"; glyph: "plus"; quiet: true; enabled: !home.controller.busy; onClicked: home.controller.newLayer() }
+                ActionButton { visible: (home.controller.state.stage?.parked || []).length > 0; text: "Show all"; enabled: !home.controller.busy; onClicked: home.controller.call("layers.reveal") }
+            }
+        }
+        ColumnLayout {
             Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
             spacing: 10
             RowLayout {

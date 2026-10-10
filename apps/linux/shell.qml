@@ -7,7 +7,8 @@ import Quickshell.Io
 
 ShellRoot {
     id: root
-    property var state: ({ windows: [], displays: [], sessions: [], clients: [], pending: [], describe: {} })
+    property var state: ({ windows: [], displays: [], sessions: [], clients: [], pending: [], layers: [], stage: { parked: [] }, layersSupported: false, describe: {} })
+    readonly property var dialogParent: window.contentItem
     property bool online: false
     property bool busy: false
     property bool compact: false
@@ -19,7 +20,7 @@ ShellRoot {
     property var activity: []
     property string pendingMethod: ""
     property string pendingLabel: ""
-    readonly property bool needsHost: page === "Home" || page === "Overview"
+    readonly property bool needsHost: page === "Home" || page === "Overview" || page === "Layers"
     readonly property int sidebarWidth: Theme.rail + (compact ? 0 : Theme.labels)
     readonly property string hostPort: Quickshell.env("LATTICES_LINUX_PORT") || "9399"
 
@@ -38,7 +39,7 @@ ShellRoot {
     }
     function call(method, params) {
         if (!backend.running || busy || (!online && method !== "refresh" && method !== "host.start")) return
-        const labels = { "refresh": "Refresh local host", "host.start": "Start local host", "windows.focus": "Focus window", "windows.place": "Place window", "sessions.launch": "Start session", "clients.approve": "Approve device", "bridge.pairing.approve": "Approve device", "clients.deny": "Deny pairing", "bridge.pairing.deny": "Deny pairing", "clients.revoke": "Revoke device", "bridge.devices.revoke": "Revoke device" }
+        const labels = { "layers.create": "Create layer", "layers.assign": "Add windows to layer", "layers.unassign": "Remove windows from layer", "layers.rename": "Rename layer", "layers.delete": "Delete layer", "layers.layout": "Set layer layout", "layers.activate": "Switch layer", "layers.reveal": "Show all windows", "refresh": "Refresh local host", "host.start": "Start local host", "windows.focus": "Focus window", "windows.place": "Place window", "sessions.launch": "Start session", "clients.approve": "Approve device", "bridge.pairing.approve": "Approve device", "clients.deny": "Deny pairing", "bridge.pairing.deny": "Deny pairing", "clients.revoke": "Revoke device", "bridge.devices.revoke": "Revoke device" }
         pendingMethod = method
         pendingLabel = labels[method] || "Local action"
         if (params && params.placement) pendingLabel += " · " + params.placement
@@ -50,6 +51,7 @@ ShellRoot {
         call(request.kind === "daemon" ? (approve ? "clients.approve" : "clients.deny") : (approve ? "bridge.pairing.approve" : "bridge.pairing.deny"),
             request.kind === "daemon" ? { clientID: request.deviceID } : { deviceID: request.deviceID })
     }
+    function newLayer() { page = "Layers"; Qt.callLater(() => layersPage.create()) }
     function newSession() { if (online && !busy) sessionDialog.open() }
     function showSearch() {
         page = "Overview"
@@ -67,8 +69,8 @@ ShellRoot {
                     const update = JSON.parse(data)
                     if (update.type === "state") {
                         root.state = update
+                        if (!root.online || root.pendingMethod === "refresh") root.message = ""
                         root.online = true
-                        root.message = ""
                         if (root.pendingMethod === "refresh") root.finish(false, "")
                     } else if (update.type === "offline") {
                         if (root.online && !root.pendingLabel) root.log("Local host disconnected", update.message, true)
@@ -78,7 +80,12 @@ ShellRoot {
                     } else if (update.type === "error") {
                         root.finish(true, update.message)
                         root.message = update.message
-                    } else if (update.type === "done") root.finish(false, "")
+                    } else if (update.type === "done") {
+                        if (root.pendingMethod === "layers.create" && update.result) { layersPage.selectedId = update.result.id; root.page = "Layers" }
+                        const held = update.result?.held || []
+                        root.finish(false, held.length ? "A written rule still holds " + held.length + " windows" : "")
+                        if (held.length) root.message = "A written rule still holds this window. Edit the rule in workspace.json to remove it."
+                    }
                 } catch (e) { root.message = "Could not read the host response."; root.finish(true, root.message) }
             }
         }
@@ -99,7 +106,9 @@ ShellRoot {
         Shortcut { sequence: "Ctrl+K"; onActivated: root.showSearch() }
         Shortcut { sequence: "Ctrl+1"; onActivated: root.page = "Home" }
         Shortcut { sequence: "Ctrl+2"; onActivated: root.page = "Overview" }
-        Shortcut { sequence: "Ctrl+3"; onActivated: root.page = "Activity" }
+        Shortcut { sequence: "Ctrl+3"; onActivated: root.page = "Layers" }
+
+        Shortcut { sequence: "Ctrl+4"; onActivated: root.page = "Activity" }
 
         Rectangle {
             id: appContent
@@ -128,6 +137,7 @@ ShellRoot {
                     AppText { opacity: root.compact ? 0 : 1; text: "WORKSPACE"; mono: true; font.pixelSize: 9; font.letterSpacing: 1; color: "#a3a3a5"; Layout.leftMargin: Theme.rail; Layout.bottomMargin: 6 }
                     NavRow { Layout.fillWidth: true; text: "Home"; glyph: "home"; compact: root.compact; selected: root.page === text; onClicked: root.page = text }
                     NavRow { Layout.fillWidth: true; text: "Overview"; glyph: "overview"; compact: root.compact; selected: root.page === text; onClicked: root.page = text }
+                    NavRow { Layout.fillWidth: true; text: "Layers"; glyph: "layers"; compact: root.compact; selected: root.page === text; onClicked: root.page = text }
                     Item { implicitHeight: 24 }
                     AppText { opacity: root.compact ? 0 : 1; text: "SYSTEM"; mono: true; font.pixelSize: 9; font.letterSpacing: 1; color: "#a3a3a5"; Layout.leftMargin: Theme.rail; Layout.bottomMargin: 6 }
                     NavRow { Layout.fillWidth: true; text: "Activity"; glyph: "activity"; compact: root.compact; selected: root.page === text; onClicked: root.page = text }
@@ -175,9 +185,10 @@ ShellRoot {
                         }
                         StackLayout {
                             visible: root.online || !root.needsHost; Layout.fillWidth: true; Layout.fillHeight: true
-                            currentIndex: ["Home", "Overview", "Activity", "Settings"].indexOf(root.page)
+                            currentIndex: ["Home", "Overview", "Layers", "Activity", "Settings"].indexOf(root.page)
                             HomePage { controller: root }
                             OverviewPage { id: overview; controller: root }
+                            LayersPage { id: layersPage; controller: root }
                             ActivityPage { controller: root }
                             SettingsPage { controller: root }
                         }

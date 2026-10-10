@@ -260,7 +260,7 @@ describe("event subscriptions", () => {
 
   test("unsubscribe removes from all, or stops everything without a list", () => {
     const conn = { identity: { user: "u", node: "n" }, events: null as Set<string> | null };
-    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["host.healthChanged", "windows.changed"]);
+    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["host.healthChanged", "layers.changed", "windows.changed"]);
     expect(handleSubscription(conn, "events.unsubscribe", {})?.events).toEqual([]);
     expect(handleSubscription(conn, "windows.list", {})).toBeNull();
   });

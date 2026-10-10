@@ -279,7 +279,7 @@ on its methods; missing tools just hide them.
 
 | Capability | Backend | Methods |
 | --- | --- | --- |
-| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move`, `spaces.list`, `desktop.snapshot` |
+| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move`, `spaces.list`, `desktop.snapshot`, `layers.list/members/create/assign/unassign/rename/delete/layout/activate/switch/reveal` |
 | `capture.still` | `grim` | `capture.screenshotDisplay/Window/Region`, `capture.still` (inline JPEG) |
 | `capture.live` | `wayvnc`, started on demand on the host's address | `capture.live` returns a `vnc://` URL for Screen Sharing |
 | `input.keys` | `wtype` | `computer.typeText`, `computer.pressKey`, `computer.hotkey` |
@@ -323,7 +323,7 @@ system telemetry, a placement cockpit, the screen preview and the trackpad.
 Actions: `layout.placeFrontmost`, `switch.focusItem`, `keys.send`,
 `keys.type`, `clipboard.pasteFromDevice`, `window.dragBy`,
 `spaces.focusIndex`, `spaces.focusRelative`, `displays.focus`. Mac-only
-actions (voice, Talkie, layers) answer "Not available on Linux".
+bridge actions (voice, Talkie, layers) answer "Not available on Linux".
 
 The bridge identity and trusted devices live in `~/.lattices/host/`
 (`bridge-key.json`, `bridge-devices.json`, both 0600). `--no-bridge` turns
@@ -363,3 +363,24 @@ Socket2 state is logged once per distinct status/reason (no recurring retry
 noise). Recovery watches the runtime/Hyprland socket directories and reconnects
 when socket2 is created/replaced. There is no reconnect timer or polling loop.
 A stopped subscription closes its socket and all filesystem watchers.
+
+## Layers and layouts
+
+The local Linux app's Layers page and the CLI share `~/.lattices/workspace.json`.
+Create, assign, remove, rename and delete save pinned windows without losing
+unrelated config fields. The first write backs up an existing file. Layer layout
+choices port the Mac algorithm: In place, Auto, Columns and Master stack.
+
+`layers.activate` and `layers.switch` accept `layer`/`name` or `index`, with
+`focus` or `tile` mode and optional `dryRun: true`. They affect the focused
+display's current desktop. Nonmembers go to `special:lattices`; `layers.reveal`
+restores them to the desktop they came from when it is showing. The app window
+and pinned desktop windows stay visible. `layers-stage-linux.json` retains
+parked windows and the active layer across host restarts. `layers.changed`
+notifies subscribers after editing or switching.
+
+`layers.layout` accepts `{ layer, layout }`, where layout is `none`, `auto`,
+`columns` or `master-stack`. Launch mode, undo, Mac app hiding and project
+companion rules are unavailable. Saved window pins keep their original window
+and process; reopened windows can be added again. App rules use Linux window
+classes. `LATTICES_WORKSPACE_DIR` can select a separate development workspace.
