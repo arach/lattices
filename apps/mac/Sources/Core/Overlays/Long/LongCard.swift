@@ -90,7 +90,7 @@ struct LongCardView: View {
     /// A display plugged into another machine is elsewhere: the pointer stays off it.
     private var screensSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(model.screens.filter { !$0.main }, id: \.number) { screen in
+            ForEach(model.screens, id: \.number) { screen in
                 HStack(spacing: 6) {
                     Text(screen.name).font(Typo.monoBold(11)).foregroundStyle(screen.elsewhere ? Palette.textDim : Palette.text).lineLimit(1)
                     Text("\(Int(screen.frame.width))×\(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textMuted)
