@@ -158,6 +158,15 @@ final class VisitTrust {
         return monitors.isEmpty ? CGSize(width: 1920, height: 1080) : monitors.reduce(CGRect.null) { $0.union($1.frame.rect) }.size
     }
 
+    /// Moves every placed machine by the same offset as the displays, so
+    /// changing which display is main keeps them where they were.
+    func shiftPlacements(dx: Double, dy: Double) {
+        lock.lock()
+        for i in hosts.indices { hosts[i].placement?.x += dx; hosts[i].placement?.y += dy }
+        lock.unlock()
+        persist(); notifyChange()
+    }
+
     func migratePlacements(displays: [CGRect]) {
         lock.lock()
         var changed = false

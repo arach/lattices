@@ -9,6 +9,8 @@ final class DisplayArrangement: ObservableObject {
     @Published private(set) var error: String?
     private var original: [CGDirectDisplayID: CGPoint] = [:]
     private var timer: Timer?
+    /// How far a make-main trial moved everything, so a revert moves the machines back.
+    private var shifted: CGVector?
     private let readScreens: () -> [VisitController.Screen]
     private let configure: ([CGDirectDisplayID: CGPoint]) throws -> Void
     private let schedule: (TimeInterval, @escaping () -> Void) -> Timer
@@ -33,10 +35,26 @@ final class DisplayArrangement: ObservableObject {
         pending = true
         timer = schedule(15) { [weak self] in self?.revert() }
     }
-    func keep() { timer?.invalidate(); timer = nil; original = [:]; pending = false; error = nil }
+    /// Makes display `number` the main one (the menu bar's) by moving the whole
+    /// arrangement so it sits at the origin; the displays keep their places
+    /// relative to each other. A trial like any other apply.
+    func makeMain(_ number: Int) throws {
+        let screens = readScreens()
+        guard let target = screens.first(where: { $0.number == number }) else { throw VisitTrust.Failure.bad("No display \(number)") }
+        guard !target.main else { return }
+        let dx = target.frame.minX, dy = target.frame.minY
+        try apply(Dictionary(uniqueKeysWithValues: screens.map { ($0.displayID, $0.frame.offsetBy(dx: -dx, dy: -dy)) }))
+        VisitTrust.shared.shiftPlacements(dx: -dx, dy: -dy)
+        shifted = CGVector(dx: -dx, dy: -dy)
+    }
+    func keep() { timer?.invalidate(); timer = nil; original = [:]; shifted = nil; pending = false; error = nil }
     func revert() {
         timer?.invalidate(); timer = nil
-        do { if !original.isEmpty { try configure(original) }; original = [:]; pending = false; error = nil }
+        do {
+            if !original.isEmpty { try configure(original) }
+            if let shifted { VisitTrust.shared.shiftPlacements(dx: -shifted.dx, dy: -shifted.dy) }
+            original = [:]; shifted = nil; pending = false; error = nil
+        }
         catch { self.error = "Could not restore displays: \(error)" }
     }
     nonisolated private static func configureDisplays(_ origins: [CGDirectDisplayID: CGPoint]) throws {

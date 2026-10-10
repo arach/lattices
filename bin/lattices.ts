@@ -894,6 +894,11 @@ async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
       if (!host) return console.log("Usage: lats visit pair <host> [host:port] [left|right|top|bottom]");
       const result = await daemonCall("visit.pair", { host, ...(address ? { address } : {}), ...(side ? { side } : {}) }) as any;
       console.log(`🔐 Approve ${result.code} on ${result.pairing}, then: lats visit status`);
+    } else if (sub === "main") {
+      const n = Number(rest[0]);
+      if (!Number.isInteger(n)) throw new Error("Usage: lats visit main <n>");
+      await daemonCall("visit.main", { screen: n });
+      console.log(`Display ${n} is main. It reverts in 15s unless you run "lats visit arrangement keep".`);
     } else if (sub === "arrangement") {
       if (!["keep", "revert"].includes(rest[0])) throw new Error("Usage: lats visit arrangement <keep|revert>");
       await daemonCall(`visit.arrangement.${rest[0]}`);

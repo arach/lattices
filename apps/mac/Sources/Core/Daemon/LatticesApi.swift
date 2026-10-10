@@ -3652,6 +3652,21 @@ final class LatticesApi {
         }
 
         api.register(Endpoint(
+            method: "visit.main",
+            description: "Make a display the main one (the menu bar's), keeping the arrangement; reverts after 15 s unless visit.arrangement.keep",
+            access: .mutate,
+            params: [Param(name: "screen", type: "int", required: true, description: "Display number from visit.screens")],
+            returns: .ok,
+            handler: { params in
+                guard let number = params?["screen"]?.intValue else { throw RouterError.missingParam("screen") }
+                let work: @MainActor () throws -> Void = { try DisplayArrangement.shared.makeMain(number) }
+                if Thread.isMainThread { try MainActor.assumeIsolated { try work() } }
+                else { try DispatchQueue.main.sync { try MainActor.assumeIsolated { try work() } } }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "visit.place",
             description: "Place a machine in global display coordinates",
             access: .mutate,

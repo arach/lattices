@@ -148,6 +148,7 @@ Usage:
   lats hosts add <name> [address] [port]  Add a Lattices host
   lats visit screens      This Mac's displays, and which are elsewhere
   lats visit elsewhere <n>  Display n is plugged into another machine; "here <n>" undoes it
+  lats visit main <n>       Make display n the main one; reverts in 15s unless "arrangement keep"
   lats long [show|hide]   Long, on the desktop; click him for controls
   lats mcp                MCP server over stdio (agent config: command "lattices", args ["mcp"])
   lats mcp --list         List MCP toolsets and their tools

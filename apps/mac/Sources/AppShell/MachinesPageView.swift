@@ -104,6 +104,12 @@ struct MachinesPageView: View {
                 HStack {
                     Text("\(screen.number) · \(screen.name)").frame(maxWidth: .infinity, alignment: .leading)
                     Text("\(Int(screen.frame.width)) × \(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+                    Button("Make main") {
+                        do { try DisplayArrangement.shared.makeMain(screen.number) } catch { model.error = "\(error)" }
+                    }
+                    .buttonStyle(.borderless).font(Typo.body(11))
+                    .opacity(screen.main ? 0 : 1).disabled(screen.main || DisplayArrangement.shared.pending)
+                    .frame(width: 80)
                     Toggle("Elsewhere", isOn: Binding(get: { screen.elsewhere }, set: {
                         if !VisitController.shared.setElsewhere(screen.number, $0) { model.error = "Display changed. Refresh and try again." }
                     })).toggleStyle(.checkbox).frame(width: 100)
