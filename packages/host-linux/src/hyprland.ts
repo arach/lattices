@@ -154,6 +154,15 @@ export const activeWindow = async () => {
 };
 export const cursorPos = () => hyprctlJson<{ x: number; y: number }>("cursorpos");
 
+/** Recovery path if the visit's Wayland pointer connection has failed. */
+export async function warpCursor(x: number, y: number): Promise<void> {
+  const command = await usesLua()
+    ? `hl.dsp.cursor.move({ x = ${int(x)}, y = ${int(y)} })`
+    : `movecursor ${int(x)} ${int(y)}`;
+  const out = (await run("hyprctl", ["dispatch", command], { timeoutMs: 1500 })).trim();
+  if (out !== "ok") throw new Error(`hyprctl: ${out}`);
+}
+
 export function available(): boolean {
   return Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
 }

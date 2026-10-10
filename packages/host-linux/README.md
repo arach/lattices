@@ -26,6 +26,47 @@ bun packages/host-linux/src/main.ts --describe  # print capabilities and exit
 
 Or as a systemd user service: see `systemd/lattices-host.service`.
 
+## Visiting cursor
+
+Paired devices with `input.trackpad` can open the signed, encrypted `/visit`
+WebSocket described in [docs/visit.md](../../docs/visit.md). A coral visitor
+label moves across physical screens; `LATS-*`, headless, mirrored and other
+virtual outputs are excluded. Quickshell is required for the overlay, and
+wtype handles keystrokes and text. No new pairing capability is needed.
+
+Ordinary visitor motion leaves the host pointer alone. Clicks and scrolling
+move it to the visitor, and it stays there so `input:follow_mouse=1` preserves
+the clicked window's keyboard focus. Dragging follows the visitor while a
+button is held. Ending a visit releases held buttons and restores the host's
+starting pointer position. Returning past the entry edge, disconnecting,
+leaving, or six seconds without an authenticated frame ends the visit.
+
+The host starts `quickshell -p packages/host-linux/visitor` on the first visit.
+A private unix socket in `$XDG_RUNTIME_DIR` carries newline JSON positions on
+one connection, coalescing updates if the reader falls behind. The overlay
+hides immediately at the end and its process stops after one idle minute.
+It does not modify the Omarchy shell, compositor configuration or lan-mouse.
+
+To test alongside an existing host, use separate ports and pairing state:
+
+```sh
+bun packages/host-linux/src/main.ts --bind 127.0.0.1 --port 9400 \
+  --bridge-port 5288 --bridge-state-dir /tmp/lattices-visit-bridge
+bun packages/host-linux/src/main.ts visit-test --host 127.0.0.1:5288 \
+  --identity /tmp/lattices-visit-client.json --name mini
+```
+
+Approve its printed device ID in the notification or through
+`bridge.pairing.approve` on the test daemon at `127.0.0.1:9400`. The client
+enters on the left and moves in a slow square, with encrypted pings every two
+seconds. It remembers its key at `--identity`, so repeated runs reuse one
+pairing. Without that flag it uses `~/.lattices/host/visit-test-key.json`.
+
+`LATTICES_VISITOR_RUNTIME_DIR` optionally isolates the overlay's socket and
+Quickshell runtime files; the default is the graphical session's runtime
+directory. Run the host from the graphical session so its Hyprland and
+Wayland environment variables are available.
+
 ## Omarchy tray
 
 The tray is a small StatusNotifierItem and dbusmenu on the session D-Bus.
