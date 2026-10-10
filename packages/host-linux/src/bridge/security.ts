@@ -63,6 +63,8 @@ export interface PairingRequest {
   platform: string;
   appVersion?: string;
   requestedCapabilities?: string[];
+  /** Tailnet node the request came from, set by the host (never by the client). */
+  node?: string;
 }
 
 export interface PairingResponse {
@@ -84,6 +86,7 @@ export interface TrustedDevice {
   platform: string;
   appVersion?: string;
   capabilities: string[];
+  node?: string;
   pairedAt: string;
   lastSeenAt: string;
 }
@@ -200,6 +203,8 @@ export interface CoordinatorOptions {
   devicesPath?: string;
   /** Asks a person; resolves true to trust the device. */
   approve: (request: PairingRequest, kind: "pair" | "upgrade", additions: string[]) => Promise<boolean>;
+  /** What a request is granted; the companion capabilities by default. */
+  grant?: (requested: string[] | undefined) => string[];
   now?: () => Date;
 }
 
@@ -251,7 +256,7 @@ export class BridgeSecurity {
   }
 
   async handlePairing(request: PairingRequest): Promise<PairingResponse> {
-    const granted = grantedCapabilities(request.requestedCapabilities);
+    const granted = (this.options.grant ?? grantedCapabilities)(request.requestedCapabilities);
     if (!request.deviceID?.trim() || !request.deviceName?.trim() || !publicKeyFromBase64(request.devicePublicKey ?? "")) {
       return this.response("denied", [], "The paired device key is invalid.");
     }
@@ -276,6 +281,7 @@ export class BridgeSecurity {
       platform: request.platform,
       appVersion: request.appVersion,
       capabilities: granted,
+      node: request.node,
       pairedAt: at,
       lastSeenAt: at,
     });
