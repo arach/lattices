@@ -9,7 +9,7 @@ if (port === 9399) throw new Error("Refusing to benchmark the everyday host port
 await refreshCapabilities();
 const router = new Router(() => capabilities);
 registerEndpoints(router, { bindHost: "127.0.0.1", startedAt: Date.now(), clientCount: () => 1 });
-const server = serve({ hosts: ["127.0.0.1"], port, policy: { allowUsers: [], allowTags: [] }, router, log: () => {} });
+const server = serve({ hosts: ["127.0.0.1"], port, policy: { allowUsers: [], allowTags: [] }, router, pairing: null, log: () => {} });
 const ws = new WebSocket(`ws://127.0.0.1:${port}`);
 const waiting = new Map<string, { resolve: () => void; reject: (err: Error) => void }>();
 ws.onmessage = ({ data }) => {
