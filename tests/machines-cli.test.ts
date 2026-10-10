@@ -46,9 +46,8 @@ test("Machines CLI routes mutations to an isolated mock daemon", async () => {
       [["visit", "host", "on"], "visit.host", { on: true }],
       [["visit", "side", "fixture", "left"], "visit.side", { host: "fixture", side: "left" }],
       [["visit", "forget", "fixture"], "visit.forget", { host: "fixture" }],
-      [["mouse", "stop"], "mouse.stop", null],
-      [["mouse", "share"], "mouse.share", {}],
-      [["mouse", "keep"], "mouse.keep", null],
+      [["mouse", "home"], "mouse.home", null],
+      [["mouse", "find"], "mouse.find", null],
     ] as const) {
       requests.length = 0;
       const proc = Bun.spawn([process.execPath, resolve("bin/lattices.ts"), ...args], {
@@ -60,6 +59,14 @@ test("Machines CLI routes mutations to an isolated mock daemon", async () => {
       expect(requests[1].params).toEqual(params);
     }
     requests.length = 0;
+    for (const verb of ["share", "keep", "stop", "status"]) {
+      const removed = Bun.spawn([process.execPath, resolve("bin/lattices.ts"), "mouse", verb], {
+        env: { ...process.env, LATTICES_DAEMON_HOST: "127.0.0.1", LATTICES_DAEMON_PORT: String(server.port) },
+        stdout: "pipe", stderr: "pipe",
+      });
+      expect(await removed.exited).not.toBe(0);
+      expect(requests).toEqual([]);
+    }
     const invalid = Bun.spawn([process.execPath, resolve("bin/lattices.ts"), "visit", "side", "fixture", "diagonal"], {
       env: { ...process.env, LATTICES_DAEMON_HOST: "127.0.0.1", LATTICES_DAEMON_PORT: String(server.port) },
       stdout: "pipe", stderr: "pipe",

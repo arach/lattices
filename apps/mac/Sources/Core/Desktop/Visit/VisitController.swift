@@ -100,10 +100,6 @@ final class VisitController {
         Self.announce()
         let hosts = VisitTrust.shared.list()
         DiagnosticLog.shared.info("Visit: armed for \(hosts.map { "\($0.name) (\($0.side.rawValue))" }.joined(separator: ", "))")
-        // lan-mouse would cross the same edge; turn it off.
-        DispatchQueue.global(qos: .utility).async {
-            if PointerShare.status().sharing { DispatchQueue.main.async { PointerHome.bringHome() } }
-        }
     }
 
     func status() -> Status {

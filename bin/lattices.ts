@@ -870,37 +870,15 @@ function restartPane(target?: string): void {
 
 // ── Daemon-aware commands ────────────────────────────────────────────
 
-async function mouseCommand(sub?: string, rest: string[] = []): Promise<void> {
+async function mouseCommand(sub?: string): Promise<void> {
+  if (sub && !["find", "summon", "home"].includes(sub)) throw new Error("Usage: lats mouse [find|summon|home]");
   await withDaemon(async ({ daemonCall }) => {
     if (sub === "summon") {
       const result = await daemonCall("mouse.summon") as any;
       console.log(`🎯 Mouse summoned to (${result.x}, ${result.y})`);
     } else if (sub === "home") {
-      const result = await daemonCall("mouse.home") as any;
-      const off = result.deactivated?.length ? `, sharing off for ${result.deactivated.join(", ")}` : "";
-      console.log(`🏠 Pointer home${off}${result.stoppedDaemon ? ", lan-mouse stopped" : ""}`);
-    } else if (sub === "stop") {
-      await daemonCall("mouse.stop");
-      console.log("Stopping lan-mouse sharing");
-    } else if (sub === "share") {
-      const at = rest.indexOf("--for");
-      const params = at >= 0 && rest[at + 1] ? { for: rest[at + 1] } : {};
-      const result = await daemonCall("mouse.share", params) as any;
-      const until = result.until ? new Date(result.until).toLocaleTimeString() : null;
-      console.log(until
-        ? `🖱️ Sharing until ${until}. Keep it with: lats mouse keep`
-        : "🖱️ Starting lan-mouse; check with: lats mouse status");
-    } else if (sub === "keep") {
-      const result = await daemonCall("mouse.keep") as any;
-      console.log(result.kept ? "✅ Pointer sharing kept" : "No trial to keep");
-    } else if (sub === "status") {
-      const s = await daemonCall("mouse.status") as any;
-      if (!s.lanMouse) return console.log("lan-mouse isn't installed");
-      if (!s.running) return console.log("lan-mouse isn't running");
-      for (const c of s.clients) console.log(`  ${c.active ? "●" : "○"} ${c.host}`);
-      console.log(s.until
-        ? `Trial ends ${new Date(s.until).toLocaleTimeString()} unless kept`
-        : s.sharing ? "Sharing" : "Not sharing");
+      await daemonCall("mouse.home");
+      console.log("🏠 Pointer home");
     } else {
       // Default: find
       const result = await daemonCall("mouse.find") as any;
@@ -3396,7 +3374,7 @@ switch (command) {
     await scanCommand(args[1], ...args.slice(2));
     break;
   case "mouse":
-    await mouseCommand(args[1], args.slice(2));
+    await mouseCommand(args[1]);
     break;
   case "visit":
     await visitCommand(args[1], args.slice(2));

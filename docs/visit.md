@@ -86,10 +86,10 @@ The plaintext is one JSON object with a type in `t`.
 ## Machines
 
 Open **Workspace → Machines** (`hosts` remains a page-name alias). The page
-merges visit pairings, Lattices hosts and running lan-mouse clients by name or
+merges visit pairings and Lattices hosts by name or
 address. Selecting a Lattices host retains its still, live view and window list.
-Opening the page does not arm visiting or start sharing. Connections and status
-reads stop when the page is hidden; trial safety timers remain independent.
+Opening the page does not arm visiting. Connections and status
+reads stop when the page is hidden; arrangement safety timers remain independent.
 
 Drag displays and machines on the scaled arrangement canvas. A machine owns only
 the stretch of an edge touched by its rectangle; several machines can share a
@@ -125,18 +125,11 @@ lats visit side archie left
 lats visit elsewhere 2 arts-mini
 lats visit host on        # bundle: explicitly allow receiving visits
 lats visit forget archie
-lats mouse share          # five-minute trial, all configured lan-mouse clients
-lats mouse keep
-lats mouse stop           # stops lan-mouse only
-lats mouse home           # stops both mechanisms and returns the cursor
+lats mouse home           # ends the visit and returns the cursor
 ```
 
-lan-mouse is separate from visiting and uses its own configured clients. Its
-controls appear on the selected machine when that client is known. When its
-daemon is stopped, the page offers a start control without guessing a machine.
-An active lan-mouse client is not evidence that the remote machine is reachable.
 Visit bridge reachability is checked on page appearance, Refresh and state
 changes, with no recurring probe timer. Display-to-machine labels are stored by
 display UUID. Arrangement coordinates use the same top-left global point space
 as `CGDisplayBounds`. The exit fraction is measured along the touching span,
-not the whole local display. No pairing, visiting or sharing starts on page open.
+not the whole local display. No pairing or visiting starts on page open.

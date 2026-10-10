@@ -13,8 +13,8 @@ Replace the four Left/Top/Right/Bottom slots with one canvas, drawn to scale:
   (`CGBeginDisplayConfiguration` / `CGConfigureDisplayOrigin` /
   `CGCompleteDisplayConfiguration(.permanently)`), so a drag only moves the
   drawing. An **Apply** button commits it and a **Revert** button undoes it, and
-  after applying it reverts automatically after 15 s unless kept (same idea as
-  the lan-mouse trial). Never apply without the button.
+  after applying it reverts automatically after 15 s unless kept.
+  Never apply without the button.
 - **Other machines**: each one is a block made of its own monitors at their
   real proportions, labelled with the machine's name. Ask the host for its
   displays if it can tell you (look at what `host.describe` / the Linux host

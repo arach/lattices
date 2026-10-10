@@ -36,15 +36,6 @@ struct MachinesPageView: View {
                 )).toggleStyle(.checkbox)
                 #endif
                 if let selected { detail(selected) }
-                if model.pointer.lanMouse && model.pointer.clients.isEmpty {
-                    HudDivider(color: Palette.border)
-                    HStack {
-                        Text("lan-mouse").font(Typo.heading(12))
-                        Text(model.pointer.running ? "No clients" : "Stopped").foregroundStyle(Palette.textDim)
-                        Spacer()
-                        Button("Share · 5 min") { model.share() }.disabled(model.busy)
-                    }
-                }
                 if let error = model.error {
                     Text(error).font(Typo.body(11)).foregroundStyle(Palette.text).textSelection(.enabled)
                 }
@@ -66,7 +57,6 @@ struct MachinesPageView: View {
         .onAppear { hosts.retain(); model.appear() }
         .onDisappear { model.disappear(); hosts.release() }
         .onReceive(NotificationCenter.default.publisher(for: VisitController.changed)) { _ in model.refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: PointerShare.changed)) { _ in model.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in model.refresh() }
         .sheet(isPresented: $pairing) { MachinePairSheet { model.refresh() } }
     }
@@ -132,18 +122,6 @@ struct MachinesPageView: View {
                     ForEach(VisitTrust.Side.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
                 }.frame(width: 150)
                 Button("Forget") { model.forget(visit.name) }
-            }
-        }
-        if model.pointer.lanMouse && !machine.clients.isEmpty {
-            HStack {
-                Text("lan-mouse").font(Typo.heading(12))
-                Text(machine.sharing ? "Sharing" : "Off").foregroundStyle(machine.sharing ? Long.coral : Palette.textDim)
-                if let until = model.pointer.until { Text("until \(PointerShare.clock(until))").font(Typo.mono(10)) }
-                Spacer()
-                Button("Share · 5 min") { model.share() }.disabled(model.busy || model.pointer.sharing)
-                    .help("Starts a trial for all configured lan-mouse clients")
-                Button("Keep") { PointerShare.shared.keep(); model.refresh() }.disabled(model.busy || model.pointer.until == nil)
-                Button("Stop") { model.stopSharing() }.disabled(model.busy || !model.pointer.sharing)
             }
         }
         if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }) {

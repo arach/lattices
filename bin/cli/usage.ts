@@ -135,11 +135,7 @@ Usage:
   lats dev type           Print detected project type
   lats mouse              Find mouse — sonar pulse at cursor position
   lats mouse summon       Summon mouse to screen center
-  lats mouse share [--for 5m]  Share the pointer with lan-mouse; reverts unless kept
-  lats mouse stop         Stop lan-mouse sharing without ending a visit
-  lats mouse keep         Keep pointer sharing on
-  lats mouse status       lan-mouse clients and any trial deadline
-  lats mouse home         Sharing off, cursor to the main display
+  lats mouse home         End visit, cursor to the main display
   lats visit pair <host> [host:port] [side]  Pair with a host to visit it with a second cursor
   lats visit forget <host>  Forget a visit pairing
   lats visit side <host> <side>  Place beside the outermost display

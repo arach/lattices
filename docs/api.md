@@ -2654,11 +2654,7 @@ The Machines page uses these existing endpoints: `visit.status`, `visit.pair`,
 | --- | --- | --- |
 | `visit.forget` | `host: string` | `{ok: boolean}`; false if absent. Ends an active visit to that host. |
 | `visit.side` | `host: string`, `side: left\|right\|top\|bottom` | `{ok: true}`; errors for unknown hosts or invalid sides. Occupied sides swap, preserving both keys. |
-| `mouse.share` | optional `for: string` (default `5m`) | Starts a lan-mouse trial for all configured clients; returns `sharing`, optionally `starting` or `until`. |
-| `mouse.keep` | none | `{kept: boolean}`; cancels the trial deadline. |
-| `mouse.stop` | none | `{ok: true}` acknowledges a queued lan-mouse stop; preserves visiting and cursor position. |
-| `mouse.home` | none | Stops lan-mouse sharing and returns the cursor. |
-| `mouse.status` | none | Installation, daemon/client state and trial deadline. |
+| `mouse.home` | none | Ends the current visit and returns the cursor to this Mac. |
 
 `visit.pair` requires host-side approval of the returned code. A new pairing
 cannot replace an occupied side; move or forget its occupant first.

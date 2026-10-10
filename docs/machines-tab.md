@@ -23,8 +23,6 @@ One list of machines, merged by name/address across the sources:
   fingerprint). Paired over the authenticated bridge; see `docs/visit.md`.
 - **Lattices hosts**: `~/.lattices/hosts.json` / `LATTICES_HOSTS` (the existing
   Hosts page model).
-- **lan-mouse**: `PointerShare.status()` (installed, sharing, `until` for the
-  5-minute trial).
 - **This Mac's displays**: `VisitController.screens()` with the elsewhere mark
   (`visit.elsewhere` in UserDefaults). A display marked elsewhere is plugged into
   another machine; the pointer stays off it.
@@ -46,9 +44,6 @@ already follows this rule, keep it).
   - The visiting cursor: arm/disarm (`VisitController.shared.arm(_:)`), end a
     visit (`end(because:)`), pair (`VisitTrust.pair(name:address:side:)`;
     needs the host's code, so it's a small sheet), forget (`forget(_:)`).
-  - lan-mouse sharing: share (trial), keep, stop (`PointerShare`). It's a
-    separate mechanism from visiting; show it as such, on the machine it
-    reaches, only when lan-mouse is installed.
 - **Displays.** Toggle here/elsewhere per display, including the main one
   (`VisitController.shared.setElsewhere(_:_:)`). Optionally pick which machine an
   elsewhere display shows; store it next to the mark. It's display only for
@@ -58,19 +53,18 @@ Every action the page takes should also exist on the daemon API and the CLI,
 so agents and `lats` can do the same thing. Already there: `visit.status`,
 `visit.pair`, `visit.arm`, `visit.end`, `visit.screens`, `visit.elsewhere`
 (`Core/Daemon/LatticesApi.swift`), and `lats visit ...` (`bin/lattices.ts`,
-usage in `bin/cli/usage.ts`). Missing: `visit.forget`, `visit.side`, and
-pointer share start/keep/stop. Add those the same way.
+usage in `bin/cli/usage.ts`). Also available: `visit.forget` and `visit.side`.
 
 ## Style
 
 - HudsonUI primitives for structure; native `Typo` / `Palette` for type and
   colour (see `Core/Overlays/Long/LongCard.swift` for the current controls).
 - Coral `#ef6a47` (`Long.coral`) is the only accent, and only for live state:
-  visiting now, sharing now. Everything else uses text dim levels. No green.
+  visiting now. Everything else uses text dim levels. No green.
 - No explainer copy that restates the UI. Tight labels; the layout does the work.
 - Rows have equal geometry whatever their state (reserve columns; don't let a
   row grow when a badge appears).
-- Passive by default: opening the page never starts sharing or a visit.
+- Passive by default: opening the page never starts a visit.
 
 ## Constraints
 
@@ -78,7 +72,7 @@ pointer share start/keep/stop. Add those the same way.
   `apps/mac/Tests/` for any new pure logic (merging sources, side assignment).
 - Don't launch, quit or restart the running Lattices app, and don't touch
   `~/dev/lattices` or `~/dev/lattices-main`. Work only in this worktree.
-- Don't change real state: no pairing, arming, lan-mouse or display changes
+- Don't change real state: no pairing, arming or display changes
   while developing. No network calls to real hosts.
 - Bun for anything JS (`bun bin/lattices.ts ...`); no npm/pnpm.
 - Commits: gitmoji on every message, small and focused. No co-author lines, no

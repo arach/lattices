@@ -9,7 +9,6 @@ enum MachineInventory {
         var address: String
         var visit: VisitTrust.Host? = nil
         var remote: String? = nil
-        var client: PointerHome.Client? = nil
     }
     struct Machine: Identifiable {
         var sources: [Source]
@@ -18,8 +17,6 @@ enum MachineInventory {
         var address: String { visit?.address ?? sources[0].address }
         var visit: VisitTrust.Host? { sources.compactMap(\.visit).first }
         var remote: String? { sources.compactMap(\.remote).first }
-        var clients: [PointerHome.Client] { sources.compactMap(\.client) }
-        var sharing: Bool { clients.contains(where: \.active) }
     }
     static func key(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -53,10 +50,8 @@ enum MachineInventory {
 final class MachinesModel: ObservableObject {
     @Published var visit = VisitController.Status(armed: false, visiting: nil, hosts: [])
     @Published var screens: [VisitController.Screen] = []
-    @Published var pointer = PointerShare.Status(lanMouse: false, running: false, clients: [], until: nil)
     @Published var reachable: [String: Bool] = [:]
     @Published var error: String?
-    @Published var busy = false
     private var visible = false
     private var generation = 0
     private var probes: [URLSessionDataTask] = []
@@ -80,13 +75,6 @@ final class MachinesModel: ObservableObject {
         VisitController.shared.refreshLayout()
         visit = VisitController.shared.status()
         screens = VisitController.screens()
-        DispatchQueue.global(qos: .utility).async {
-            let status = PointerShare.status()
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.visible, self.generation == version else { return }
-                self.pointer = status
-            }
-        }
         for host in visit.hosts {
             guard let base = VisitTrust.bridgeURL(host.address) else { reachable[host.name] = false; continue }
             if let address = base.host {
@@ -126,7 +114,6 @@ final class MachinesModel: ObservableObject {
         MachineInventory.merge(
             visit.hosts.map { .init(name: $0.name, address: $0.address, visit: $0) }
             + hosts.map { .init(name: $0.name, address: $0.address, remote: $0.name) }
-            + (pointer.lanMouse ? pointer.clients.map { .init(name: $0.host, address: $0.host, client: $0) } : [])
         )
     }
     func move(_ name: String, to side: VisitTrust.Side) {
@@ -138,18 +125,5 @@ final class MachinesModel: ObservableObject {
         _ = VisitTrust.shared.forget(name)
         refresh()
     }
-    func share() {
-        busy = true
-        error = nil
-        PointerShare.shared.share { [weak self] result in
-            guard let self else { return }
-            self.busy = false
-            if case .failure(let error) = result { self.error = error.description }
-            self.refresh()
-        }
-    }
-    func stopSharing() {
-        busy = true
-        PointerShare.shared.stop { [weak self] in self?.busy = false; self?.refresh() }
-    }
+
 }

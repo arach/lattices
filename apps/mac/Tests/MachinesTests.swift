@@ -11,7 +11,7 @@ final class MachinesTests: XCTestCase {
         let sources: [MachineInventory.Source] = [
             .init(name: paired.name, address: "100.64.0.1:5287", visit: paired),
             .init(name: "box", address: "100.64.0.1", remote: "box"),
-            .init(name: "archie", address: "archie", client: .init(id: 1, host: "archie", active: true)),
+            .init(name: "archie", address: "archie"),
             .init(name: "other", address: "100.64.0.2", remote: "other"),
         ]
         for input in [sources, Array(sources.reversed())] {
@@ -19,8 +19,6 @@ final class MachinesTests: XCTestCase {
             XCTAssertEqual(machines.count, 2)
             let machine = machines.first { $0.visit != nil }!
             XCTAssertEqual(machine.remote, "box")
-            XCTAssertEqual(machine.clients.count, 1)
-            XCTAssertTrue(machine.sharing)
             XCTAssertEqual(machine.visit, paired)
         }
     }

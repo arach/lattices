@@ -6,24 +6,11 @@ import SwiftUI
 @MainActor
 final class LongCardModel: ObservableObject {
     @Published var visit = VisitController.shared.status()
-    @Published var sharing = false
-    @Published var shareUntil: Date?
-    @Published var lanMouse = false
     @Published var screens: [VisitController.Screen] = []
 
     func refresh() {
         visit = VisitController.shared.status()
         screens = VisitController.screens()
-        shareUntil = PointerShare.shared.until
-        // lan-mouse answers through its CLI; ask off main.
-        DispatchQueue.global(qos: .userInitiated).async {
-            let status = PointerShare.status()
-            DispatchQueue.main.async { [weak self] in
-                self?.lanMouse = status.lanMouse
-                self?.sharing = status.sharing
-                self?.shareUntil = status.until
-            }
-        }
     }
 }
 
@@ -39,12 +26,8 @@ struct LongCardView: View {
                 Divider().overlay(Palette.border)
                 screensSection
             }
-            if model.lanMouse {
-                Divider().overlay(Palette.border)
-                pointerSection
-            }
             Divider().overlay(Palette.border)
-            Button("Bring cursor home") { PointerHome.bringHome(); later() }
+            Button("Bring cursor home") { PointerHome.bringHome(); model.refresh() }
                 .buttonStyle(LongCardButton())
         }
         .padding(14)
@@ -81,7 +64,7 @@ struct LongCardView: View {
                 }
             }
             if model.visit.visiting != nil {
-                Button("End visit") { VisitController.shared.end(because: "ended"); later() }
+                Button("End visit") { VisitController.shared.end(because: "ended"); model.refresh() }
                     .buttonStyle(LongCardButton(accent: true))
             }
         }
@@ -105,26 +88,7 @@ struct LongCardView: View {
         }
     }
 
-    private var pointerSection: some View {
-        HStack {
-            Text("Pointer sharing").font(Typo.heading(12)).foregroundStyle(Palette.text)
-            Spacer()
-            if let until = model.shareUntil {
-                Text("until \(PointerShare.clock(until))").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                Button("Keep") { PointerShare.shared.keep(); later() }.buttonStyle(LongCardButton())
-            } else if model.sharing {
-                Button("Stop") { PointerHome.bringHome(); later() }.buttonStyle(LongCardButton())
-            } else {
-                Button("Share") { PointerShare.shared.share(); later() }.buttonStyle(LongCardButton())
-            }
-        }
-    }
 
-    /// lan-mouse settles a beat after a change.
-    private func later() {
-        model.refresh()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { model.refresh() }
-    }
 }
 
 private struct LongCardButton: ButtonStyle {
