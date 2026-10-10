@@ -32,6 +32,8 @@ final class LongCardModel: ObservableObject {
 /// What you can do through Lattices from where Long sits: search, layers,
 /// machines, displays. Long's own settings are the footer.
 struct LongCardView: View {
+    @Environment(\.colorScheme) private var scheme
+    private var palette: LongPalette { LongPalette(scheme: scheme) }
     @ObservedObject var model: LongCardModel
     /// A new main display is a 15 s trial; Keep shows on it until then.
     @ObservedObject private var arrangement = DisplayArrangement.shared
@@ -61,7 +63,7 @@ struct LongCardView: View {
                 section("Displays") { displays }
             }
 
-            Divider().overlay(Palette.border)
+            Divider().overlay(palette.border)
             HStack(spacing: 12) {
                 Button("Cursor home") { model.dismiss(); PointerHome.bringHome() }
                 Spacer()
@@ -76,17 +78,17 @@ struct LongCardView: View {
             }
             .buttonStyle(.plain)
             .font(Typo.body(10))
-            .foregroundStyle(Palette.textMuted)
+            .foregroundStyle(palette.textMuted)
         }
         .padding(14)
         .frame(width: 280, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.bg))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Palette.borderLit, lineWidth: 0.5))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(palette.bg))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(palette.borderLit, lineWidth: 0.5))
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(Typo.mono(9)).tracking(0.6).foregroundStyle(Palette.textMuted)
+            Text(title.uppercased()).font(Typo.mono(9)).tracking(0.6).foregroundStyle(palette.textMuted)
             content()
         }
     }
@@ -110,7 +112,7 @@ struct LongCardView: View {
             ForEach(model.visit.hosts, id: \.name) { host in
                 let visiting = model.visit.visiting == host.name
                 HStack(spacing: 6) {
-                    Text(host.name).font(Typo.monoBold(11)).foregroundStyle(Palette.text)
+                    Text(host.name).font(Typo.monoBold(11)).foregroundStyle(palette.text)
                     Spacer()
                     if visiting {
                         Button("End visit") { model.run("home", close: false) }.buttonStyle(LongCardButton(accent: true))
@@ -130,13 +132,13 @@ struct LongCardView: View {
             ForEach(model.screens, id: \.index) { screen in
                 let params: JSON = .object(["display": .int(screen.index)])
                 HStack(spacing: 6) {
-                    Text(screen.name).font(Typo.monoBold(11)).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(screen.name).font(Typo.monoBold(11)).foregroundStyle(palette.text).lineLimit(1)
                     Spacer()
                     Button("Bring here") { model.run("bring", params) }.buttonStyle(LongCardButton())
                     if screen.isMain && arrangement.pending {
                         Button("Keep") { arrangement.keep() }.buttonStyle(LongCardButton(accent: true))
                     } else if screen.isMain {
-                        Text("main").font(Typo.mono(10)).foregroundStyle(Palette.textMuted).frame(width: 46)
+                        Text("main").font(Typo.mono(10)).foregroundStyle(palette.textMuted).frame(width: 46)
                     } else {
                         Button("Main") { model.run("main", params, close: false) }.buttonStyle(LongCardButton()).frame(width: 46)
                     }
@@ -148,19 +150,21 @@ struct LongCardView: View {
 }
 
 private struct LongCardButton: ButtonStyle {
+    @Environment(\.colorScheme) private var scheme
+    private var palette: LongPalette { LongPalette(scheme: scheme) }
     var accent = false
     var selected = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Typo.body(11))
-            .foregroundStyle(accent ? Color.white : selected ? Palette.text : Palette.textDim)
+            .foregroundStyle(accent ? Long.ink : selected ? palette.text : palette.textDim)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(accent ? Long.coral : configuration.isPressed || selected ? Palette.surfaceHov : Palette.surface)
+                    .fill(accent ? Long.coral : configuration.isPressed || selected ? palette.surfaceHov : palette.surface)
             )
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? Palette.borderLit : Palette.border, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? palette.borderLit : palette.border, lineWidth: 0.5))
     }
 }
 
@@ -178,7 +182,7 @@ final class LongCard {
         self.onClose = onClose
         model.hideLong = onHideLong
         let host = NSHostingView(rootView: LongCardView(model: model))
-        panel = NSPanel(contentRect: CGRect(origin: .zero, size: host.fittingSize),
+        panel = LongPanel(contentRect: CGRect(origin: .zero, size: host.fittingSize),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.backgroundColor = .clear
         panel.isOpaque = false

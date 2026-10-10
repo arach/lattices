@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Long
 
-/// A small ink tile. Lighting is static; motion only follows incoming events.
+/// A small adaptive tile. Lighting is static; motion only follows incoming events.
 struct Long: View {
     enum Mood: Equatable { case rest, listen, work, done, oops, away, talk }
     enum Depth: String, CaseIterable {
@@ -15,6 +15,8 @@ struct Long: View {
     var depth: Depth = .soft
     /// Real playback amplitude, supplied by a speech event producer, never a clock.
     var speechLevel: Double = 0
+    @Environment(\.colorScheme) private var scheme
+    private var palette: LongPalette { LongPalette(scheme: scheme) }
     @Environment(\.accessibilityReduceMotion) private var still
 
     static let ink = Color(red: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255)
@@ -26,16 +28,16 @@ struct Long: View {
         let leaning = mood == .listen && !still
         let nodding = mood == .done && !still
         ZStack {
-            LongFeet().fill(Self.ink)
-            LongFeet().stroke(Self.lit.opacity(0.12), lineWidth: max(0.5, u))
-            LongBody().fill(Self.ink)
-                .shadow(color: .black.opacity(0.24), radius: 3 * u, x: 0, y: 3 * u)
-            LongBody().fill(LinearGradient(colors: [Self.lit.opacity(depth.highlight), .clear, .black.opacity(0.18)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            LongBody().stroke(LinearGradient(colors: [Self.lit.opacity(depth.highlight * 1.8), Self.lit.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: max(0.6, 1.4 * u))
+            LongFeet().fill(palette.body)
+            LongFeet().stroke(palette.face.opacity(0.12), lineWidth: max(0.5, u))
+            LongBody().fill(palette.body)
+                .shadow(color: .black.opacity(palette.shadowOpacity), radius: palette.shadowRadius * u, x: 0, y: palette.shadowOffset * u)
+            LongBody().fill(LinearGradient(colors: [palette.isLight ? Color.white.opacity(depth.highlight * 2) : Self.lit.opacity(depth.highlight), .clear, (palette.isLight ? Self.ink.opacity(0.10) : Color.black.opacity(0.18))], startPoint: .topLeading, endPoint: .bottomTrailing))
+            LongBody().stroke(LinearGradient(colors: [palette.isLight ? Color.white.opacity(0.8) : Self.lit.opacity(depth.highlight * 1.8), palette.face.opacity(palette.isLight ? 0.22 : 0.04)], startPoint: .top, endPoint: .bottom), lineWidth: max(0.6, 1.4 * u))
             if mood == .away { LongCorner().fill(Self.coral) }
             Group {
                 eyes(u)
-                LongMouth(shape: mouthShape).fill(Self.lit)
+                LongMouth(shape: mouthShape).fill(palette.face)
                     .animation(still ? nil : .easeOut(duration: 0.1), value: mouthShape)
             }
             .offset(x: mood == .away ? 4 * u : 0)
@@ -65,8 +67,8 @@ struct Long: View {
         let dx: CGFloat = mood == .work ? 3 : looking ? gaze.dx : 0
         let dy: CGFloat = mood == .listen ? -2.5 + gaze.dy : mood == .oops ? 3 : looking ? gaze.dy : 0
         return ZStack {
-            LongEye(cx: 38, cy: 32).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.38, y: 0.32))
-            LongEye(cx: 62, cy: 32).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.62, y: 0.32))
+            LongEye(cx: 38, cy: 32).fill(palette.face).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.38, y: 0.32))
+            LongEye(cx: 62, cy: 32).fill(palette.face).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.62, y: 0.32))
         }
         .offset(x: dx * u, y: dy * u)
         .animation(still ? nil : .easeOut(duration: 0.18), value: gaze)

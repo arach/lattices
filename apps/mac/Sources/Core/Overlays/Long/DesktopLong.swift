@@ -180,7 +180,7 @@ final class DesktopLong {
         UserDefaults.standard.set(true, forKey: Self.shownKey)
         guard panel == nil else { return }
         let host = LongHost(rootView: DesktopLongView(model: model))
-        let p = NSPanel(contentRect: CGRect(origin: .zero, size: host.fittingSize),
+        let p = LongPanel(contentRect: CGRect(origin: .zero, size: host.fittingSize),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.backgroundColor = .clear
         p.isOpaque = false

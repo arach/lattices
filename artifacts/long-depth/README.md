@@ -82,3 +82,33 @@ missing Swift 6.2.3 install. The command above does not launch the app.
 - `git diff --check`: clean.
 
 Exports: `long-depth-comparison.png`, `long-moods.png`, `long-card.png`.
+
+## Approved soft depth: system light/dark appearances
+
+The operator approved soft depth. Dark appearance keeps the ink body and light
+face. Light appearance swaps to the #f2f2f2 body and #101518 face. Coral is
+unchanged. Light depth uses a 34% white top highlight, a white-to-22%-ink rim,
+10% lower ink shade, and a 30% black shadow with a 5-unit blur and 4-unit drop;
+the shadow and lower rim define the object on a light desktop. Dark depth
+retains the approved values above.
+
+The app pins `NSApp.appearance` to dark in `AppDelegate.swift`. Inheriting the
+app appearance alone would therefore fail. Both Long panels now explicitly
+resolve the global system appearance on creation and on the system theme-change
+notification; SwiftUI's `colorScheme` updates the drawing and card. No polling,
+no app-wide theme changes, and observer lifetime follows its panel.
+
+`long-moods.png` now has four labeled rows: dark Long on dark/light desktops,
+then light Long on dark/light desktops, each at 100 pt and 44 pt. `long-card.png`
+shows dark and light cards side by side. The original three-strength ink depth
+comparison remains pinned to dark appearance for reproducibility.
+
+Appearance verification: both token directions and the panel's system resolver
+are covered by tests, including refreshing a panel away from a stale explicit
+appearance. Offline renders were inspected in all four combinations and both
+card appearances. The operator's running app and system appearance were not
+changed; an actual Settings-driven desktop flip remains a live review check.
+
+Final appearance run: `LONG_RENDER_DIR="$PWD/artifacts/long-depth" xcrun swift
+test --package-path apps/mac` passed: 518 tests, 36 skipped, zero failures.
+All five Long tests ran, including the render test. `git diff --check` is clean.
