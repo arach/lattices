@@ -3653,6 +3653,77 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "visit.pair",
+            description: "Pair this Mac with a host's companion bridge so it can visit it (docs/visit.md). Returns at once with the code to check on the host; approve it there within two minutes",
+            access: .mutate,
+            params: [
+                Param(name: "host", type: "string", required: true, description: "Name, e.g. archie"),
+                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:5287)"),
+                Param(name: "side", type: "string", required: false, description: "Side of this Mac's screens the host sits on: left, right, top, bottom (default right)"),
+            ],
+            returns: .custom("Object with 'pairing' and 'code'"),
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                let address = params?["address"]?.stringValue ?? "\(name):5287"
+                guard let side = VisitTrust.Side(rawValue: params?["side"]?.stringValue ?? "right") else {
+                    throw RouterError.custom("side: expected left, right, top or bottom")
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if case .failure(let error) = VisitTrust.shared.pair(name: name, address: address, side: side) {
+                        DiagnosticLog.shared.warn("Visit: pairing with \(name) failed: \(error)")
+                    }
+                    DispatchQueue.main.async { VisitController.shared.refreshLayout() }
+                }
+                return .object(["pairing": .string(name), "code": .string(VisitTrust.shared.fingerprint)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.status",
+            description: "Paired hosts, whether crossing an edge into them is armed, and the host being visited",
+            access: .read,
+            params: [],
+            returns: .custom("Object with 'armed', 'visiting', 'code' and 'hosts' (name, address, side, fingerprint)"),
+            handler: { _ in
+                let status = Thread.isMainThread ? VisitController.shared.status() : DispatchQueue.main.sync { VisitController.shared.status() }
+                return .object([
+                    "armed": .bool(status.armed),
+                    "visiting": status.visiting.map { .string($0) } ?? .null,
+                    "code": .string(VisitTrust.shared.fingerprint),
+                    "hosts": .array(status.hosts.map {
+                        .object(["name": .string($0.name), "address": .string($0.address), "side": .string($0.side.rawValue), "fingerprint": .string($0.bridgeFingerprint)])
+                    }),
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.arm",
+            description: "Arm or disarm visiting: while armed, pushing the pointer past an edge that faces a paired host starts a visit",
+            access: .mutate,
+            params: [Param(name: "on", type: "bool", required: false, description: "Default true")],
+            returns: .custom("Object with 'armed'"),
+            handler: { params in
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in VisitController.shared.arm(on); return VisitController.shared.armed }
+                let armed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["armed": .bool(armed)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.end",
+            description: "End the current visit; the cursor stays where it was parked",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                VisitController.shared.end(because: "ended")
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "mouse.summon",
             description: "Warp the mouse cursor to screen center (or a given point) and show a sonar pulse",
             access: .mutate,

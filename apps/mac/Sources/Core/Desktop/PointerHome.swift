@@ -48,6 +48,7 @@ enum PointerHome {
 
     /// Releases lan-mouse off the main thread, then warps on it.
     static func bringHome(completion: ((Result) -> Void)? = nil) {
+        VisitController.shared.end(because: "home")
         PointerShare.shared.disarm()
         let ours = PointerShare.shared.takeStartedDaemon()
         DispatchQueue.global(qos: .userInitiated).async {

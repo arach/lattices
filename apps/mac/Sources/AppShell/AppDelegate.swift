@@ -71,6 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
+        VisitController.shared.restore()
         BundleModules.start()
         WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()

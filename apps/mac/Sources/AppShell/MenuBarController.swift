@@ -13,6 +13,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private var contextMenu: NSMenu?
     private weak var actionMenuItem: NSMenuItem?
     private weak var shareMenuItem: NSMenuItem?
+    private weak var visitMenuItem: NSMenuItem?
     private weak var keepMenuItem: NSMenuItem?
 
     var isPopoverShown: Bool {
@@ -179,6 +180,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         FrontWindowPlacementMenu.attach(to: menu)
         CompanionAppsMenu.attach(to: menu)
 
+        let visit = NSMenuItem(title: "Visiting Cursor", action: #selector(menuVisit), keyEquivalent: "")
+        visit.target = self
+        visit.isHidden = true
+        menu.addItem(visit)
+        visitMenuItem = visit
+
         let share = NSMenuItem(title: "Share Pointer", action: #selector(menuSharePointer), keyEquivalent: "")
         share.target = self
         menu.addItem(share)
@@ -251,6 +258,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
     @objc private func menuCursorHome() { PointerHome.bringHome() }
     @objc private func menuKeepSharing() { PointerShare.shared.keep() }
+    @objc private func menuVisit() { VisitController.shared.arm(!VisitController.shared.armed) }
     @objc private func menuSharePointer() {
         if shareMenuItem?.state == .on { PointerHome.bringHome() } else { PointerShare.shared.share() }
     }
@@ -258,6 +266,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     /// lan-mouse answers off main; the open menu updates when it does.
     private func refreshPointerItems() {
         keepMenuItem?.isHidden = !PointerShare.shared.armed
+        visitMenuItem?.isHidden = VisitTrust.shared.list().isEmpty
+        visitMenuItem?.state = VisitController.shared.armed ? .on : .off
         DispatchQueue.global(qos: .userInitiated).async {
             let status = PointerShare.status()
             DispatchQueue.main.async {

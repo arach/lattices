@@ -906,6 +906,28 @@ async function mouseCommand(sub?: string, rest: string[] = []): Promise<void> {
   });
 }
 
+async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
+  await withDaemon(async ({ daemonCall }) => {
+    if (sub === "pair") {
+      const [host, address, side] = rest;
+      if (!host) return console.log("Usage: lats visit pair <host> [host:port] [left|right|top|bottom]");
+      const result = await daemonCall("visit.pair", { host, ...(address ? { address } : {}), ...(side ? { side } : {}) }) as any;
+      console.log(`🔐 Approve ${result.code} on ${result.pairing}, then: lats visit status`);
+    } else if (sub === "on" || sub === "off") {
+      const result = await daemonCall("visit.arm", { on: sub === "on" }) as any;
+      console.log(result.armed ? "🖱️ Visiting armed: push past an edge facing a paired host" : "Visiting off");
+    } else if (sub === "end") {
+      await daemonCall("visit.end");
+      console.log("🏠 Visit ended");
+    } else {
+      const s = await daemonCall("visit.status") as any;
+      for (const h of s.hosts) console.log(`  ${s.visiting === h.name ? "●" : "○"} ${h.name}  ${h.side}  ${h.address}  ${h.fingerprint}`);
+      if (!s.hosts.length) console.log("No paired hosts. Pair with: lats visit pair <host>");
+      console.log(`${s.armed ? "Armed" : "Off"} · this Mac's code ${s.code}`);
+    }
+  });
+}
+
 async function daemonStatusCommand(): Promise<void> {
   const status = await tryDaemon(async ({ daemonCall }) =>
     daemonCall("daemon.status") as Promise<any>
@@ -3337,6 +3359,9 @@ switch (command) {
     break;
   case "mouse":
     await mouseCommand(args[1], args.slice(2));
+    break;
+  case "visit":
+    await visitCommand(args[1], args.slice(2));
     break;
   case "daemon":
     if (args[1] === "status") {

@@ -138,6 +138,10 @@ Usage:
   lats mouse keep         Keep pointer sharing on
   lats mouse status       lan-mouse clients and any trial deadline
   lats mouse home         Sharing off, cursor to the main display
+  lats visit pair <host> [host:port] [side]  Pair with a host to visit it with a second cursor
+  lats visit on|off       Arm crossing into paired hosts at the screen edge
+  lats visit status       Paired hosts and this Mac's code
+  lats visit end          End a visit (or ⌃⌥⌘ Home)
   lats mcp                MCP server over stdio (agent config: command "lattices", args ["mcp"])
   lats mcp --list         List MCP toolsets and their tools
   lats mcp --print-config <harness>  Print the agent config snippet
