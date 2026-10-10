@@ -33,6 +33,22 @@ enum MachineGeometry {
             return r
         }
     }
+    static func entry(displays: [CGRect], machine: CGRect) -> (display: CGRect, side: VisitTrust.Side, point: CGPoint)? {
+        for display in displays {
+            if let contact = contacts(display: display, machine: machine).first {
+                let middle = (contact.lower + contact.upper) / 2
+                let point: CGPoint
+                switch contact.side {
+                case .left: point = CGPoint(x: display.minX, y: middle)
+                case .right: point = CGPoint(x: display.maxX - 0.5, y: middle)
+                case .top: point = CGPoint(x: middle, y: display.minY)
+                case .bottom: point = CGPoint(x: middle, y: display.maxY - 0.5)
+                }
+                return (display, contact.side, point)
+            }
+        }
+        return nil
+    }
     static func contacts(display d: CGRect, machine m: CGRect) -> [Contact] {
         var result: [Contact] = []
         let y0 = max(d.minY, m.minY), y1 = min(d.maxY, m.maxY)

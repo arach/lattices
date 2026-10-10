@@ -3655,10 +3655,10 @@ final class LatticesApi {
             method: "visit.main",
             description: "Make a display the main one (the menu bar's), keeping the arrangement; reverts after 15 s unless visit.arrangement.keep",
             access: .mutate,
-            params: [Param(name: "screen", type: "int", required: true, description: "Display number from visit.screens")],
+            params: [Param(name: "screen", type: "int|string", required: true, description: "Display number or name fragment")],
             returns: .ok,
             handler: { params in
-                guard let number = params?["screen"]?.intValue else { throw RouterError.missingParam("screen") }
+                let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
                 let work: @MainActor () throws -> Void = { try DisplayArrangement.shared.makeMain(number) }
                 if Thread.isMainThread { try MainActor.assumeIsolated { try work() } }
                 else { try DispatchQueue.main.sync { try MainActor.assumeIsolated { try work() } } }
@@ -3743,6 +3743,10 @@ final class LatticesApi {
                     "armed": .bool(status.armed),
                     "visiting": status.visiting.map { .string($0) } ?? .null,
                     "code": .string(VisitTrust.shared.fingerprint),
+                    "placements": .object(Dictionary(uniqueKeysWithValues: RemoteHostsModel.configuredHosts().compactMap { host -> (String, JSON)? in
+                        guard let p = MachineArrangementStore.placement(host.name) else { return nil }
+                        return (host.name, .object(["x": .double(p.x), "y": .double(p.y), "width": .double(p.width), "height": .double(p.height)]))
+                    })),
                     "hosts": .array(status.hosts.map {
                         .object(["name": .string($0.name), "address": .string($0.address), "side": MachineArrangementStore.side(for: $0, displays: screenFrames).map { .string($0.rawValue) } ?? .null, "fingerprint": .string($0.bridgeFingerprint),
                                  "placement": $0.placement.map { .object(["x": .double($0.x), "y": .double($0.y), "width": .double($0.width), "height": .double($0.height)]) } ?? .null])
@@ -3767,7 +3771,7 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "visit.screens",
-            description: "This Mac's displays, numbered main first then left to right, and which are marked elsewhere (plugged into another machine)",
+            description: "This Mac's displays, using display.gather indices, and which are marked elsewhere (plugged into another machine)",
             access: .read,
             params: [],
             returns: .custom("Array of objects with 'number', 'name', 'frame', 'main' and 'elsewhere'"),
@@ -3787,13 +3791,13 @@ final class LatticesApi {
             description: "Mark a display as elsewhere (plugged into another machine): the pointer is kept off it, and sliding into it toward a paired host starts a visit",
             access: .mutate,
             params: [
-                Param(name: "screen", type: "int", required: true, description: "Display number from visit.screens"),
+                Param(name: "screen", type: "int|string", required: true, description: "Display number or name fragment"),
                 Param(name: "on", type: "bool", required: false, description: "Default true; false brings it back"),
                 Param(name: "name", type: "string", required: false, description: "Machine shown on this display; empty clears"),
             ],
             returns: .custom("Object with 'ok'"),
             handler: { params in
-                guard let number = params?["screen"]?.intValue else { throw RouterError.missingParam("screen") }
+                let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
                 let on = params?["on"]?.boolValue ?? true
                 let work = { () -> Bool in
                     guard VisitController.shared.setElsewhere(number, on) else { return false }
@@ -3946,6 +3950,7 @@ final class LatticesApi {
         ))
 
         DisplayGather.registerEndpoints(api)
+        ClusterVerbs.register(api)
         StateHistory.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
 

@@ -143,7 +143,7 @@ final class VisitController {
         var machine: String? = nil
     }
 
-    /// This Mac's displays, the main one first, then left to right.
+    /// Main first then left to right, numbered with the shared display inventory.
     static func screens() -> [Screen] {
         let gone = elsewhere
         let ids = NSScreen.screens.compactMap { screen -> (NSScreen, CGDirectDisplayID)? in
@@ -155,8 +155,9 @@ final class VisitController {
             if (a.1 == main) != (b.1 == main) { return a.1 == main }
             return CGDisplayBounds(a.1).minX < CGDisplayBounds(b.1).minX
         }
+        let inventory = DisplayGather.screens()
         return sorted.enumerated().map { i, pair in
-            Screen(number: i + 1, name: pair.0.localizedName, frame: CGDisplayBounds(pair.1),
+            Screen(number: inventory.first { $0.frame == CGDisplayBounds(pair.1) }?.index ?? i, name: pair.0.localizedName, frame: CGDisplayBounds(pair.1),
                    main: pair.1 == main, elsewhere: gone.contains(uuid(pair.1)), displayID: pair.1,
                    machine: (UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String])?[uuid(pair.1)])
         }
@@ -211,11 +212,30 @@ final class VisitController {
 
     // MARK: Visiting
 
-    /// Starts a visit to the host on `side`, the cursor parked at `point`.
-    func start(side: VisitTrust.Side, at point: CGPoint) {
+    /// Explicit visits do not arm edge crossing or change its preference.
+    func start(machine name: String) throws {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard visit == nil else { throw RouterError.custom("End the current visit first") }
+        guard let host = VisitTrust.shared.host(named: name) else { throw RouterError.notFound("paired machine \(name)") }
+        refreshLayout()
+        lock.lock(); let local = displays; let machines = placements; lock.unlock()
+        guard let rect = machines.first(where: { $0.0 == host.name })?.1,
+              let entry = MachineGeometry.entry(displays: local, machine: rect) else {
+            throw RouterError.custom("\(host.name) does not touch a local display")
+        }
+        // Do not allow an overlapping machine's span to silently redirect this visit.
+        guard MachineGeometry.owner(at: entry.point, side: entry.side, display: entry.display, machines: machines)?.0 == host.name else {
+            throw RouterError.custom("\(host.name)'s touching span overlaps another machine")
+        }
+        start(side: entry.side, at: entry.point, explicit: true)
+        guard visit != nil else { throw RouterError.custom("Could not start visit to \(host.name); check pairing and Accessibility") }
+    }
+
+    /// Starts a visit to the host on its side, the cursor parked at `point`.
+    func start(side: VisitTrust.Side, at point: CGPoint, explicit: Bool = false) {
         dispatchPrecondition(condition: .onQueue(.main))
         defer { lock.lock(); crossing = false; lock.unlock() }
-        guard armed, visit == nil else { return }
+        guard (armed || explicit), visit == nil else { return }
         lock.lock()
         let rects = displays
         let machines = placements
@@ -238,6 +258,7 @@ final class VisitController {
             DiagnosticLog.shared.warn("Visit: couldn't tap input")
             return
         }
+        if explicit { CGWarpMouseCursorPosition(point) }
         CGAssociateMouseAndMouseCursorPosition(0)
         visit = Visit(host: host, channel: channel, parked: point, display: contact.span(in: display))
         let hold = VisitKeys.fabHoldKey()

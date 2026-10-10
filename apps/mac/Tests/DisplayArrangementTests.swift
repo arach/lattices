@@ -32,3 +32,26 @@ final class DisplayArrangementTests: XCTestCase {
         XCTAssertFalse(trial.pending); trial.revert(); XCTAssertEqual(count, 1)
     }
 }
+
+@MainActor
+final class ClusterMainTrialTests: XCTestCase {
+    func testMainTrialShiftsOnceAndRejectsAnotherMainUntilResolved() throws {
+        let screens: [VisitController.Screen] = [
+            .init(number: 0, name: "Main", frame: CGRect(x: 0, y: 0, width: 100, height: 100), main: true, elsewhere: false, displayID: 1),
+            .init(number: 1, name: "DELL", frame: CGRect(x: 100, y: 30, width: 100, height: 100), main: false, elsewhere: false, displayID: 2),
+        ]
+        var shifts: [CGPoint] = []; var writes: [[UInt32: CGPoint]] = []; var timeout: (() -> Void)?
+        let trial = DisplayArrangement(readScreens: { screens }, shiftMachines: { shifts.append(CGPoint(x: $0, y: $1)) },
+            configure: { writes.append($0) }, schedule: { seconds, action in XCTAssertEqual(seconds, 15); timeout = action; return Timer() })
+        try trial.makeMain(1)
+        XCTAssertEqual(writes[0][2], .zero)
+        XCTAssertEqual(shifts, [CGPoint(x: -100, y: -30)])
+        XCTAssertThrowsError(try trial.makeMain(0))
+        timeout?()
+        XCTAssertEqual(writes.last?[2], CGPoint(x: 100, y: 30))
+        XCTAssertEqual(shifts.last, CGPoint(x: 100, y: 30))
+        try trial.makeMain(1); trial.keep(); let count = writes.count; timeout?()
+        XCTAssertEqual(writes.count, count)
+        XCTAssertFalse(trial.pending)
+    }
+}
