@@ -6,19 +6,24 @@ import QtQuick.Layouts
 ColumnLayout {
     id: overview
     required property var controller
+    property bool virtualView: false
     property int workspace: -1
     readonly property var windows: controller.state.windows.filter(w => (workspace < 0 || w.spaceIds.includes(workspace)) && (w.app + " " + w.title).toLowerCase().includes(controller.query.toLowerCase()))
     spacing: 0
-    function focusSearch() { filter.forceActiveFocus() }
+    function focusSearch() { virtualView = false; filter.forceActiveFocus() }
 
     RowLayout {
         Layout.fillWidth: true; Layout.preferredHeight: 44; Layout.leftMargin: 14; Layout.rightMargin: 14; spacing: 8
-        AppText { text: (overview.workspace < 0 ? "All windows" : "Workspace " + overview.workspace) + " · " + overview.windows.length; color: Theme.muted; Layout.fillWidth: true }
-        ActionButton { visible: overview.workspace >= 0; text: "All windows"; quiet: true; onClicked: overview.workspace = -1 }
-        InputField { id: filter; placeholderText: "Filter windows"; Layout.preferredWidth: 165; text: overview.controller.query; onTextEdited: overview.controller.query = text }
+        ActionButton { text: "Desktop"; selected: !overview.virtualView; onClicked: overview.virtualView = false }
+        ActionButton { text: "Virtual space"; selected: overview.virtualView; onClicked: overview.virtualView = true }
+        AppText { visible: !overview.virtualView; text: (overview.workspace < 0 ? "All windows" : "Workspace " + overview.workspace) + " · " + overview.windows.length; color: Theme.muted; Layout.fillWidth: true }
+        ActionButton { visible: !overview.virtualView && overview.workspace >= 0; text: "All windows"; quiet: true; onClicked: overview.workspace = -1 }
+        InputField { id: filter; visible: !overview.virtualView; placeholderText: "Filter windows"; Layout.preferredWidth: 165; text: overview.controller.query; onTextEdited: overview.controller.query = text }
     }
     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
+    VirtualSpaceView { controller: overview.controller; visible: overview.virtualView; Layout.fillWidth: true; Layout.fillHeight: true }
     RowLayout {
+        visible: !overview.virtualView
         Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
         ScrollView {
             id: desk

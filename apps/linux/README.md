@@ -1,7 +1,8 @@
 # Lattices on Linux
 
 A local desktop window built with Quickshell and Qt Quick. It uses the existing
-Linux host API over loopback and adds no listener or background polling.
+Linux host API over loopback. Desktop updates use events; the virtual preview
+refreshes twice per second only while its view is open.
 
 From the repository root, with Bun and Quickshell installed:
 
@@ -48,3 +49,23 @@ are restored when those desktops are showing.
 
 This is a source-run first increment. It does not install desktop files or
 change Hyprland, Omarchy, or system configuration.
+
+## Virtual space
+
+Open **Overview → Virtual space → Start virtual space**. Browser and Terminal
+launch apps on a separate 1280 × 800 headless desktop, with a live preview in the
+same view. **Control preview** enables clicks, scrolling, the key buttons and
+Send text. Watching and agent input leave the physical desktop's pointer and
+focus alone. Stop closes the virtual apps; closing this window leaves the space
+running until the host stops.
+
+Virtual space needs `sway`, `grim`, `wtype` and `dbus-run-session` on PATH. The
+Browser preset needs Chromium or Chrome and keeps a separate profile in
+`~/.lattices/virtual-space/browser`; Terminal needs `foot`. On Arch, install the
+optional tools with `sudo pacman -S sway grim wtype foot chromium`. Existing
+physical windows stay on their original desktop; launch new Wayland apps here.
+
+Agents use `computer.virtual.start/status/launch/capture/stop` and add
+`space: "virtual"` to `computer.*` input or observe calls. Input still stages by
+default and requires `treatment: "execute"` to act. See the
+[host API notes](../../packages/host-linux/README.md#virtual-computer-use).

@@ -17,6 +17,9 @@ ShellRoot {
     property string query: ""
     property double selectedWid: -1
     property var selectedWindow: state.windows.find(w => w.wid === selectedWid) || null
+    property string virtualFrame: ""
+    property string virtualError: ""
+    property bool virtualControl: false
     property var activity: []
     property string pendingMethod: ""
     property string pendingLabel: ""
@@ -39,9 +42,10 @@ ShellRoot {
     }
     function call(method, params) {
         if (!backend.running || busy || (!online && method !== "refresh" && method !== "host.start")) return
-        const labels = { "layers.create": "Create layer", "layers.assign": "Add windows to layer", "layers.unassign": "Remove windows from layer", "layers.rename": "Rename layer", "layers.delete": "Delete layer", "layers.layout": "Set layer layout", "layers.activate": "Switch layer", "layers.reveal": "Show all windows", "refresh": "Refresh local host", "host.start": "Start local host", "windows.focus": "Focus window", "windows.place": "Place window", "sessions.launch": "Start session", "clients.approve": "Approve device", "bridge.pairing.approve": "Approve device", "clients.deny": "Deny pairing", "bridge.pairing.deny": "Deny pairing", "clients.revoke": "Revoke device", "bridge.devices.revoke": "Revoke device" }
+        const labels = { "computer.virtual.start": "Start virtual space", "computer.virtual.stop": "Stop virtual space", "computer.virtual.launch": "Open virtual app", "computer.click": "Click in virtual space", "computer.scroll": "Scroll virtual space", "computer.pressKey": "Press virtual key", "computer.typeText": "Type in virtual space", "layers.create": "Create layer", "layers.assign": "Add windows to layer", "layers.unassign": "Remove windows from layer", "layers.rename": "Rename layer", "layers.delete": "Delete layer", "layers.layout": "Set layer layout", "layers.activate": "Switch layer", "layers.reveal": "Show all windows", "refresh": "Refresh local host", "host.start": "Start local host", "windows.focus": "Focus window", "windows.place": "Place window", "sessions.launch": "Start session", "clients.approve": "Approve device", "bridge.pairing.approve": "Approve device", "clients.deny": "Deny pairing", "bridge.pairing.deny": "Deny pairing", "clients.revoke": "Revoke device", "bridge.devices.revoke": "Revoke device" }
         pendingMethod = method
         pendingLabel = labels[method] || "Local action"
+        if (method.startsWith("computer.")) virtualError = ""
         if (params && params.placement) pendingLabel += " · " + params.placement
         busy = true
         message = ""
@@ -51,6 +55,7 @@ ShellRoot {
         call(request.kind === "daemon" ? (approve ? "clients.approve" : "clients.deny") : (approve ? "bridge.pairing.approve" : "bridge.pairing.deny"),
             request.kind === "daemon" ? { clientID: request.deviceID } : { deviceID: request.deviceID })
     }
+    function previewVirtual() { if (backend.running && online) backend.write(JSON.stringify({ method: "virtual.preview" }) + "\n") }
     function newLayer() { page = "Layers"; Qt.callLater(() => layersPage.create()) }
     function newSession() { if (online && !busy) sessionDialog.open() }
     function showSearch() {
@@ -67,8 +72,16 @@ ShellRoot {
             onRead: data => {
                 try {
                     const update = JSON.parse(data)
-                    if (update.type === "state") {
+                    if (update.type === "virtual.frame") {
+                        if (!root.state.virtual?.running) return
+                        root.virtualFrame = "data:image/png;base64," + update.image
+                        root.virtualError = ""
+                    } else if (update.type === "virtual.error") {
+                        if (!root.state.virtual?.running) return
+                        root.virtualError = update.message
+                    } else if (update.type === "state") {
                         root.state = update
+                        if (!update.virtual?.running) { root.virtualFrame = ""; root.virtualControl = false }
                         if (!root.online || root.pendingMethod === "refresh") root.message = ""
                         root.online = true
                         if (root.pendingMethod === "refresh") root.finish(false, "")

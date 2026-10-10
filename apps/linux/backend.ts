@@ -8,7 +8,7 @@ const port = Number(process.env.LATTICES_LINUX_PORT ?? 9399);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid local host port");
 const endpoint = { host: "127.0.0.1", port };
 process.env.LATTICES_CLIENT = "linux-app";
-const call = <T>(method: string, params?: Record<string, unknown>) => daemonCallTo(endpoint, method, params, 5000) as Promise<T>;
+const call = <T>(method: string, params?: Record<string, unknown>) => daemonCallTo(endpoint, method, params, method.startsWith("computer.virtual.") ? 20000 : 5000) as Promise<T>;
 const emit = (value: unknown) => process.stdout.write(JSON.stringify(value) + "\n");
 interface Describe {
   hostname: string; capabilities: string[]; methods: string[]; displays: Display[];
@@ -26,7 +26,7 @@ function watchEvents() {
   if (events && events.readyState < WebSocket.CLOSING) return;
   const socket = new WebSocket(`ws://${endpoint.host}:${port}`);
   events = socket;
-  socket.onopen = () => socket.send(JSON.stringify({ id: "linux-app-events", method: "events.subscribe", params: { events: ["windows.changed", "spaces.changed", "host.healthChanged", "layers.changed"] } }));
+  socket.onopen = () => socket.send(JSON.stringify({ id: "linux-app-events", method: "events.subscribe", params: { events: ["windows.changed", "spaces.changed", "host.healthChanged", "layers.changed", "virtual.changed"] } }));
   socket.onmessage = (event) => {
     try {
       if (!JSON.parse(String(event.data)).event || debounce) return;
@@ -47,15 +47,16 @@ async function refresh() {
   try {
     const describe = await call<Describe>("host.describe");
     const methods = new Set(describe.methods);
-    const [desktop, daemon, companion, layers] = await Promise.all([
+    const [desktop, daemon, companion, layers, virtual] = await Promise.all([
       methods.has("desktop.snapshot") ? call<{ windows: Window[]; displays: Display[]; sessions: unknown[] }>("desktop.snapshot")
         : Promise.resolve({ windows: [], displays: describe.displays, sessions: methods.has("tmux.list") ? await call<unknown[]>("tmux.list") : [] }),
       methods.has("clients.list") ? call<{ clients: Client[]; pending: Pending[] }>("clients.list") : Promise.resolve({ clients: [], pending: [] }),
       methods.has("bridge.status") ? call<{ devices: Client[]; pending: Pending[] }>("bridge.status") : Promise.resolve({ devices: [], pending: [] }),
       methods.has("layers.members") ? call<{ layers: unknown[]; active: number; stage: unknown }>("layers.members").catch(error => ({ layers: [], active: -1, stage: { parked: [], hidden: [] }, layersError: (error as Error).message })) : Promise.resolve({ layers: [], active: -1, stage: { parked: [], hidden: [] } }),
+      methods.has("computer.virtual.status") ? call("computer.virtual.status").catch(error => ({ available: false, running: false, reason: (error as Error).message })) : Promise.resolve({ available: false, running: false }),
     ]);
     desktop.windows = desktop.windows.filter(window => window.pid !== process.ppid);
-    emit({ type: "state", online: true, describe, ...desktop, ...layers, layersSupported: methods.has("layers.members"), pairingSupported: methods.has("clients.list"),
+    emit({ type: "state", online: true, describe, ...desktop, ...layers, virtual, layersSupported: methods.has("layers.members"), pairingSupported: methods.has("clients.list"),
       clients: [...daemon.clients.map((client) => ({ ...client, kind: "daemon" })), ...companion.devices.map((client) => ({ ...client, kind: "companion", scope: client.capabilities?.join(", ") }))],
       pending: [...daemon.pending.map((request) => ({ ...request, kind: "daemon" })), ...companion.pending.map((request) => ({ ...request, kind: "companion" }))],
     });
@@ -67,13 +68,26 @@ async function refresh() {
   }
 }
 
-const allowed = new Set(["layers.create", "layers.assign", "layers.unassign", "layers.rename", "layers.delete", "layers.layout", "layers.activate", "layers.reveal", "windows.focus", "windows.place", "sessions.launch", "clients.approve", "clients.deny", "clients.revoke", "bridge.pairing.approve", "bridge.pairing.deny", "bridge.devices.revoke"]);
+let previewPending = false;
+const allowed = new Set(["computer.virtual.start", "computer.virtual.stop", "computer.virtual.launch", "computer.click", "computer.scroll", "computer.pressKey", "computer.typeText", "layers.create", "layers.assign", "layers.unassign", "layers.rename", "layers.delete", "layers.layout", "layers.activate", "layers.reveal", "windows.focus", "windows.place", "sessions.launch", "clients.approve", "clients.deny", "clients.revoke", "bridge.pairing.approve", "bridge.pairing.deny", "bridge.devices.revoke"]);
 const input = createInterface({ input: process.stdin });
 let queue = Promise.resolve();
 input.on("line", (line) => {
+  let request: { method: string; params?: Record<string, unknown> };
+  try { request = JSON.parse(line); }
+  catch { emit({ type: "error", message: "Invalid app request" }); return; }
+  if (request.method === "virtual.preview") {
+    if (previewPending) return;
+    previewPending = true;
+  }
   queue = queue.then(async () => {
     try {
-      const request = JSON.parse(line) as { method: string; params?: Record<string, unknown> };
+      if (request.method === "virtual.preview") {
+        try { const frame = await call<Record<string, unknown>>("computer.virtual.capture"); emit({ type: "virtual.frame", ...frame }); }
+        catch (error) { emit({ type: "virtual.error", message: (error as Error).message }); }
+        finally { previewPending = false; }
+        return;
+      }
       if (request.method === "refresh") { await refresh(); return; }
       let result: unknown;
       if (request.method === "host.start") {
@@ -81,6 +95,7 @@ input.on("line", (line) => {
       } else {
         if (!allowed.has(request.method)) throw new Error("Unsupported app action");
         const params = request.params ?? {};
+        if (request.method.startsWith("computer.") && !request.method.startsWith("computer.virtual.") && params.space !== "virtual") throw new Error("Preview controls require the virtual space");
         if (request.method === "sessions.launch" && typeof params.path === "string") {
           params.path = params.path === "~" ? homedir() : params.path.startsWith("~/") ? homedir() + params.path.slice(1) : params.path;
         }

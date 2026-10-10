@@ -1,6 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
+import { registerVirtualSpaceEndpoints } from "./virtual-space.ts";
 import { registerLayerEndpoints } from "./layers.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
@@ -985,4 +986,5 @@ export function registerEndpoints(router: Router, ctx: HostContext, mouseDeps?: 
       return asJson({ data: buffer.toString("base64"), offset, length, size, eof: offset + length >= size });
     },
   });
+  return { virtualSpace: registerVirtualSpaceEndpoints(router, ctx.emit) };
 }

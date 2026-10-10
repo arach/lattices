@@ -384,3 +384,52 @@ notifies subscribers after editing or switching.
 companion rules are unavailable. Saved window pins keep their original window
 and process; reopened windows can be added again. App rules use Linux window
 classes. `LATTICES_WORKSPACE_DIR` can select a separate development workspace.
+
+## Virtual computer use
+
+The local app's **Overview → Virtual space** view starts a headless Sway desktop
+and previews it without switching the physical desktop. Its worker has a private
+Wayland socket, runtime directory, D-Bus session and persistent virtual pointer.
+No physical display or input device is attached. Wayland apps still run as the current
+user and share its filesystem; this is a separate desktop session.
+
+Install `sway`, `grim`, `wtype` and `dbus-run-session`. OCR also needs `tesseract`.
+For a portable development runtime, `LATTICES_VIRTUAL_SWAY` names the Sway binary
+(with `swaymsg` beside it), and `LATTICES_VIRTUAL_LIBRARY_PATH` supplies its library
+path. Normal installations need neither variable.
+
+| Method | Parameters / result |
+|--------|---------------------|
+| `computer.virtual.start` | Optional `width`, `height`; default 1280 × 800, range 640 × 480 to 2560 × 1600 |
+| `computer.virtual.status` | Availability, running state, dimensions and virtual windows with their own `wid` values |
+| `computer.virtual.launch` | `app`: `browser`, `terminal` or an executable on PATH; optional `args` for an executable |
+| `computer.virtual.capture` | Whole desktop PNG in base64 with width, height and timestamp |
+| `computer.virtual.stop` | Closes the virtual apps, compositor and private D-Bus session |
+
+The browser preset uses Chromium or Chrome with a separate persistent profile in
+`~/.lattices/virtual-space/browser`; terminal uses `foot`. Start, launch, stop and
+input require the existing `drive` scope for remote clients. Status, capture and
+observe are read operations.
+
+Add `space: "virtual"` to `computer.click`, `doubleClick`, `rightClick`, `aim`,
+`scroll`, `drag`, `typeText`, `pressKey`, `hotkey` or `observe`. Leaving `space`
+out targets the physical desktop. Any other explicit value is rejected. Input
+stages by default; `treatment: "execute"` runs it. Virtual targets resolve only
+against the virtual window list. `xRatio`/`yRatio` address that desktop or a target
+window; drag uses absolute `fromX`/`fromY` and `toX`/`toY`. Observe returns OCR for
+the whole virtual desktop and optionally its PNG (`image: true`); it does not
+crop to a target window or region. Host tmux sessions cannot be input targets.
+
+```sh
+lats call computer.virtual.start
+lats call computer.virtual.launch '{"app":"browser"}'
+lats call computer.click '{"space":"virtual","xRatio":0.5,"yRatio":0.5,"treatment":"execute"}'
+lats call computer.typeText '{"space":"virtual","text":"hello","treatment":"execute"}'
+lats call computer.observe '{"space":"virtual","image":true}'
+lats call computer.virtual.stop
+```
+
+`virtual.changed` announces starts, launches, stops and failures. The app previews
+at two frames per second only while the virtual view is visible. The virtual
+desktop belongs to the host; closing the app leaves it running. Stopping the host
+also stops the virtual session. Existing physical windows are not moved into it.
