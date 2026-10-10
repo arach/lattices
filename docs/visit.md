@@ -82,3 +82,33 @@ The plaintext is one JSON object with a type in `t`.
   and key events and forwards them, so nothing on the Mac reacts.
 - ⌃⌥⌘ Home ends the visit from inside that tap, so it works however the channel
   is doing.
+
+## Machines
+
+Open **Workspace → Machines** (`hosts` remains a page-name alias). The page
+merges visit pairings, Lattices hosts and running lan-mouse clients by name or
+address. Selecting a Lattices host retains its still, live view and window list.
+Opening the page does not arm visiting or start sharing. Connections and status
+reads stop when the page is hidden; trial safety timers remain independent.
+
+Drag a paired machine to an arrangement edge, or use its **Side** menu. Moving
+to an occupied edge swaps the machines without changing either pairing's keys.
+A new pairing requires an unoccupied side. The pairing sheet shows this Mac's
+code for approval on the host; no code is entered locally. Every display,
+including the main display, has an **Elsewhere** checkbox.
+
+```bash
+lats visit side archie left
+lats visit forget archie
+lats mouse share          # five-minute trial, all configured lan-mouse clients
+lats mouse keep
+lats mouse stop           # stops lan-mouse only
+lats mouse home           # stops both mechanisms and returns the cursor
+```
+
+lan-mouse is separate from visiting and uses its own configured clients. Its
+controls appear on the selected machine when that client is known. When its
+daemon is stopped, the page offers a start control without guessing a machine.
+An active lan-mouse client is not evidence that the remote machine is reachable.
+Visit bridge reachability is checked on page appearance, Refresh and state
+changes, with no recurring probe timer. Display-to-machine labels are not stored.
