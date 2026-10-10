@@ -2,29 +2,20 @@ import SwiftUI
 
 // MARK: - Long
 
-/// Long, Lattices' desktop character: one tile on two feet, with two tall eyes
-/// and a mouth that is the tile again in miniature. Drawn on a 100-unit square,
-/// the way Fab draws Tuck.
-///   · rest: still, a blink every few seconds.
-///   · listen: leans in, eyes up.
-///   · work: eyes scan side to side.
-///   · done: one nod, then rest.
-///   · oops: eyes squint down.
-///   · talk: the mouth opens and closes.
-///   · away: you're visiting another machine; he looks across, a coral cell in his corner.
-/// Reduce Motion: no blink, lean, scan or nod; the eyes still change for each mood.
+/// A small ink tile. Lighting is static; motion only follows incoming events.
 struct Long: View {
     enum Mood: Equatable { case rest, listen, work, done, oops, away, talk }
+    enum Depth: String, CaseIterable {
+        case subtle, soft, bold
+        var highlight: Double { switch self { case .subtle: 0.08; case .soft: 0.17; case .bold: 0.32 } }
+    }
     var mood: Mood = .rest
     var size: CGFloat = 44
-    /// Where he's looking, in grid units (up to 4 each way).
     var gaze: CGVector = .zero
-
+    var depth: Depth = .soft
+    /// Real playback amplitude, supplied by a speech event producer, never a clock.
+    var speechLevel: Double = 0
     @Environment(\.accessibilityReduceMotion) private var still
-    @State private var blink = false
-    @State private var scan = false
-    @State private var nod = false
-    @State private var mouthFrame = 0
 
     static let ink = Color(red: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255)
     static let lit = Color(red: 0xf2 / 255, green: 0xf2 / 255, blue: 0xf2 / 255)
@@ -33,12 +24,14 @@ struct Long: View {
     var body: some View {
         let u = size / 100
         let leaning = mood == .listen && !still
-        let nodding = nod && !still
+        let nodding = mood == .done && !still
         ZStack {
             LongFeet().fill(Self.ink)
-            LongFeet().stroke(Color.white.opacity(0.14), lineWidth: max(1, 2.4 * u))
+            LongFeet().stroke(Self.lit.opacity(0.12), lineWidth: max(0.5, u))
             LongBody().fill(Self.ink)
-            LongBody().stroke(Color.white.opacity(0.14), lineWidth: max(1, 2.4 * u))
+                .shadow(color: .black.opacity(0.24), radius: 3 * u, x: 0, y: 3 * u)
+            LongBody().fill(LinearGradient(colors: [Self.lit.opacity(depth.highlight), .clear, .black.opacity(0.18)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            LongBody().stroke(LinearGradient(colors: [Self.lit.opacity(depth.highlight * 1.8), Self.lit.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: max(0.6, 1.4 * u))
             if mood == .away { LongCorner().fill(Self.coral) }
             Group {
                 eyes(u)
@@ -51,27 +44,25 @@ struct Long: View {
         .rotationEffect(.degrees(leaning ? -7 : nodding ? 4 : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
         .offset(y: leaning ? -1 : nodding ? 3 * u : 0)
         .animation(still ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: leaning)
-        .onChange(of: mood, initial: true) { _, now in moved(to: now) }
-        .task(id: mood) { await blinking() }
-        .task(id: mood) { await talking() }
+        .animation(still ? nil : .easeOut(duration: 0.24), value: mood)
         .accessibilityHidden(true)
     }
 
     /// Closed at rest; a small round "ooh" while listening; low and flat for
-    /// oops; while talking it cycles closed, open, half.
+    /// oops; while talking its opening follows playback amplitude.
     private var mouthShape: LongMouth.Form {
         switch mood {
         case .listen: .ooh
         case .oops: .oops
-        case .talk: still ? .half : [.closed, .open, .half][mouthFrame % 3]
+        case .talk: still ? .half : speechLevel > 0.6 ? .open : speechLevel > 0.15 ? .half : .closed
         default: .closed
         }
     }
 
     private func eyes(_ u: CGFloat) -> some View {
-        let squint: CGFloat = mood == .oops ? 0.22 : blink ? 0.08 : 1
+        let squint: CGFloat = mood == .oops ? 0.3 : mood == .listen ? 1.2 : mood == .work ? 0.7 : 1
         let looking = mood == .rest || mood == .listen || mood == .away || mood == .talk
-        let dx: CGFloat = mood == .work && !still ? (scan ? 3 : -3) : looking ? gaze.dx : 0
+        let dx: CGFloat = mood == .work ? 3 : looking ? gaze.dx : 0
         let dy: CGFloat = mood == .listen ? -2.5 + gaze.dy : mood == .oops ? 3 : looking ? gaze.dy : 0
         return ZStack {
             LongEye(cx: 38, cy: 32).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.38, y: 0.32))
@@ -81,42 +72,6 @@ struct Long: View {
         .animation(still ? nil : .easeOut(duration: 0.18), value: gaze)
     }
 
-    private func moved(to mood: Mood) {
-        guard !still else { scan = false; nod = false; return }
-        if mood == .work {
-            scan = false
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) { scan = true }
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) { scan = false }
-        }
-        if mood == .done {
-            withAnimation(.easeOut(duration: 0.24)) { nod = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
-                withAnimation(.easeInOut(duration: 0.36)) { nod = false }
-            }
-        }
-    }
-
-    private func talking() async {
-        mouthFrame = 0
-        guard !still, mood == .talk else { return }
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(140))
-            mouthFrame += 1
-        }
-    }
-
-    /// A blink every 5.2 s while he's looking; none under Reduce Motion.
-    private func blinking() async {
-        guard !still, mood == .rest || mood == .listen || mood == .away || mood == .talk else { return }
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.08)) { blink = true }
-            try? await Task.sleep(for: .milliseconds(110))
-            withAnimation(.easeOut(duration: 0.1)) { blink = false }
-        }
-    }
 }
 
 // MARK: Long's pieces, on the 100-unit grid
@@ -174,6 +129,6 @@ private struct LongFeet: Shape {
 private struct LongEye: Shape {
     var cx, cy: CGFloat
     func path(in r: CGRect) -> Path {
-        Path(roundedRect: r.box(cx - 4.6, cy - 10, 9.2, 20), cornerRadius: 4.6 * r.width / 100, style: .continuous)
+        Path(roundedRect: r.box(cx - 7, cy - 7, 14, 14), cornerRadius: 3.5 * r.width / 100, style: .continuous)
     }
 }

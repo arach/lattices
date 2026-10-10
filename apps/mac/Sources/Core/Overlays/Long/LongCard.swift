@@ -44,7 +44,7 @@ struct LongCardView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").font(.system(size: 11))
-                    Text("Search windows and commands")
+                    Text("Search")
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -57,15 +57,22 @@ struct LongCardView: View {
             if !model.visit.hosts.isEmpty {
                 section("Machines") { machines }
             }
-            if model.screens.count > 1 {
+            if !model.screens.isEmpty {
                 section("Displays") { displays }
             }
 
             Divider().overlay(Palette.border)
             HStack(spacing: 12) {
                 Button("Cursor home") { model.dismiss(); PointerHome.bringHome() }
-                Button("Hide Long") { model.dismiss(); model.hideLong() }
                 Spacer()
+                Button {
+                    model.dismiss()
+                    model.hideLong()
+                } label: {
+                    Image(systemName: "eye.slash")
+                }
+                .help("Hide Long")
+                .accessibilityLabel("Hide Long")
             }
             .buttonStyle(.plain)
             .font(Typo.body(10))
@@ -85,7 +92,7 @@ struct LongCardView: View {
     }
 
     private var layersGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
             ForEach(Array(model.layers.enumerated()), id: \.offset) { index, label in
                 Button {
                     model.dismiss()
