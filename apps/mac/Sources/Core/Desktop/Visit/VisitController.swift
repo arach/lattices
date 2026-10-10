@@ -21,6 +21,7 @@ final class VisitController {
     static let readyWait: TimeInterval = 3
 
     private static let armedKey = "visit.armed"
+    private static let elsewhereKey = "visit.elsewhere"
 
     /// Posted on main when arming, a visit, or its readiness changes. A visit
     /// that ended carries `ended` (the reason) and `failed` in its userInfo.
@@ -57,12 +58,16 @@ final class VisitController {
     // Read on the tap thread, under `lock`.
     private let lock = NSLock()
     private var displays: [CGRect] = []
+    /// Displays marked elsewhere: plugged into another machine, so the pointer
+    /// is kept off them and sliding into one is a crossing.
+    private var away: [CGRect] = []
     private var sides: Set<VisitTrust.Side> = []
     private var pushed: Double = 0
     private var pushedAt: TimeInterval = 0
     private var quietUntil: TimeInterval = 0
     private var crossing = false
     private var forward: VisitChannel?
+    private var holdKey: Int64 = -1
 
     // MARK: Arming
 
@@ -111,12 +116,77 @@ final class VisitController {
         CGGetActiveDisplayList(0, nil, &count)
         var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
         CGGetActiveDisplayList(count, &ids, &count)
-        let rects = ids.prefix(Int(count)).map { CGDisplayBounds($0) }
+        let all = ids.prefix(Int(count)).map { (Self.uuid($0), CGDisplayBounds($0)) }
+        let gone = Self.elsewhere
+        var rects = all.filter { !gone.contains($0.0) }.map(\.1)
+        var awayRects = all.filter { gone.contains($0.0) }.map(\.1)
+        if rects.isEmpty { rects = awayRects; awayRects = [] }
         let paired = Set(VisitTrust.shared.list().map(\.side))
         lock.lock()
         displays = rects
+        away = awayRects
         sides = paired
         lock.unlock()
+    }
+
+    // MARK: Displays elsewhere
+
+    struct Screen {
+        var number: Int
+        var name: String
+        var frame: CGRect
+        var main: Bool
+        var elsewhere: Bool
+    }
+
+    /// This Mac's displays, the main one first, then left to right.
+    static func screens() -> [Screen] {
+        let gone = elsewhere
+        let ids = NSScreen.screens.compactMap { screen -> (NSScreen, CGDirectDisplayID)? in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else { return nil }
+            return (screen, id)
+        }
+        let main = CGMainDisplayID()
+        let sorted = ids.sorted { a, b in
+            if (a.1 == main) != (b.1 == main) { return a.1 == main }
+            return CGDisplayBounds(a.1).minX < CGDisplayBounds(b.1).minX
+        }
+        return sorted.enumerated().map { i, pair in
+            Screen(number: i + 1, name: pair.0.localizedName, frame: CGDisplayBounds(pair.1),
+                   main: pair.1 == main, elsewhere: gone.contains(uuid(pair.1)))
+        }
+    }
+
+    /// Marks display `number` (as `screens()` numbers them) elsewhere, or back here.
+    @discardableResult
+    func setElsewhere(_ number: Int, _ on: Bool) -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let screen = Self.screens().first(where: { $0.number == number }),
+              let id = Self.displayID(at: screen.frame) else { return false }
+        var gone = Self.elsewhere
+        if on { gone.insert(Self.uuid(id)) } else { gone.remove(Self.uuid(id)) }
+        UserDefaults.standard.set(Array(gone), forKey: Self.elsewhereKey)
+        refreshLayout()
+        DiagnosticLog.shared.info("Visit: \(screen.name) is \(on ? "elsewhere" : "here")")
+        Self.announce()
+        return true
+    }
+
+    private static var elsewhere: Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: elsewhereKey) ?? [])
+    }
+
+    private static func uuid(_ id: CGDirectDisplayID) -> String {
+        guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return "\(id)" }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+
+    private static func displayID(at frame: CGRect) -> CGDirectDisplayID? {
+        var count: UInt32 = 0
+        CGGetActiveDisplayList(0, nil, &count)
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        CGGetActiveDisplayList(count, &ids, &count)
+        return ids.prefix(Int(count)).first { CGDisplayBounds($0) == frame }
     }
 
     // MARK: Visiting
@@ -146,7 +216,8 @@ final class VisitController {
         }
         CGAssociateMouseAndMouseCursorPosition(0)
         visit = Visit(host: host, channel: channel, parked: point, display: display)
-        lock.lock(); forward = channel; lock.unlock()
+        let hold = VisitKeys.fabHoldKey()
+        lock.lock(); forward = channel; holdKey = hold; lock.unlock()
 
         let along: Double = (side == .left || side == .right)
             ? (point.y - display.minY) / max(display.height, 1)
@@ -267,6 +338,9 @@ final class VisitController {
         let now = ProcessInfo.processInfo.systemUptime
         lock.lock()
         defer { lock.unlock() }
+        if forward == nil, away.contains(where: { $0.contains(p) }), !displays.contains(where: { $0.contains(p) }) {
+            return leaveAway(p, now: now)
+        }
         guard !crossing, forward == nil, now >= quietUntil else { return }
         guard let display = displays.first(where: { $0.insetBy(dx: -1, dy: -1).contains(p) }) else { return }
         let free = { (q: CGPoint) in !self.displays.contains { $0.contains(q) } }
@@ -284,6 +358,25 @@ final class VisitController {
         pushed = 0
         crossing = true
         DispatchQueue.main.async { self.start(side: side, at: p) }
+    }
+
+    /// Tap thread, under `lock`. The pointer slid onto a display that's
+    /// elsewhere: put it back just inside the display it came from, and if a
+    /// paired host sits that way, that's a crossing.
+    private func leaveAway(_ p: CGPoint, now: TimeInterval) {
+        let clamp = { (r: CGRect) in CGPoint(x: min(max(p.x, r.minX + 2), r.maxX - 3), y: min(max(p.y, r.minY + 2), r.maxY - 3)) }
+        let distance = { (q: CGPoint) in hypot(q.x - p.x, q.y - p.y) }
+        guard let display = displays.min(by: { distance(clamp($0)) < distance(clamp($1)) }) else { return }
+        let inside = clamp(display)
+        let side: VisitTrust.Side = p.x >= display.maxX ? .right : p.x < display.minX ? .left : p.y >= display.maxY ? .bottom : .top
+        let cross = sides.contains(side) && !crossing && now >= quietUntil
+        if cross { crossing = true; pushed = 0 }
+        DispatchQueue.main.async {
+            CGWarpMouseCursorPosition(inside)
+            // Without this a warp freezes the mouse for a quarter second.
+            CGAssociateMouseAndMouseCursorPosition(1)
+            if cross { self.start(side: side, at: inside) }
+        }
     }
 
     // MARK: Capture tap (visiting)
@@ -329,6 +422,7 @@ final class VisitController {
         }
         lock.lock()
         let channel = forward
+        let hold = holdKey
         lock.unlock()
         guard let channel else { return Unmanaged.passUnretained(event) }
 
@@ -347,10 +441,20 @@ final class VisitController {
             let dy = -event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
             let dx = -event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
             if dx != 0 || dy != 0 { channel.send(["t": "scroll", "dx": dx, "dy": dy]) }
+        case .flagsChanged:
+            // Fab's dictation key stays on this Mac: hold it to talk to the host.
+            if event.getIntegerValueField(.keyboardEventKeycode) == hold { return Unmanaged.passUnretained(event) }
         case .keyDown:
             let code = event.getIntegerValueField(.keyboardEventKeycode)
             if VisitKeys.isSummon(keyCode: code, flags: event.flags) {
                 DispatchQueue.main.async { self.end(because: "summoned") }
+                return nil
+            }
+            // An app's own ⌘V (Fab delivering a take) pastes this Mac's clipboard there, as text.
+            if code == 9, event.flags.contains(.maskCommand), event.getIntegerValueField(.eventSourceUnixProcessID) != 0 {
+                DispatchQueue.main.async {
+                    if let text = NSPasteboard.general.string(forType: .string), !text.isEmpty { channel.send(["t": "text", "text": text]) }
+                }
                 return nil
             }
             var length = 0

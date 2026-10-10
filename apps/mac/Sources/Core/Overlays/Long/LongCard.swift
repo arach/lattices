@@ -9,9 +9,11 @@ final class LongCardModel: ObservableObject {
     @Published var sharing = false
     @Published var shareUntil: Date?
     @Published var lanMouse = false
+    @Published var screens: [VisitController.Screen] = []
 
     func refresh() {
         visit = VisitController.shared.status()
+        screens = VisitController.screens()
         shareUntil = PointerShare.shared.until
         // lan-mouse answers through its CLI; ask off main.
         DispatchQueue.global(qos: .userInitiated).async {
@@ -33,6 +35,10 @@ struct LongCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             visitSection
+            if model.screens.count > 1 {
+                Divider().overlay(Palette.border)
+                screensSection
+            }
             if model.lanMouse {
                 Divider().overlay(Palette.border)
                 pointerSection
@@ -77,6 +83,24 @@ struct LongCardView: View {
             if model.visit.visiting != nil {
                 Button("End visit") { VisitController.shared.end(because: "ended"); later() }
                     .buttonStyle(LongCardButton(accent: true))
+            }
+        }
+    }
+
+    /// A display plugged into another machine is elsewhere: the pointer stays off it.
+    private var screensSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(model.screens.filter { !$0.main }, id: \.number) { screen in
+                HStack(spacing: 6) {
+                    Text(screen.name).font(Typo.monoBold(11)).foregroundStyle(screen.elsewhere ? Palette.textDim : Palette.text).lineLimit(1)
+                    Text("\(Int(screen.frame.width))×\(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textMuted)
+                    Spacer()
+                    Button(screen.elsewhere ? "Elsewhere" : "Here") {
+                        VisitController.shared.setElsewhere(screen.number, !screen.elsewhere)
+                        model.refresh()
+                    }
+                    .buttonStyle(LongCardButton())
+                }
             }
         }
     }

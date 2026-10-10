@@ -919,6 +919,15 @@ async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
     } else if (sub === "end") {
       await daemonCall("visit.end");
       console.log("🏠 Visit ended");
+    } else if (sub === "screens" || sub === "elsewhere" || sub === "here") {
+      const n = Number(rest[0]);
+      if (sub !== "screens") {
+        if (!n) return console.log(`Usage: lats visit ${sub} <display number>  (see: lats visit screens)`);
+        const result = await daemonCall("visit.elsewhere", { screen: n, on: sub === "elsewhere" }) as any;
+        if (!result.ok) return console.log(`No display ${n}. See: lats visit screens`);
+      }
+      const screens = await daemonCall("visit.screens") as any[];
+      for (const d of screens) console.log(`  ${d.number}  ${d.name}  ${d.frame.w}×${d.frame.h}${d.main ? "  main" : ""}${d.elsewhere ? "  elsewhere" : ""}`);
     } else {
       const s = await daemonCall("visit.status") as any;
       for (const h of s.hosts) console.log(`  ${s.visiting === h.name ? "●" : "○"} ${h.name}  ${h.side}  ${h.address}  ${h.fingerprint}`);

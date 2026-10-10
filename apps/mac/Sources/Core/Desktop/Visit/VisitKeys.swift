@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// Mac keystrokes as visit messages: plain typing goes as `text` (what the
 /// Mac's layout produced), anything with ⌘ or ⌃, and keys that don't type,
@@ -7,6 +8,18 @@ enum VisitKeys {
     /// The summon chord: ⌃⌥⌘ Home (fn ← on a Mac keyboard).
     static func isSummon(keyCode: Int64, flags: CGEventFlags) -> Bool {
         keyCode == 115 && flags.contains([.maskControl, .maskAlternate, .maskCommand])
+    }
+
+    /// Fab's hold-to-talk key, from `voice.holdKey` in ~/.fab/settings.json:
+    /// fn by default, -1 when Fab isn't set up or talk is off.
+    static func fabHoldKey() -> Int64 {
+        let path = NSHomeDirectory() + "/.fab/settings.json"
+        guard let data = FileManager.default.contents(atPath: path),
+              let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return -1 }
+        let voice = settings["voice"] as? [String: Any] ?? [:]
+        if voice["holdFn"] as? Bool == false { return -1 }
+        let codes: [String: Int64] = ["fn": 63, "rightOption": 61, "rightCommand": 54, "rightControl": 62]
+        return codes[voice["holdKey"] as? String ?? "fn"] ?? -1
     }
 
     static func message(keyCode: Int64, flags: CGEventFlags, typed: String) -> [String: Any]? {
@@ -26,7 +39,7 @@ enum VisitKeys {
     /// Keys that don't type a character.
     static let special: [Int64: String] = [
         36: "Return", 76: "KP_Enter", 48: "Tab", 51: "BackSpace", 53: "Escape", 117: "Delete",
-        115: "Home", 119: "End", 116: "Prior", 121: "Next",
+        49: "space", 115: "Home", 119: "End", 116: "Prior", 121: "Next",
         123: "Left", 124: "Right", 125: "Down", 126: "Up",
         122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
         98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",

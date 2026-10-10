@@ -3731,6 +3731,41 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "visit.screens",
+            description: "This Mac's displays, numbered main first then left to right, and which are marked elsewhere (plugged into another machine)",
+            access: .read,
+            params: [],
+            returns: .custom("Array of objects with 'number', 'name', 'frame', 'main' and 'elsewhere'"),
+            handler: { _ in
+                let screens = Thread.isMainThread ? VisitController.screens() : DispatchQueue.main.sync { VisitController.screens() }
+                return .array(screens.map {
+                    .object([
+                        "number": .int($0.number), "name": .string($0.name), "main": .bool($0.main), "elsewhere": .bool($0.elsewhere),
+                        "frame": .object(["x": .double($0.frame.minX), "y": .double($0.frame.minY), "w": .double($0.frame.width), "h": .double($0.frame.height)]),
+                    ])
+                })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.elsewhere",
+            description: "Mark a display as elsewhere (plugged into another machine): the pointer is kept off it, and sliding into it toward a paired host starts a visit",
+            access: .mutate,
+            params: [
+                Param(name: "screen", type: "int", required: true, description: "Display number from visit.screens"),
+                Param(name: "on", type: "bool", required: false, description: "Default true; false brings it back"),
+            ],
+            returns: .custom("Object with 'ok'"),
+            handler: { params in
+                guard let number = params?["screen"]?.intValue else { throw RouterError.missingParam("screen") }
+                let on = params?["on"]?.boolValue ?? true
+                let work = { VisitController.shared.setElsewhere(number, on) }
+                let ok = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["ok": .bool(ok)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "visit.end",
             description: "End the current visit; the cursor stays where it was parked",
             access: .mutate,
