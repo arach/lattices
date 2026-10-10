@@ -909,7 +909,66 @@ enum WindowTiler {
         var displayIndex: Int { plan?.displayIndex ?? 0 }
     }
 
+    /// A swipe the Dock took but hasn't applied yet. Under load the Dock
+    /// queues synthetic swipes and lands them seconds later, all at once. A
+    /// press that swipes on top of one still in flight overshoots, and plans
+    /// from a Space the screen is about to leave.
+    struct PendingSpaceSwipe: Equatable {
+        enum Status { case landed, inFlight, expired }
+
+        let displayId: String
+        let fromSpaceId: Int
+        let postedAt: CFAbsoluteTime
+
+        /// How long a swipe can still land. Late landings of several seconds
+        /// have been seen; past this one is treated as lost.
+        static let window: CFAbsoluteTime = 3
+
+        func status(currentSpaceId: Int?, at now: CFAbsoluteTime) -> Status {
+            if let currentSpaceId, currentSpaceId != 0, currentSpaceId != fromSpaceId { return .landed }
+            return now - postedAt < Self.window ? .inFlight : .expired
+        }
+    }
+
+    private static var _pendingSpaceSwipe: PendingSpaceSwipe?
+    private static let pendingSpaceSwipeLock = NSLock()
+
+    private static var pendingSpaceSwipe: PendingSpaceSwipe? {
+        get {
+            pendingSpaceSwipeLock.lock()
+            defer { pendingSpaceSwipeLock.unlock() }
+            return _pendingSpaceSwipe
+        }
+        set {
+            pendingSpaceSwipeLock.lock()
+            _pendingSpaceSwipe = newValue
+            pendingSpaceSwipeLock.unlock()
+        }
+    }
+
+    /// Wait for a swipe still in flight to land before reading where the
+    /// display is. Off main only: on main this returns at once.
+    private static func settlePendingSpaceSwipe() {
+        guard !Thread.isMainThread, let swipe = pendingSpaceSwipe else { return }
+        while true {
+            let current = getDisplaySpaces().first(where: { $0.displayId == swipe.displayId })?.currentSpaceId
+            let now = CFAbsoluteTimeGetCurrent()
+            switch swipe.status(currentSpaceId: current, at: now) {
+            case .inFlight:
+                usleep(20_000)
+                continue
+            case .landed:
+                DiagnosticLog.shared.info("switchToAdjacentSpace: late swipe landed \(swipe.fromSpaceId) → \(current ?? 0) after \(Int((now - swipe.postedAt) * 1000))ms")
+            case .expired:
+                DiagnosticLog.shared.warn("switchToAdjacentSpace: swipe from \(swipe.fromSpaceId) never landed")
+            }
+            if pendingSpaceSwipe == swipe { pendingSpaceSwipe = nil }
+            return
+        }
+    }
+
     static func planAdjacentSpaceSwitch(offset: Int, from cgPoint: CGPoint? = nil) -> SpaceSwitchPlan? {
+        settlePendingSpaceSwipe()
         let point = cgPoint ?? currentMouseCGPoint()
         let displayID = cgDisplayID(at: point)
         guard let display = displaySpaces(forDisplayID: displayID, in: getDisplaySpaces()) else {
@@ -1059,6 +1118,7 @@ enum WindowTiler {
             // A real next-Space swipe carries negative progress/velocity —
             // the fingers travel left while the content follows rightward.
             let direction = targetIndex > currentIndex ? -1 : 1
+            let postedAt = CFAbsoluteTimeGetCurrent()
             // ~10ms between phases — posted back-to-back the Dock coalesces
             // the gesture and overshoots the target Space.
             if canFreeze { _ = disable!(cid!) }
@@ -1093,7 +1153,12 @@ enum WindowTiler {
                 }
                 usleep(10_000)
             }
-            if !moved { break }
+            if !moved {
+                // The Dock may still apply this swipe. Hold the next press
+                // until it lands, rather than swiping again from `before`.
+                pendingSpaceSwipe = PendingSpaceSwipe(displayId: displayId, fromSpaceId: before, postedAt: postedAt)
+                break
+            }
         }
         return (getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0) == targetSpaceId
     }
