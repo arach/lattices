@@ -2,27 +2,20 @@ import SwiftUI
 
 // MARK: - Long
 
-/// Long, Lattices' desktop character: the mark's tile on two feet. The lit L
-/// of the grid is his body; the dim cells top right are his face, with two
-/// tall eyes on them. Drawn on a 100-unit square, the way Fab draws Tuck.
-///   · rest: still, a blink every few seconds.
-///   · listen: leans in, eyes up.
-///   · work: eyes scan side to side.
-///   · done: one nod, then rest.
-///   · oops: eyes squint down.
-///   · away: you're visiting another machine; he looks across, the corner cell coral.
-/// Reduce Motion: no blink, lean, scan or nod; the eyes still change for each mood.
+/// A small ink tile. Lighting is static; motion only follows incoming events.
 struct Long: View {
-    enum Mood: Equatable { case rest, listen, work, done, oops, away }
+    enum Mood: Equatable { case rest, listen, work, done, oops, away, talk }
+    enum Depth: String, CaseIterable {
+        case subtle, soft, bold
+        var highlight: Double { switch self { case .subtle: 0.08; case .soft: 0.17; case .bold: 0.32 } }
+    }
     var mood: Mood = .rest
     var size: CGFloat = 44
-    /// Where he's looking, in grid units (up to 4 each way).
     var gaze: CGVector = .zero
-
+    var depth: Depth = .soft
+    /// Real playback amplitude, supplied by a speech event producer, never a clock.
+    var speechLevel: Double = 0
     @Environment(\.accessibilityReduceMotion) private var still
-    @State private var blink = false
-    @State private var scan = false
-    @State private var nod = false
 
     static let ink = Color(red: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255)
     static let lit = Color(red: 0xf2 / 255, green: 0xf2 / 255, blue: 0xf2 / 255)
@@ -31,80 +24,54 @@ struct Long: View {
     var body: some View {
         let u = size / 100
         let leaning = mood == .listen && !still
-        let nodding = nod && !still
+        let nodding = mood == .done && !still
         ZStack {
             LongFeet().fill(Self.ink)
-            LongFeet().stroke(Color.white.opacity(0.14), lineWidth: max(1, 2.4 * u))
+            LongFeet().stroke(Self.lit.opacity(0.12), lineWidth: max(0.5, u))
             LongBody().fill(Self.ink)
-            LongBody().stroke(Color.white.opacity(0.14), lineWidth: max(1, 2.4 * u))
-            cells
-            eyes(u)
+                .shadow(color: .black.opacity(0.24), radius: 3 * u, x: 0, y: 3 * u)
+            LongBody().fill(LinearGradient(colors: [Self.lit.opacity(depth.highlight), .clear, .black.opacity(0.18)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            LongBody().stroke(LinearGradient(colors: [Self.lit.opacity(depth.highlight * 1.8), Self.lit.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: max(0.6, 1.4 * u))
+            if mood == .away { LongCorner().fill(Self.coral) }
+            Group {
+                eyes(u)
+                LongMouth(shape: mouthShape).fill(Self.lit)
+                    .animation(still ? nil : .easeOut(duration: 0.1), value: mouthShape)
+            }
+            .offset(x: mood == .away ? 4 * u : 0)
         }
         .frame(width: size, height: size)
         .rotationEffect(.degrees(leaning ? -7 : nodding ? 4 : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
         .offset(y: leaning ? -1 : nodding ? 3 * u : 0)
         .animation(still ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: leaning)
-        .onChange(of: mood, initial: true) { _, now in moved(to: now) }
-        .task(id: mood) { await blinking() }
+        .animation(still ? nil : .easeOut(duration: 0.24), value: mood)
         .accessibilityHidden(true)
     }
 
-    /// The mark's grid: the L lit, the face dim, the corner coral while away.
-    private var cells: some View {
-        ZStack {
-            ForEach(0..<9, id: \.self) { i in
-                let col = i % 3, row = i / 3
-                LongCell(col: col, row: row).fill(fill(col: col, row: row))
-            }
+    /// Closed at rest; a small round "ooh" while listening; low and flat for
+    /// oops; while talking its opening follows playback amplitude.
+    private var mouthShape: LongMouth.Form {
+        switch mood {
+        case .listen: .ooh
+        case .oops: .oops
+        case .talk: still ? .half : speechLevel > 0.6 ? .open : speechLevel > 0.15 ? .half : .closed
+        default: .closed
         }
-        .animation(.easeOut(duration: 0.25), value: mood)
-    }
-
-    private func fill(col: Int, row: Int) -> Color {
-        if col == 2, row == 2, mood == .away { return Self.coral }
-        return col == 0 || row == 2 ? Self.lit : Color.white.opacity(0.18)
     }
 
     private func eyes(_ u: CGFloat) -> some View {
-        let squint: CGFloat = mood == .oops ? 0.22 : blink ? 0.08 : 1
-        let looking = mood == .rest || mood == .listen || mood == .away
-        let dx: CGFloat = mood == .work && !still ? (scan ? 3 : -3) : looking ? gaze.dx : 0
+        let squint: CGFloat = mood == .oops ? 0.3 : mood == .listen ? 1.2 : mood == .work ? 0.7 : 1
+        let looking = mood == .rest || mood == .listen || mood == .away || mood == .talk
+        let dx: CGFloat = mood == .work ? 3 : looking ? gaze.dx : 0
         let dy: CGFloat = mood == .listen ? -2.5 + gaze.dy : mood == .oops ? 3 : looking ? gaze.dy : 0
         return ZStack {
-            LongEye(cx: 50, cy: 34).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.5, y: 0.34))
-            LongEye(cx: 73, cy: 34).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.73, y: 0.34))
+            LongEye(cx: 38, cy: 32).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.38, y: 0.32))
+            LongEye(cx: 62, cy: 32).fill(Self.lit).scaleEffect(x: 1, y: squint, anchor: UnitPoint(x: 0.62, y: 0.32))
         }
         .offset(x: dx * u, y: dy * u)
         .animation(still ? nil : .easeOut(duration: 0.18), value: gaze)
     }
 
-    private func moved(to mood: Mood) {
-        guard !still else { scan = false; nod = false; return }
-        if mood == .work {
-            scan = false
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) { scan = true }
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) { scan = false }
-        }
-        if mood == .done {
-            withAnimation(.easeOut(duration: 0.24)) { nod = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
-                withAnimation(.easeInOut(duration: 0.36)) { nod = false }
-            }
-        }
-    }
-
-    /// A blink every 5.2 s while he's looking; none under Reduce Motion.
-    private func blinking() async {
-        guard !still, mood == .rest || mood == .listen || mood == .away else { return }
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.08)) { blink = true }
-            try? await Task.sleep(for: .milliseconds(110))
-            withAnimation(.easeOut(duration: 0.1)) { blink = false }
-        }
-    }
 }
 
 // MARK: Long's pieces, on the 100-unit grid
@@ -124,13 +91,28 @@ private struct LongBody: Shape {
     }
 }
 
-/// Cell `col`, `row` of the mark's 3×3 grid: 19 units with a 5-unit gap.
-private struct LongCell: Shape {
-    var col: Int
-    var row: Int
+/// The mouth: a solid tile with the body's corners, a quarter of its width.
+/// Closing squashes it to a bar and the corners stay round.
+private struct LongMouth: Shape {
+    enum Form: Equatable { case closed, half, open, ooh, oops }
+    var shape: Form
     func path(in r: CGRect) -> Path {
-        let x = 19 + CGFloat(col) * 22, y = 15 + CGFloat(row) * 22
-        return Path(roundedRect: r.box(x, y, 18, 18), cornerRadius: 4 * r.width / 100, style: .continuous)
+        let (w, h, dy): (CGFloat, CGFloat, CGFloat) = switch shape {
+        case .closed: (22, 6, 0)
+        case .half: (22, 13, 0)
+        case .open: (22, 20, 0)
+        case .ooh: (13, 12, 0)
+        case .oops: (16, 5, 4)
+        }
+        let radius = min(w * 0.25, h / 2) * r.width / 100
+        return Path(roundedRect: r.box(50 - w / 2, 64 + dy - h / 2, w, h), cornerRadius: radius, style: .continuous)
+    }
+}
+
+/// The coral cell in his top-right corner while you're away.
+private struct LongCorner: Shape {
+    func path(in r: CGRect) -> Path {
+        Path(roundedRect: r.box(74.5, 14.5, 7, 7), cornerRadius: 1.75 * r.width / 100, style: .continuous)
     }
 }
 
@@ -147,6 +129,6 @@ private struct LongFeet: Shape {
 private struct LongEye: Shape {
     var cx, cy: CGFloat
     func path(in r: CGRect) -> Path {
-        Path(ellipseIn: r.box(cx - 4.6, cy - 11, 9.2, 22))
+        Path(roundedRect: r.box(cx - 7, cy - 7, 14, 14), cornerRadius: 3.5 * r.width / 100, style: .continuous)
     }
 }

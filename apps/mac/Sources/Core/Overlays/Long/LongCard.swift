@@ -6,104 +6,161 @@ import SwiftUI
 @MainActor
 final class LongCardModel: ObservableObject {
     @Published var visit = VisitController.shared.status()
-    @Published var screens: [VisitController.Screen] = []
+    @Published var screens: [DisplayGather.Screen] = []
+    @Published var layers: [String] = []
+    @Published var activeLayer = 0
+    /// Closes the card; actions that take you somewhere else close it first.
+    var dismiss: () -> Void = {}
+    var hideLong: () -> Void = {}
 
     func refresh() {
         visit = VisitController.shared.status()
-        screens = VisitController.screens()
+        screens = DisplayGather.screens()
+        layers = WorkspaceManager.shared.config?.layers?.map(\.label) ?? []
+        activeLayer = WorkspaceManager.shared.activeLayerIndex
+    }
+
+    func run(_ method: String, _ params: JSON? = nil, close: Bool = true) {
+        if close { dismiss() }
+        ClusterVerbs.run(method, params)
+        if !close { refresh() }
     }
 }
 
 // MARK: - View
 
+/// What you can do through Lattices from where Long sits: search, layers,
+/// machines, displays. Long's own settings are the footer.
 struct LongCardView: View {
     @ObservedObject var model: LongCardModel
+    /// A new main display is a 15 s trial; Keep shows on it until then.
+    @ObservedObject private var arrangement = DisplayArrangement.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            visitSection
-            if model.screens.count > 1 {
-                Divider().overlay(Palette.border)
-                screensSection
+            Button {
+                model.dismiss()
+                UnifiedCommandBarWindow.shared.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 11))
+                    Text("Search")
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
             }
+            .buttonStyle(LongCardButton())
+
+            if !model.layers.isEmpty {
+                section("Layers") { layersGrid }
+            }
+            if !model.visit.hosts.isEmpty {
+                section("Machines") { machines }
+            }
+            if !model.screens.isEmpty {
+                section("Displays") { displays }
+            }
+
             Divider().overlay(Palette.border)
-            Button("Bring cursor home") { PointerHome.bringHome(); model.refresh() }
-                .buttonStyle(LongCardButton())
+            HStack(spacing: 12) {
+                Button("Cursor home") { model.dismiss(); PointerHome.bringHome() }
+                Spacer()
+                Button {
+                    model.dismiss()
+                    model.hideLong()
+                } label: {
+                    Image(systemName: "eye.slash")
+                }
+                .help("Hide Long")
+                .accessibilityLabel("Hide Long")
+            }
+            .buttonStyle(.plain)
+            .font(Typo.body(10))
+            .foregroundStyle(Palette.textMuted)
         }
         .padding(14)
-        .frame(width: 264, alignment: .leading)
+        .frame(width: 280, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.bg))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Palette.borderLit, lineWidth: 0.5))
     }
 
-    private var visitSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle(isOn: Binding(
-                get: { model.visit.armed },
-                set: { VisitController.shared.arm($0); model.refresh() }
-            )) {
-                Text("Visiting cursor").font(Typo.heading(12)).foregroundStyle(Palette.text)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .tint(Long.coral)
-            .disabled(model.visit.hosts.isEmpty)
-
-            if model.visit.hosts.isEmpty {
-                Text("lats visit pair <host>").font(Typo.mono(10)).foregroundStyle(Palette.textMuted)
-            }
-            ForEach(model.visit.hosts, id: \.name) { host in
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(model.visit.visiting == host.name ? Long.coral : Palette.textMuted.opacity(0.5))
-                        .frame(width: 6, height: 6)
-                    Text(host.name).font(Typo.monoBold(11)).foregroundStyle(Palette.text)
-                    Text(host.side.rawValue).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                    Spacer()
-                    Text(host.bridgeFingerprint).font(Typo.mono(9)).foregroundStyle(Palette.textMuted)
-                }
-            }
-            if model.visit.visiting != nil {
-                Button("End visit") { VisitController.shared.end(because: "ended"); model.refresh() }
-                    .buttonStyle(LongCardButton(accent: true))
-            }
-        }
-    }
-
-    /// A display plugged into another machine is elsewhere: the pointer stays off it.
-    private var screensSection: some View {
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(model.screens, id: \.number) { screen in
-                HStack(spacing: 6) {
-                    Text(screen.name).font(Typo.monoBold(11)).foregroundStyle(screen.elsewhere ? Palette.textDim : Palette.text).lineLimit(1)
-                    Text("\(Int(screen.frame.width))×\(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textMuted)
-                    Spacer()
-                    Button(screen.elsewhere ? "Elsewhere" : "Here") {
-                        VisitController.shared.setElsewhere(screen.number, !screen.elsewhere)
-                        model.refresh()
-                    }
-                    .buttonStyle(LongCardButton())
+            Text(title.uppercased()).font(Typo.mono(9)).tracking(0.6).foregroundStyle(Palette.textMuted)
+            content()
+        }
+    }
+
+    private var layersGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
+            ForEach(Array(model.layers.enumerated()), id: \.offset) { index, label in
+                Button {
+                    model.dismiss()
+                    WorkspaceManager.shared.focusLayer(index: index)
+                } label: {
+                    Text(label).lineLimit(1).frame(maxWidth: .infinity)
                 }
+                .buttonStyle(LongCardButton(selected: index == model.activeLayer))
             }
         }
     }
 
+    private var machines: some View {
+        VStack(spacing: 4) {
+            ForEach(model.visit.hosts, id: \.name) { host in
+                let visiting = model.visit.visiting == host.name
+                HStack(spacing: 6) {
+                    Text(host.name).font(Typo.monoBold(11)).foregroundStyle(Palette.text)
+                    Spacer()
+                    if visiting {
+                        Button("End visit") { model.run("home", close: false) }.buttonStyle(LongCardButton(accent: true))
+                    } else {
+                        Button("Visit") { model.run("visit.start", .object(["host": .string(host.name)])) }
+                            .buttonStyle(LongCardButton())
+                            .disabled(model.visit.visiting != nil)
+                    }
+                }
+                .frame(height: 24)
+            }
+        }
+    }
 
+    private var displays: some View {
+        VStack(spacing: 4) {
+            ForEach(model.screens, id: \.index) { screen in
+                let params: JSON = .object(["display": .int(screen.index)])
+                HStack(spacing: 6) {
+                    Text(screen.name).font(Typo.monoBold(11)).foregroundStyle(Palette.text).lineLimit(1)
+                    Spacer()
+                    Button("Bring here") { model.run("bring", params) }.buttonStyle(LongCardButton())
+                    if screen.isMain && arrangement.pending {
+                        Button("Keep") { arrangement.keep() }.buttonStyle(LongCardButton(accent: true))
+                    } else if screen.isMain {
+                        Text("main").font(Typo.mono(10)).foregroundStyle(Palette.textMuted).frame(width: 46)
+                    } else {
+                        Button("Main") { model.run("main", params, close: false) }.buttonStyle(LongCardButton()).frame(width: 46)
+                    }
+                }
+                .frame(height: 24)
+            }
+        }
+    }
 }
 
 private struct LongCardButton: ButtonStyle {
     var accent = false
+    var selected = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Typo.body(11))
-            .foregroundStyle(accent ? Color.white : Palette.text)
+            .foregroundStyle(accent ? Color.white : selected ? Palette.text : Palette.textDim)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(accent ? Long.coral : configuration.isPressed ? Palette.surfaceHov : Palette.surface)
+                    .fill(accent ? Long.coral : configuration.isPressed || selected ? Palette.surfaceHov : Palette.surface)
             )
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(Palette.border, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? Palette.borderLit : Palette.border, lineWidth: 0.5))
     }
 }
 
@@ -117,8 +174,9 @@ final class LongCard {
     private var outside: Any?
     private let onClose: () -> Void
 
-    init(onClose: @escaping () -> Void) {
+    init(onClose: @escaping () -> Void, onHideLong: @escaping () -> Void = {}) {
         self.onClose = onClose
+        model.hideLong = onHideLong
         let host = NSHostingView(rootView: LongCardView(model: model))
         panel = NSPanel(contentRect: CGRect(origin: .zero, size: host.fittingSize),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -129,6 +187,7 @@ final class LongCard {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = host
+        model.dismiss = { [weak self] in self?.close() }
     }
 
     func show(above anchor: CGRect) {

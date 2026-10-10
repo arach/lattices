@@ -87,6 +87,16 @@ struct DesktopLongView: View {
     }
 }
 
+/// The threshold is in screen points; once crossed, returning to the grab
+/// point is still a drag and must never open the card.
+struct LongDragGesture {
+    private(set) var moved = false
+    mutating func update(dx: CGFloat, dy: CGFloat) -> Bool {
+        moved = moved || hypot(dx, dy) >= 3
+        return moved
+    }
+}
+
 /// A drag moves him (his new home), a click opens his card, ⌥-click brings
 /// the cursor home, right-click offers hiding him.
 private final class LongHost: NSHostingView<DesktopLongView> {
@@ -101,9 +111,17 @@ private final class LongHost: NSHostingView<DesktopLongView> {
         if mods == .control { return rightMouseDown(with: event) }
         if mods == .option { PointerHome.bringHome(); return }
         guard let window else { return }
-        let start = window.frame.origin
-        window.performDrag(with: event)
-        if window.frame.origin != start { onMoved?() } else { onClick?() }
+        // Track the drag here: performDrag returns before the window moves, so
+        // every drag also read as a click and opened the card.
+        let start = window.frame.origin, grab = NSEvent.mouseLocation
+        var gesture = LongDragGesture()
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]), next.type == .leftMouseDragged {
+            let now = NSEvent.mouseLocation
+            let dx = now.x - grab.x, dy = now.y - grab.y
+            guard gesture.update(dx: dx, dy: dy) else { continue }
+            window.setFrameOrigin(CGPoint(x: start.x + dx, y: start.y + dy))
+        }
+        if gesture.moved { onMoved?() } else { onClick?() }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -137,6 +155,15 @@ final class DesktopLong {
     static var wanted: Bool { UserDefaults.standard.object(forKey: shownKey) as? Bool ?? true }
 
     func start() {
+        guard observers.isEmpty else { return }
+        EventBus.shared.subscribe { [weak self] event in
+            guard case .layerSwitched = event else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.card?.refresh()
+                if self.model.away == nil { self.model.flash(.done, for: 0.6) }
+            }
+        }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: VisitController.changed, object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated { self?.visitChanged(note.userInfo) }
@@ -185,7 +212,7 @@ final class DesktopLong {
     private func toggleCard() {
         if let card { card.close(); self.card = nil; return }
         guard let panel else { return }
-        let card = LongCard { [weak self] in self?.card = nil }
+        let card = LongCard(onClose: { [weak self] in self?.card = nil }, onHideLong: { [weak self] in self?.hide() })
         card.show(above: panel.frame)
         self.card = card
     }
