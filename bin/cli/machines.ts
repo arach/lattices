@@ -10,12 +10,16 @@ function address(s: string): string {
   catch { return key(s); }
 }
 
+/** Loopback says nothing about which machine it is: a pairing through an ssh tunnel is 127.0.0.1 too. */
+const loopback = (a: string) => a === "localhost" || a === "::1" || a === "[::1]" || a.startsWith("127.");
+const named = (aliases: string[]) => aliases.filter(a => a && !loopback(a));
+
 /** Merge aliases transitively, retaining the daemon port from hosts.json. */
 export function mergeMachines(hosts: HostEntry[], paired: Pairing[], localName: string) {
   type Source = { host?: HostEntry; pair?: Pairing; aliases: string[] };
   const sources: Source[] = [
-    ...hosts.map(host => ({ host, aliases: [key(host.name), address(host.address), ...(host.source === "local" ? [key(localName)] : [])] })),
-    ...paired.map(pair => ({ pair, aliases: [key(pair.name), address(pair.address)] })),
+    ...hosts.map(host => ({ host, aliases: host.source === "local" ? [key(host.name), key(localName)] : named([key(host.name), address(host.address)]) })),
+    ...paired.map(pair => ({ pair, aliases: named([key(pair.name), address(pair.address)]) })),
   ];
   const groups: { aliases: Set<string>; sources: Source[] }[] = [];
   for (const source of sources) {
@@ -64,6 +68,6 @@ export async function machinesCommand(json: boolean) {
   if (json) console.log(JSON.stringify({ machines, ...(pairingError ? { pairingError } : {}) }, null, 2));
   else {
     if (pairingError) console.error(`Visit pairings unavailable: ${pairingError}`);
-    for (const m of machines) console.log(`  ${m.name}${m.local ? " (local)" : ""}  ${m.reachable ? "reachable" : "unreachable"}  ${m.os ?? "?"}  ${m.version ?? "?"}/${m.commit?.slice(0, 8) ?? "?"}  ${m.displays ?? "?"} displays  ${m.paired ? "paired" : "unpaired"}  ${typeof m.placement === "string" ? m.placement : m.placement ? JSON.stringify(m.placement) : "unplaced"}`);
+    for (const m of machines) console.log(`  ${m.name}${m.local ? " (local)" : ""}  ${m.reachable ? "reachable" : "unreachable"}  ${m.os ?? "?"}  ${m.version ?? "?"}/${m.commit?.slice(0, 8) ?? "?"}  ${m.displays ?? "?"} displays  ${m.paired ? "paired" : "unpaired"}  ${typeof m.placement === "string" ? m.placement : m.placement ? `at ${(m.placement as any).x},${(m.placement as any).y}` : "unplaced"}`);
   }
 }

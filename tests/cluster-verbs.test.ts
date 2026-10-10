@@ -98,3 +98,11 @@ test("saved unplaced pairing does not report its legacy side", async () => {
     async () => ({platform: "macos", displays: []}));
   expect(rows[0].paired).toBe(true); expect(rows[0].placement).toBeNull();
 });
+
+test("a pairing through an ssh tunnel stays its own machine, not this one", () => {
+  const hosts = [{name: "local", address: "127.0.0.1", port: 9399, source: "local" as const},
+    {name: "archie", address: "archie", port: 9399, source: "config" as const}];
+  const merged = mergeMachines(hosts, [{name: "archie", address: "127.0.0.1:5288"}], "mini");
+  expect(merged).toHaveLength(2);
+  expect(merged.find(m => m.pair)?.host.name).toBe("archie");
+});
