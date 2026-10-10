@@ -20,7 +20,7 @@ import { BRIDGE_PORT, registerBridgeEndpoints, startBridge } from "./bridge/serv
 const DEFAULT_PORT = 9399;
 
 function parseArgs(argv: string[]) {
-  const opts = { binds: [] as string[], port: DEFAULT_PORT, allowUsers: [] as string[], allowTags: [] as string[], describe: false, quiet: false, pairing: true, bridge: true, bridgeBinds: [] as string[], bridgePort: BRIDGE_PORT };
+  const opts = { binds: [] as string[], port: DEFAULT_PORT, allowUsers: [] as string[], allowTags: [] as string[], describe: false, quiet: false, pairing: true, bridge: true, bridgeBinds: [] as string[], bridgePort: BRIDGE_PORT, bridgeStateDir: undefined as string | undefined };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
@@ -37,6 +37,7 @@ function parseArgs(argv: string[]) {
     else if (arg === "--no-pairing") opts.pairing = false;
     else if (arg === "--bridge-bind") opts.bridgeBinds.push(value());
     else if (arg === "--bridge-port") opts.bridgePort = Number(value());
+    else if (arg === "--bridge-state-dir") opts.bridgeStateDir = value();
     else if (arg === "--quiet") opts.quiet = true;
     else if (arg === "--version") {
       console.log(VERSION);
@@ -45,7 +46,8 @@ function parseArgs(argv: string[]) {
       console.log(`lattices-host ${VERSION}
 
 Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
-                     [--no-pairing] [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
+                     [--no-pairing] [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--bridge-state-dir DIR] [--describe]
+       lattices-host visit-test [--host ADDR:PORT] [--name NAME]
        lattices-host mouse-share [--for 5m]
        lattices-host mouse-keep
        lattices-host mouse-status
@@ -69,6 +71,11 @@ a LAN IP for a phone without Tailscale.`);
 }
 
 async function main() {
+  if (process.argv[2] === "visit-test") {
+    const { runVisitTest } = await import("./bridge/visit-test.ts");
+    await runVisitTest(process.argv.slice(3));
+    return;
+  }
   // Local primitives stay available when the network host is stopped.
   if (process.argv[2]?.startsWith("mouse-")) {
     const { runMouseCommand } = await import("./mouse-cli.ts");
@@ -133,6 +140,7 @@ async function main() {
     bridge = startBridge({
       hosts: bridgeHosts,
       port: opts.bridgePort,
+      stateDir: opts.bridgeStateDir,
       name: self?.hostname,
       version: VERSION,
       trackpadAvailable: () => capabilities.has("input.pointer"),
@@ -169,11 +177,14 @@ async function main() {
       : "pairing OFF: admitted remote clients get full access"
   );
 
-  const shutdown = () => {
+  let stopping = false;
+  const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
     stopEvents();
     if (pending) clearTimeout(pending);
     live.stop();
-    bridge?.stop();
+    await bridge?.stop();
     server.stop();
     process.exit(0);
   };

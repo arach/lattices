@@ -22,14 +22,20 @@ export function parseLanMouseClients(output: string): MouseClient[] {
   return clients;
 }
 
-type Monitor = HyprMonitor & { disabled?: boolean; mirrorOf?: string; physicalWidth?: number; physicalHeight?: number };
+export type Monitor = HyprMonitor & { disabled?: boolean; mirrorOf?: string; physicalWidth?: number; physicalHeight?: number };
 
-export function pickHomeMonitor(monitors: Monitor[]): Monitor {
-  const real = monitors.filter((m) => !m.disabled && (!m.mirrorOf || m.mirrorOf === "none")
+/** The physical desktop shared by Bring Cursor Home and visiting cursors. */
+export function realMonitors(monitors: Monitor[]): Monitor[] {
+  return monitors.filter((m) => !m.disabled && (!m.mirrorOf || m.mirrorOf === "none")
     && !/^(LATS(?:-|$)|HEADLESS|WL-|VIRTUAL|Virtual-|RDP-)/i.test(m.name)
     && !/headless|virtual output/i.test(m.description)
     && !(m.physicalWidth === 0 && m.physicalHeight === 0 && !m.description)
-    && Number.isFinite(m.x) && Number.isFinite(m.y) && m.width > 0 && m.height > 0 && m.scale > 0);
+    && Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.width) && Number.isFinite(m.height)
+    && Number.isFinite(m.scale) && m.width > 0 && m.height > 0 && m.scale > 0);
+}
+
+export function pickHomeMonitor(monitors: Monitor[]): Monitor {
+  const real = realMonitors(monitors);
   const monitor = real.find((m) => m.focused) ?? real[0];
   if (!monitor) throw new Error("No real monitor available");
   return monitor;

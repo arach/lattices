@@ -165,6 +165,28 @@ export function open(key: Buffer, sealedBase64: string, aad: Buffer): Buffer {
   return Buffer.from(plaintext);
 }
 
+export type VisitDirection = "up" | "down";
+
+export function visitAAD(direction: VisitDirection, deviceID: string, upgradeNonce: string, seq: number): Buffer {
+  if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("Invalid visit sequence");
+  return Buffer.from(["visit", direction, deviceID, upgradeNonce, String(seq)].join("\n"), "utf8");
+}
+
+/** Raw ChaChaPoly combined box; visit frames are binary, never base64. */
+export function sealVisitFrame(key: Buffer, plaintext: Buffer, direction: VisitDirection, deviceID: string, upgradeNonce: string, seq: number): Buffer {
+  const nonce = randomBytes(12);
+  const { ciphertext, tag } = chacha.seal(key, nonce, plaintext, visitAAD(direction, deviceID, upgradeNonce, seq));
+  return Buffer.concat([nonce, ciphertext, tag]);
+}
+
+export function openVisitFrame(key: Buffer, combined: Buffer, direction: VisitDirection, deviceID: string, upgradeNonce: string, seq: number): Buffer {
+  if (combined.length < 28) throw new BridgeSecurityError("Invalid visit frame", 401);
+  const plaintext = chacha.open(key, combined.subarray(0, 12), combined.subarray(12, -16), combined.subarray(-16),
+    visitAAD(direction, deviceID, upgradeNonce, seq));
+  if (!plaintext) throw new BridgeSecurityError("Invalid visit frame", 401);
+  return Buffer.from(plaintext);
+}
+
 function constantTimeEquals(a: string, b: string): boolean {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
@@ -333,6 +355,11 @@ export class BridgeSecurity {
     if (!auth.device.capabilities.includes(capability)) {
       throw new BridgeSecurityError(`This device is not allowed to use ${capability}. Pair it again to grant it.`, 403);
     }
+  }
+
+  visitEncryptionKey(auth: AuthorizedRequest): Buffer {
+    this.requireCapability(CAPABILITIES.inputTrackpad, auth);
+    return this.keysFor(auth.device).encryption;
   }
 
   decodeBody<T>(body: Buffer, auth: AuthorizedRequest, method: string, path: string): T {
