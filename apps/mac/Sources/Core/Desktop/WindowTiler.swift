@@ -1072,6 +1072,7 @@ enum WindowTiler {
                 targetIndex: switched ? plan.target?.index : nil,
                 currentIndex: plan.currentIndex,
                 total: plan.totalSpaces,
+                spaceId: switched ? plan.targetSpaceId : plan.currentSpaceId,
                 on: screen(for: plan)
             )
         }
@@ -1445,6 +1446,7 @@ enum WindowTiler {
                 targetIndex: currentIndex,
                 currentIndex: currentIndex,
                 total: total,
+                spaceId: display.currentSpaceId,
                 on: DisplayGeometryMapper.screen(for: display, in: NSScreen.screens) ?? NSScreen.main
             )
         }
@@ -1467,6 +1469,7 @@ enum WindowTiler {
                 targetIndex: targetIndex,
                 currentIndex: currentIndex,
                 total: total,
+                spaceId: spaceId,
                 on: DisplayGeometryMapper.screen(for: display, in: NSScreen.screens) ?? NSScreen.main
             )
         }

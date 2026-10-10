@@ -372,7 +372,7 @@ class Preferences: ObservableObject {
            let position = SpaceSwitchBezelPosition(rawValue: saved) {
             self.spaceSwitchBezelPosition = position
         } else {
-            self.spaceSwitchBezelPosition = .top
+            self.spaceSwitchBezelPosition = .center
         }
 
         if UserDefaults.standard.object(forKey: "spaceSwitchKeys.glide") != nil {

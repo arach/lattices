@@ -3,35 +3,36 @@ import SwiftUI
 
 // MARK: - Space Switch HUD
 
-/// Compact acknowledgement for Ctrl+←/→ space jumps handled by
-/// `SpaceSwitchInterceptor`. A boxy tray of logo-cells — one rounded square
-/// per space, the logo's own bright/dim language — docked top-center by
-/// default. `SpaceSwitchBezelPosition` is agent-configurable via
+/// Acknowledgement for Ctrl+←/→ space jumps handled by
+/// `SpaceSwitchInterceptor`. A tray centred on the display by default: the
+/// Space's number large, the apps on it beside the number, and a row of
+/// logo-cells, one per Space, with the active cell gliding between them.
+/// `SpaceSwitchBezelPosition` is agent-configurable via
 /// `settings.spaceBezel.set` (top, bottom, center, or travelEdge, which
 /// docks at the screen edge the desktop is moving toward).
 final class SpaceSwitchBezel {
     static let shared = SpaceSwitchBezel()
 
+    /// How long the tray holds after the last switch.
+    static let hold: TimeInterval = 1.6
+
     private var panel: NSPanel?
+    private var hosting: NSHostingView<SpaceSwitchBezelView>?
     private var dismissTimer: Timer?
     private var token = 0
     private let state = SpaceBezelState()
 
     /// `direction`: -1 = left, +1 = right. `targetIndex` is the 1-based space
     /// we landed on; nil means the display was already at the edge and
-    /// `currentIndex` is shown with the amber "EDGE" treatment instead.
+    /// `currentIndex` is shown with the "EDGE" treatment instead. `spaceId`
+    /// is the Space being shown, used to name it by its apps.
     ///
-    /// The tray itself is stable — it fades in once and never translates.
-    /// Motion lives in the active cell, which glides between positions.
-    func show(direction: Int, targetIndex: Int?, currentIndex: Int?, total: Int, on screen: NSScreen? = nil) {
+    /// The tray fades in once and never translates. Motion lives in the
+    /// active cell, which glides between positions.
+    func show(direction: Int, targetIndex: Int?, currentIndex: Int?, total: Int, spaceId: Int? = nil, on screen: NSScreen? = nil) {
         dismissTimer?.invalidate()
         guard let screen = screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let sf = screen.frame
-
-        let height: CGFloat = 40
-        let width = pillWidth(total: total)
-        let endFrame = frame(for: Preferences.shared.spaceSwitchBezelPosition,
-                             direction: direction, width: width, height: height, in: sf)
 
         token &+= 1
         let mine = token
@@ -40,10 +41,14 @@ final class SpaceSwitchBezel {
         state.activeIndex = targetIndex ?? currentIndex
         state.edge = targetIndex == nil
         state.total = total
+        state.apps = spaceId.map {
+            Self.apps(onSpace: $0, in: DesktopModel.shared.spaceMembershipSnapshot())
+        } ?? []
 
         if panel == nil {
+            let view = NSHostingView(rootView: SpaceSwitchBezelView(state: state))
             let p = NSPanel(
-                contentRect: endFrame,
+                contentRect: .zero,
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -57,13 +62,20 @@ final class SpaceSwitchBezel {
             p.isMovable = false
             p.ignoresMouseEvents = true
             p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-            p.contentView = NSHostingView(rootView: SpaceSwitchBezelView(state: state))
+            p.contentView = view
             panel = p
+            hosting = view
         }
-        guard let p = panel else { return }
+        guard let p = panel, let hosting else { return }
+
+        // The tray sizes to its content; the panel adds room for the shadow.
+        hosting.layoutSubtreeIfNeeded()
+        let fit = hosting.fittingSize
+        let endFrame = frame(for: Preferences.shared.spaceSwitchBezelPosition,
+                             direction: direction, width: fit.width, height: fit.height, in: sf)
 
         if p.isVisible {
-            // Already up — keep the box anchored; the cell carries the motion.
+            // Already up: keep the box centred; the cell carries the motion.
             if p.frame != endFrame { p.setFrame(endFrame, display: true) }
             p.alphaValue = 1
             // A glide snapshot may have been ordered in at the same level.
@@ -82,7 +94,7 @@ final class SpaceSwitchBezel {
             SpaceEdgeSweep.shared.fire(direction: direction, edge: targetIndex == nil, on: screen)
         }
 
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 1.1, repeats: false) { [weak self] _ in
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: Self.hold, repeats: false) { [weak self] _ in
             guard let self, self.token == mine else { return }
             self.dismiss()
         }
@@ -94,6 +106,18 @@ final class SpaceSwitchBezel {
             ctx.duration = 0.22
             p.animator().alphaValue = 0
         }, completionHandler: { p.orderOut(nil) })
+    }
+
+    /// The apps with windows on a Space, frontmost first, without Lattices'
+    /// own panels. At most `limit`, so the tray stays one line.
+    static func apps(onSpace spaceId: Int, in windows: [WindowEntry], limit: Int = 3) -> [String] {
+        var seen = Set<String>()
+        return windows
+            .filter { $0.spaceIds.contains(spaceId) && $0.app != "Lattices" && !$0.app.isEmpty }
+            .sorted { $0.zIndex < $1.zIndex }
+            .compactMap { seen.insert($0.app).inserted ? $0.app : nil }
+            .prefix(limit)
+            .map { $0 }
     }
 
     private func frame(for position: SpaceSwitchBezelPosition, direction: Int,
@@ -111,62 +135,73 @@ final class SpaceSwitchBezel {
         }
     }
 
-    private func pillWidth(total: Int) -> CGFloat {
-        let n = max(total, 1)
-        let cell = Self.cellSize(total: total)
-        let cellsWidth = n > 1 ? CGFloat(n) * cell + CGFloat(n - 1) * Self.cellGap : 0
-        // tick(10) + gaps + hairline(1) + "DESKTOP N" + "LATTICES" + padding
-        let labelWidth: CGFloat = total >= 10 ? 76 : 62
-        return ceil(11 + 10 + 9 + cellsWidth + 9 + 1 + 9 + labelWidth + 9 + 44 + 11)
-    }
+    static let cellGap: CGFloat = 7
 
-    private static let cellGap: CGFloat = 6
-
-    /// Logo cells stay 15pt through a dozen spaces, then shrink to keep the
-    /// tray inside ~280pt.
+    /// Logo cells stay 20pt through a dozen spaces, then shrink to keep the
+    /// row inside ~360pt.
     static func cellSize(total: Int) -> CGFloat {
-        guard total > 12 else { return 15 }
-        return max(7, floor((240 - CGFloat(total - 1) * cellGap) / CGFloat(total)))
+        guard total > 12 else { return 20 }
+        return max(9, floor((360 - CGFloat(total - 1) * cellGap) / CGFloat(total)))
     }
+
+    /// The only accent: direction, the active cell's glow and EDGE.
+    static let coral = Color(red: 0xef / 255, green: 0x6a / 255, blue: 0x47 / 255)
 }
 
 // MARK: - Bezel State + View
 
-/// Mutable content for the persistent bezel panel — `show()` mutates this
+/// Mutable content for the persistent bezel panel. `show()` mutates this
 /// and SwiftUI animates the cell, while the tray chrome stays put.
 final class SpaceBezelState: ObservableObject {
     @Published var direction: Int = 1
     @Published var activeIndex: Int? = nil
     @Published var edge: Bool = false
     @Published var total: Int = 0
+    @Published var apps: [String] = []
 }
 
-private struct SpaceSwitchBezelView: View {
+struct SpaceSwitchBezelView: View {
     @ObservedObject var state: SpaceBezelState
     @Namespace private var travel
 
-    private var accent: Color { state.edge ? HUDChrome.amber : HUDChrome.cyan }
+    private var coral: Color { SpaceSwitchBezel.coral }
     private var cellSize: CGFloat { SpaceSwitchBezel.cellSize(total: state.total) }
+    private var cellRadius: CGFloat { cellSize * 0.24 }
 
     var body: some View {
-        HStack(spacing: 9) {
-            // Direction tick — the only chromatic element besides EDGE.
-            Text(state.edge ? "↔" : (state.direction < 0 ? "‹" : "›"))
-                .font(Typo.monoBold(13))
-                .foregroundStyle(accent)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(state.edge ? "↔" : (state.direction < 0 ? "‹" : "›"))
+                    .font(Typo.monoBold(20))
+                    .foregroundStyle(coral)
+
+                Text("\(state.activeIndex ?? 0)")
+                    .font(Typo.monoBold(34))
+                    .foregroundStyle(Palette.text)
+                    .contentTransition(.numericText(countsDown: state.direction < 0))
+
+                Text(state.edge ? "EDGE" : (state.apps.isEmpty ? "Empty" : state.apps.joined(separator: " · ")))
+                    .font(state.edge ? Typo.monoBold(13) : Typo.body(15))
+                    .tracking(state.edge ? 1 : 0)
+                    .foregroundStyle(state.edge ? coral : (state.apps.isEmpty ? Palette.textMuted : Palette.textDim))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 320, alignment: .leading)
+            }
+            .animation(.snappy(duration: 0.22), value: state.activeIndex)
 
             if state.total > 1 {
-                HStack(spacing: 6) {
+                HStack(spacing: SpaceSwitchBezel.cellGap) {
                     ForEach(1...state.total, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: cellSize * 0.24, style: .continuous)
-                            .fill(Color.white.opacity(0.18))
+                        RoundedRectangle(cornerRadius: cellRadius, style: .continuous)
+                            .fill(Color.white.opacity(0.14))
                             .frame(width: cellSize, height: cellSize)
                             .overlay {
                                 if i == state.activeIndex {
-                                    RoundedRectangle(cornerRadius: cellSize * 0.24, style: .continuous)
-                                        .fill(state.edge ? HUDChrome.amber : Color(white: 0.95))
+                                    RoundedRectangle(cornerRadius: cellRadius, style: .continuous)
+                                        .fill(state.edge ? coral : Color(white: 0.95))
                                         .matchedGeometryEffect(id: "active", in: travel)
-                                        .shadow(color: accent.opacity(0.45), radius: 4)
+                                        .shadow(color: coral.opacity(state.edge ? 0.5 : 0.3), radius: 5)
                                 }
                             }
                     }
@@ -174,49 +209,26 @@ private struct SpaceSwitchBezelView: View {
                 .animation(.snappy(duration: 0.22, extraBounce: 0.05), value: state.activeIndex)
                 .animation(.easeOut(duration: 0.18), value: state.edge)
             }
-
-            HUDHairline(axis: .vertical, opacity: 0.9)
-                .frame(height: 16)
-
-            Text(state.edge ? "EDGE" : "DESKTOP \(state.activeIndex ?? 0)")
-                .font(Typo.monoBold(10))
-                .tracking(0.7)
-                .foregroundStyle(state.edge ? HUDChrome.amber : Palette.text)
-
-            Text("LATTICES")
-                .font(Typo.monoBold(6.5))
-                .tracking(1.2)
-                .foregroundStyle(Palette.textDim)
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .frame(minWidth: 260, alignment: .leading)
         .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [HUDChrome.baseTop, HUDChrome.baseBottom],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [HUDChrome.baseTop, HUDChrome.baseBottom],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
-                // Directional wash — light bleeds in from the edge of travel.
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [accent.opacity(state.edge ? 0.08 : 0.14), Color.clear],
-                            startPoint: state.direction >= 0 ? .trailing : .leading,
-                            endPoint: .center
-                        )
-                    )
-            }
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(state.edge ? HUDChrome.amber.opacity(0.38) : Color.white.opacity(0.10), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(state.edge ? coral.opacity(0.4) : Color.white.opacity(0.10), lineWidth: 0.75)
         )
-        .shadow(color: Color.black.opacity(0.45), radius: 16, y: 8)
-        .shadow(color: accent.opacity(state.edge ? 0.06 : 0.14), radius: 12)
+        .shadow(color: Color.black.opacity(0.45), radius: 18, y: 8)
+        .padding(24)
     }
 }
 
@@ -290,7 +302,7 @@ final class SweepState: ObservableObject {
 private struct SweepView: View {
     @ObservedObject var state: SweepState
 
-    private var accent: Color { state.edge ? HUDChrome.amber : HUDChrome.cyan }
+    private var accent: Color { SpaceSwitchBezel.coral }
 
     var body: some View {
         // Bright at the leading edge of travel, dying out behind it.
