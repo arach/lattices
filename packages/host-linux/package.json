@@ -11,10 +11,16 @@
   "scripts": {
     "start": "bun src/main.ts",
     "describe": "bun src/main.ts --describe",
+    "tray": "bun src/main.ts tray",
+    "tray:install": "bun scripts/install-tray.ts",
+    "mouse-home": "bun src/main.ts mouse-home",
     "test": "bun test",
     "build": "bun scripts/build.ts"
   },
   "engines": {
     "bun": ">=1.1"
+  },
+  "dependencies": {
+    "dbus-next": "0.10.2"
   }
 }

@@ -56,6 +56,129 @@ not current. These fields cannot retrospectively identify an older running host
 that predates this change. Deploy/restart only after its clients are ready for
 the pairing protocol; do not restart the everyday host just to obtain metadata.
 
+## Omarchy tray
+
+The tray is a small StatusNotifierItem and dbusmenu on the session D-Bus.
+Omarchy's existing Quickshell tray renders it (inside the tray drawer unless
+you pin it). Nothing is installed into `/usr/share/omarchy`, and no shell,
+monitor or lan-mouse configuration is changed.
+
+Install from this checkout, inside the graphical session:
+
+```sh
+bun install --cwd packages/host-linux --ignore-scripts --omit optional
+bun packages/host-linux/scripts/install-tray.ts
+```
+
+The installer renders units into `packages/host-linux/.systemd/`, with literal
+paths to this checkout and the current Bun executable, and links them through
+the systemd user manager. Keep this checkout in place. It enables and starts
+`lattices-tray.service` with `graphical-session.target`, and links
+`lattices-host.service` for the menu's Start/Stop controls. It leaves the host
+disabled at login until you choose to enable it. Existing units from another
+location are refused rather than replaced. Re-run the installer after moving
+the checkout or changing the Bun executable (remove the old unit links first
+if the checkout moved).
+
+For a foreground run:
+
+```sh
+bun packages/host-linux/src/main.ts tray
+```
+
+The menu contains Bring Cursor Home, a Share Pointer checkmark, host and
+companion pairing status, Start/Stop Host, and Quit. The lattice icon is
+monochrome; it becomes coral while pointer sharing is enabled. Quit exits
+only the tray, leaving the host and lan-mouse alone; start it again with
+`systemctl --user start lattices-tray`.
+
+State refreshes when the menu opens, on lan-mouse frontend events, and on
+systemd unit changes. Socket lifecycle notifications reconnect lan-mouse;
+the tray re-registers when Quickshell's tray watcher restarts. There is no
+background polling outside a pointer trial. Pairing status reads the host's existing trust records.
+If a host is already running outside `lattices-host.service`, Stop Host is
+disabled: quit that foreground host before starting the managed service.
+
+Bring Cursor Home also works without either the tray or the network host:
+
+```sh
+bun packages/host-linux/src/main.ts mouse-home
+lattices-host mouse-home                 # if the package's bin is on PATH
+lats --host archie call mouse.home       # when this host version is running
+```
+
+It lists lan-mouse clients and deactivates each with an 800 ms timeout. Only
+an unreachable daemon whose user service is active gets a restart fallback;
+startup clients are deactivated after that restart as well. A stopped or
+missing lan-mouse stays stopped. Release failures are included in the JSON
+receipt and do not prevent the cursor warp. The target is the focused real
+monitor, otherwise the first real monitor, excluding LATS/headless/virtual,
+disabled and mirrored outputs. Coordinates account for scaling and rotation.
+It tries `hyprctl dispatch movecursor X Y`, with the Lua cursor dispatcher
+fallback required by Hyprland 0.55+.
+
+### Pointer sharing trials
+
+Turning Share Pointer on starts a five-minute trial. If lan-mouse is stopped,
+its user service starts first; every configured client is then activated.
+While the trial is armed, **Keep Sharing** appears immediately below Share
+Pointer. Keep cancels the deadline and watchdog and leaves sharing enabled.
+Bring Cursor Home and turning Share Pointer off cancel the trial and recover
+the cursor. The coral icon follows sharing, including after Keep.
+
+The same local commands work with the tray and network host stopped:
+
+```sh
+lattices-host mouse-share              # five minutes
+lattices-host mouse-share --for 1m
+lattices-host mouse-status             # sharing, clients, until
+lattices-host mouse-keep
+lattices-host mouse-home
+```
+
+In this checkout, substitute `bun packages/host-linux/src/main.ts` for
+`lattices-host`. Durations are positive whole numbers of seconds, optionally
+with `s`, `m`, or `h`: `90`, `30s`, `5m`, `1h`. `until` is an ISO 8601 UTC
+deadline during a trial and `null` otherwise. A running host exposes the same
+`mouse.share {"for":"5m"}`, `mouse.keep`, `mouse.status`, and `mouse.home`
+methods. Share defaults to five minutes when `for` is omitted.
+
+The trial belongs to the systemd user manager, independently of the process
+that requested it. `lattices-pointer-trial.timer` launches the transient
+`lattices-pointer-trial.service` to run `mouse-home --expired`. The timer and
+recovery service are submitted together through `StartTransientUnit` before
+activating clients; timer accuracy is 100 ms. Status reads the manager's
+deadline and paired timestamps, so fresh CLI processes report the same time.
+Units use the absolute Bun and checkout paths and the graphical session
+environment, without a shell or config-file changes. Keep/Home stop the
+timer, watchdog and any pending recovery service; recovery never stops itself.
+
+`lattices-pointer-watch.service` runs `mouse-check` only during a trial. This
+detached service checks `lan-mouse cli list` every 15 seconds with the same
+800 ms timeout. A success resets its failure count; two consecutive failures
+run Bring Cursor Home, including the existing service-restart fallback for an
+unreachable running daemon. A managed service keeps the count without a
+state file or a new CLI process on each tick, and survives the requesting
+process exiting or crashing. It restarts on failure while the deadline is
+armed. No watchdog runs after Keep, Home, Share off, or expiry. Each start,
+keep, expiry and watchdog revert writes one line to stderr/the user journal.
+These transient units survive a tray/host/CLI crash, not a user-manager
+restart or reboot. Keep this checkout and Bun executable in place.
+
+`dbus-next` is the one direct dependency: it serves the notifier/menu and
+talks to the systemd user manager without a GUI toolkit. The install command
+omits its optional native Unix-FD addon and disables install scripts; these
+interfaces use the JavaScript Unix-socket transport and need no native addon.
+
+Remove the autostart and linked units with:
+
+```sh
+systemctl --user disable --now lattices-tray
+systemctl --user stop lattices-host
+rm ~/.config/systemd/user/lattices-tray.service ~/.config/systemd/user/lattices-host.service
+systemctl --user daemon-reload
+```
+
 ## Who can connect
 
 The host listens only on this machine's tailnet IPv4 address and on loopback.
@@ -90,7 +213,7 @@ Each client has a scope, matching LAT-014's grants:
 | --- | --- | --- |
 | `read` | `access: "read"` methods (listed in `api.schema`) | always |
 | `act` | focus, place, move, displays, sessions | by default |
-| `drive` | `computer.*` input, `capture.live` (VNC takes input), and `apps.open` (arbitrary command) | only when asked for (`--drive`, or `scope: "drive"`) |
+| `drive` | `computer.*` input, `capture.live` (VNC takes input), `apps.open` (arbitrary command), and `mouse.share` / `mouse.keep` | only when asked for (`--drive`, or `scope: "drive"`) |
 
 Each scope includes the ones above it. Clients that paired with `mutate`
 before the split are `act`, and a request for `mutate` means `act`. Asking

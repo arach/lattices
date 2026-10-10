@@ -46,6 +46,11 @@ function parseArgs(argv: string[]) {
 
 Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
                      [--no-pairing] [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
+       lattices-host mouse-share [--for 5m]
+       lattices-host mouse-keep
+       lattices-host mouse-status
+       lattices-host mouse-home
+       lattices-host tray
 
 By default listens on this machine's tailnet IPv4 address and on 127.0.0.1,
 port ${DEFAULT_PORT}, and admits only devices owned by this machine's Tailscale user.
@@ -64,6 +69,18 @@ a LAN IP for a phone without Tailscale.`);
 }
 
 async function main() {
+  // Local primitives stay available when the network host is stopped.
+  if (process.argv[2]?.startsWith("mouse-")) {
+    const { runMouseCommand } = await import("./mouse-cli.ts");
+    console.log(JSON.stringify(await runMouseCommand(process.argv.slice(2)), null, 2));
+    return;
+  }
+  if (process.argv[2] === "tray") {
+    if (process.argv.length !== 3) throw new Error("Usage: lattices-host tray");
+    const { startTray } = await import("./tray/main.ts");
+    await startTray();
+    return;
+  }
   const opts = parseArgs(process.argv.slice(2));
   await refreshCapabilities();
   let emit = (_event: string, _data: unknown) => {};
