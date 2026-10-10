@@ -38,6 +38,41 @@ export function printUsage(): void {
   console.log(`lats — workspace launcher for sessions, windows, layers, and the menu bar app
 (also installed as lattices)
 
+Machines and displays:
+  lats @<host> <command...>  Run a daemon command on a configured host (@local for here)
+  lats machines [--json]    Reachability, builds, displays, pairing and placement
+  lats bring <display>     Bring every other display's windows here
+  lats bring --undo        Restore gathered windows
+  lats main <display> [--keep]  Make main (15-second trial unless kept)
+  lats elsewhere <display> [machine]  Mark a display elsewhere
+  lats here <display>      Bring a display back here
+  lats visit <machine>     Visit a paired machine now
+  lats home                End a visit and bring the cursor home
+  lats display list        List displays (numbers or name fragments work)
+
+  lats display gather <display> [--to <display>]  Move a display's windows onto another, laid out as they were
+  lats display restore [display]  Put gathered windows back where they sat
+  lats display lend <display>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
+  lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
+  lats --host <name> ...  Send daemon calls to another host
+  lats --host <name> pair Pair with a lattices-host (approve on the host)
+  lats mouse              Find mouse — sonar pulse at cursor position
+  lats mouse summon       Summon mouse to screen center
+  lats mouse home         End visit, cursor to the main display
+  lats visit pair <host> [host:port] [side]  Pair with a host to visit it with a second cursor
+  lats visit forget <host>  Forget a visit pairing
+  lats visit side <host> <side>  Place beside the outermost display
+  lats visit on|off       Arm crossing into paired hosts at the screen edge
+  lats visit status       Paired hosts and this Mac's code
+  lats visit end          End a visit (or ⌃⌥⌘ Home)
+  lats visit place <name> <x> <y>  Place in global display coordinates
+  lats visit arrangement <keep|revert>  Resolve a display trial started with Apply
+  lats visit host <on|off>  Allow receiving visits on this Mac (bundle)
+  lats hosts add <name> [address] [port]  Add a Lattices host
+  lats visit screens      This Mac's displays, and which are elsewhere
+  lats visit elsewhere <display>  Display n is plugged into another machine; "here <n>" undoes it
+  lats visit main <display>       Make display n the main one; reverts in 15s unless "arrangement keep"
+
 Usage:
   lats                    Show workspace status and common commands
   lats start              Start or reattach the current directory's workspace
@@ -96,10 +131,6 @@ Usage:
   lats layer add wid:N ... [--to <layer>]  Add windows to a layer (default: the active one)
   lats layer remove wid:N ... [--from <layer>]  Take windows out of a layer (default: the active one)
   lats layer rename <layer> <name>  Rename a layer
-  lats display [list]       The displays and what's gathered off any of them (daemon required)
-  lats display gather <n> [--to <m>]  Move a display's windows onto another, laid out as they were
-  lats display restore [n]  Put gathered windows back where they sat
-  lats display lend <n>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
   lats state [list] [--since 2h] [--named]  Desktop maps recorded after each change, kept 72h (daemon required)
   lats state show [id]      One map: displays, their desktops and what's on each
   lats state save <name>    Record the desktop now under a name, before a risky change
@@ -119,9 +150,6 @@ Usage:
   lats hud publish [id|manifest]  Publish a registered/static HUD actor
   lats assistant plan <t> Preview the TS assistant planner
   lats call <method> [p]  Raw daemon API call (params as JSON)
-  lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
-  lats --host <name> ...  Send daemon calls to another host
-  lats --host <name> pair Pair with a lattices-host (approve on the host)
   lats scan               Show text from all visible windows
   lats scan --full        Full text dump
   lats scan search <q>    Full-text search across scanned windows
@@ -133,22 +161,6 @@ Usage:
   lats dev restart        Build + restart (swift app) or just build
   lats dev placement-smoke [a] [b]  Move two named sessions through verified placements
   lats dev type           Print detected project type
-  lats mouse              Find mouse — sonar pulse at cursor position
-  lats mouse summon       Summon mouse to screen center
-  lats mouse home         End visit, cursor to the main display
-  lats visit pair <host> [host:port] [side]  Pair with a host to visit it with a second cursor
-  lats visit forget <host>  Forget a visit pairing
-  lats visit side <host> <side>  Place beside the outermost display
-  lats visit on|off       Arm crossing into paired hosts at the screen edge
-  lats visit status       Paired hosts and this Mac's code
-  lats visit end          End a visit (or ⌃⌥⌘ Home)
-  lats visit place <name> <x> <y>  Place in global display coordinates
-  lats visit arrangement <keep|revert>  Resolve a display trial started with Apply
-  lats visit host <on|off>  Allow receiving visits on this Mac (bundle)
-  lats hosts add <name> [address] [port]  Add a Lattices host
-  lats visit screens      This Mac's displays, and which are elsewhere
-  lats visit elsewhere <n>  Display n is plugged into another machine; "here <n>" undoes it
-  lats visit main <n>       Make display n the main one; reverts in 15s unless "arrangement keep"
   lats long [show|hide]   Long, on the desktop; click him for controls
   lats mcp                MCP server over stdio (agent config: command "lattices", args ["mcp"])
   lats mcp --list         List MCP toolsets and their tools
