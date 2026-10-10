@@ -101,9 +101,18 @@ private final class LongHost: NSHostingView<DesktopLongView> {
         if mods == .control { return rightMouseDown(with: event) }
         if mods == .option { PointerHome.bringHome(); return }
         guard let window else { return }
-        let start = window.frame.origin
-        window.performDrag(with: event)
-        if window.frame.origin != start { onMoved?() } else { onClick?() }
+        // Track the drag here: performDrag returns before the window moves, so
+        // every drag also read as a click and opened the card.
+        let start = window.frame.origin, grab = NSEvent.mouseLocation
+        var moved = false
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]), next.type == .leftMouseDragged {
+            let now = NSEvent.mouseLocation
+            let dx = now.x - grab.x, dy = now.y - grab.y
+            if !moved, hypot(dx, dy) < 3 { continue }
+            moved = true
+            window.setFrameOrigin(CGPoint(x: start.x + dx, y: start.y + dy))
+        }
+        if moved { onMoved?() } else { onClick?() }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -185,7 +194,7 @@ final class DesktopLong {
     private func toggleCard() {
         if let card { card.close(); self.card = nil; return }
         guard let panel else { return }
-        let card = LongCard { [weak self] in self?.card = nil }
+        let card = LongCard(onClose: { [weak self] in self?.card = nil }, onHideLong: { [weak self] in self?.hide() })
         card.show(above: panel.frame)
         self.card = card
     }
