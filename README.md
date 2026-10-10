@@ -264,7 +264,10 @@ bun link
 bun run check           # tsc + Swift app build
 bun run test            # CLI + dependency-free tests
 lats app build          # rebuild the companion
+bun run linux:app       # local Linux desktop app (Bun + Quickshell)
 ```
+
+See [apps/linux/README.md](apps/linux/README.md) for Linux app setup and local host controls.
 
 App package: `apps/mac` (macOS 26+). CLI runs on Node 18+ or Bun.
 
