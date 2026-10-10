@@ -22,10 +22,19 @@ final class VisitController {
 
     private static let armedKey = "visit.armed"
 
+    /// Posted on main when arming, a visit, or its readiness changes. A visit
+    /// that ended carries `ended` (the reason) and `failed` in its userInfo.
+    static let changed = Notification.Name("VisitController.changed")
+
     struct Status {
         var armed: Bool
         var visiting: String?
         var hosts: [VisitTrust.Host]
+        /// While visiting: the host has answered `ready`.
+        var ready = false
+        /// While visiting: where the cursor is parked, in global (top-left) coordinates.
+        var parked: CGPoint?
+        var side: VisitTrust.Side?
     }
 
     private struct Visit {
@@ -72,6 +81,7 @@ final class VisitController {
             if let screensObserver { NotificationCenter.default.removeObserver(screensObserver) }
             screensObserver = nil
             DiagnosticLog.shared.info("Visit: off")
+            Self.announce()
             return
         }
         guard !armed else { return }
@@ -81,6 +91,7 @@ final class VisitController {
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.refreshLayout() }
         installEdgeTap()
+        Self.announce()
         let hosts = VisitTrust.shared.list()
         DiagnosticLog.shared.info("Visit: armed for \(hosts.map { "\($0.name) (\($0.side.rawValue))" }.joined(separator: ", "))")
         // lan-mouse would cross the same edge; turn it off.
@@ -90,7 +101,8 @@ final class VisitController {
     }
 
     func status() -> Status {
-        Status(armed: armed, visiting: visit?.host.name, hosts: VisitTrust.shared.list())
+        Status(armed: armed, visiting: visit?.host.name, hosts: VisitTrust.shared.list(),
+               ready: visit?.ready ?? false, parked: visit?.parked, side: visit?.host.side)
     }
 
     /// Re-reads displays and paired sides, after pairing or a display change.
@@ -142,16 +154,17 @@ final class VisitController {
         channel.open()
         channel.send(["t": "enter", "name": VisitTrust.Host.localName, "edge": side.opposite.rawValue, "at": min(max(along, 0), 1)])
         DiagnosticLog.shared.info("Visit: on \(host.name)")
+        Self.announce()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.readyWait) { [weak self] in
             guard let self, let visit = self.visit, visit.channel === channel, !visit.ready else { return }
-            self.end(because: "\(host.name) didn't answer")
+            self.end(because: "\(host.name) didn't answer", failed: true)
         }
     }
 
     /// Ends a visit, if there is one. `at` (0–1) places the cursor along the
     /// edge it left by; otherwise it stays where it was parked.
-    func end(because reason: String, at: Double? = nil) {
+    func end(because reason: String, at: Double? = nil, failed: Bool = false) {
         let work = { [self] in
             guard let visit else { return }
             self.visit = nil
@@ -167,8 +180,13 @@ final class VisitController {
             CGAssociateMouseAndMouseCursorPosition(1)
             visit.channel.close(leaving: true)
             DiagnosticLog.shared.info("Visit: back from \(visit.host.name) (\(reason))")
+            Self.announce(["ended": reason, "failed": failed])
         }
         Thread.isMainThread ? work() : DispatchQueue.main.async(execute: work)
+    }
+
+    private static func announce(_ info: [String: Any]? = nil) {
+        NotificationCenter.default.post(name: changed, object: nil, userInfo: info)
     }
 
     /// A point just inside `display`'s edge on `side`, `at` along it.
@@ -188,6 +206,7 @@ final class VisitController {
         case "ready":
             self.visit?.ready = true
             DiagnosticLog.shared.success("Visit: \(visit.host.name) ready")
+            Self.announce()
         case "exit":
             end(because: "left \(visit.host.name)", at: message["at"] as? Double)
         case "error":
@@ -199,7 +218,8 @@ final class VisitController {
 
     private func closed(_ channel: VisitChannel, because reason: String) {
         guard let visit, visit.channel === channel else { return }
-        end(because: reason)
+        // A close the host started cleanly isn't a failure; anything else is.
+        end(because: reason, failed: !reason.hasPrefix("host closed (1000)"))
     }
 
     // MARK: Edge tap (armed)

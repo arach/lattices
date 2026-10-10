@@ -3363,6 +3363,12 @@ switch (command) {
   case "visit":
     await visitCommand(args[1], args.slice(2));
     break;
+  case "long":
+    await withDaemon(async ({ daemonCall }) => {
+      const result = await daemonCall("long.show", { on: args[1] !== "hide" }) as any;
+      console.log(result.shown ? "Long's on the desktop" : "Long's hidden");
+    });
+    break;
   case "daemon":
     if (args[1] === "status") {
       await daemonStatusCommand();

@@ -72,6 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
         VisitController.shared.restore()
+        DesktopLong.shared.start()
         BundleModules.start()
         WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()

@@ -3653,6 +3653,25 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "long.show",
+            description: "Show or hide Long, Lattices' desktop character; a click on him opens the controls",
+            access: .mutate,
+            params: [Param(name: "on", type: "bool", required: false, description: "Default true")],
+            returns: .custom("Object with 'shown'"),
+            handler: { params in
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in
+                    MainActor.assumeIsolated {
+                        on ? DesktopLong.shared.show() : DesktopLong.shared.hide()
+                        return DesktopLong.shared.shown
+                    }
+                }
+                let shown = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["shown": .bool(shown)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "visit.pair",
             description: "Pair this Mac with a host's companion bridge so it can visit it (docs/visit.md). Returns at once with the code to check on the host; approve it there within two minutes",
             access: .mutate,

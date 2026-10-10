@@ -142,6 +142,7 @@ Usage:
   lats visit on|off       Arm crossing into paired hosts at the screen edge
   lats visit status       Paired hosts and this Mac's code
   lats visit end          End a visit (or ⌃⌥⌘ Home)
+  lats long [show|hide]   Long, on the desktop; click him for controls
   lats mcp                MCP server over stdio (agent config: command "lattices", args ["mcp"])
   lats mcp --list         List MCP toolsets and their tools
   lats mcp --print-config <harness>  Print the agent config snippet
