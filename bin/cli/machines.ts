@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { homedir, hostname } from "node:os";
 import { callHost, configuredHosts, type HostEntry } from "../hosts.ts";
 
-type Pairing = { name: string; address: string; side?: string; placement?: unknown };
+type Pairing = { name: string; address: string; side?: string; placement?: unknown; unplaced?: boolean };
 const key = (s: string) => s.trim().toLowerCase();
 function address(s: string): string {
   try { return key(new URL(s.includes("://") ? s : `http://${s}`).hostname).replace(/\.$/, ""); }
@@ -35,10 +35,10 @@ export function mergeMachines(hosts: HostEntry[], paired: Pairing[], localName: 
   });
 }
 
-export async function machineStatuses(hosts: HostEntry[], paired: Pairing[], localName: string, call = callHost) {
+export async function machineStatuses(hosts: HostEntry[], paired: Pairing[], localName: string, call = callHost, placements: Record<string, unknown> = {}) {
   return Promise.all(mergeMachines(hosts, paired, localName).map(async ({ host, pair }) => {
     const row = { name: host.source === "local" ? localName : pair?.name ?? host.name, address: host.address,
-      local: host.source === "local", paired: !!pair, placement: pair?.placement ?? pair?.side ?? null };
+      local: host.source === "local", paired: !!pair, placement: host.source === "local" ? "here" : pair?.placement ?? placements[host.name] ?? (pair ? placements[pair.name] : undefined) ?? (pair?.unplaced ? null : pair?.side) ?? null };
     try {
       const info = await call(host, "host.describe", null, 2500) as any;
       return { ...row, reachable: true, os: info.platform ?? null, version: info.build?.version ?? info.version ?? null,
@@ -54,9 +54,13 @@ export async function machinesCommand(json: boolean) {
   let paired: Pairing[] = [];
   try { paired = JSON.parse(readFileSync(join(homedir(), ".lattices/visit/hosts.json"), "utf8")).hosts ?? []; } catch {}
   let pairingError: string | undefined;
-  try { paired = ((await callHost(hosts.find(h => h.source === "local")!, "visit.status", null, 2500)) as any).hosts ?? []; }
+  let placements: Record<string, unknown> = {};
+  try {
+    const status = await callHost(hosts.find(h => h.source === "local")!, "visit.status", null, 2500) as any;
+    paired = status.hosts ?? []; placements = status.placements ?? {};
+  }
   catch (error) { pairingError = (error as Error).message; }
-  const machines = await machineStatuses(hosts, paired, hostname());
+  const machines = await machineStatuses(hosts, paired, hostname(), callHost, placements);
   if (json) console.log(JSON.stringify({ machines, ...(pairingError ? { pairingError } : {}) }, null, 2));
   else {
     if (pairingError) console.error(`Visit pairings unavailable: ${pairingError}`);

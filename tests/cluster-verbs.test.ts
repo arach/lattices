@@ -85,3 +85,16 @@ test("older responding daemons stay reachable with unknown build identity", asyn
   const rows = await machineStatuses([{name: "old", address: "old.invalid", port: 9399, source: "config"}], [], "local", async () => { throw new Error("Unknown method: host.describe"); });
   expect(rows[0].reachable).toBe(true); expect(rows[0].version).toBeNull();
 });
+
+test("configured machine placement survives without a visit pairing", async () => {
+  const placement = {x: 100, y: -20, width: 100, height: 100};
+  const rows = await machineStatuses([{name: "air", address: "air.invalid", port: 9399, source: "config"}], [], "local",
+    async () => ({platform: "macos", displays: []}), {air: placement});
+  expect(rows[0].paired).toBe(false); expect(rows[0].placement).toEqual(placement);
+});
+
+test("saved unplaced pairing does not report its legacy side", async () => {
+  const rows = await machineStatuses([], [{name: "air", address: "air.invalid", side: "left", unplaced: true}], "local",
+    async () => ({platform: "macos", displays: []}));
+  expect(rows[0].paired).toBe(true); expect(rows[0].placement).toBeNull();
+});
