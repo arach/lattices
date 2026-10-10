@@ -21,6 +21,10 @@ enum MachineInventory {
     static func key(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
+    static func isLoopback(_ host: String) -> Bool {
+        let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        return h == "localhost" || h == "::1" || h.hasPrefix("127.")
+    }
     static func addressKey(_ value: String) -> String {
         let value = key(value)
         let url = URLComponents(string: value.contains("://") ? value : "http://\(value)")
@@ -78,7 +82,9 @@ final class MachinesModel: ObservableObject {
         screens = VisitController.screens()
         for host in visit.hosts {
             guard let base = VisitTrust.bridgeURL(host.address) else { reachable[host.name] = false; continue }
-            if let address = base.host {
+            // A loopback bridge is a tunnel: port 9399 there is this Mac's own
+            // daemon, not the host's. The host's hosts.json entry describes it.
+            if let address = base.host, !MachineInventory.isLoopback(address) {
                 let connection = RemoteHostConnection(address: address, port: 9399)
                 connection.onReady = { [weak self, weak connection] in
                     guard let self, let connection else { return }
