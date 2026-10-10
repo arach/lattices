@@ -1,25 +1,35 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 Button {
     id: button
     property bool accent: false
     property bool selected: false
-    implicitHeight: 34
-    horizontalPadding: 13
+    property bool quiet: false
+    property string glyph: ""
+    property string shortcut: ""
+    implicitHeight: 26
+    horizontalPadding: quiet ? 4 : 10
+    font.family: Theme.font
     font.pixelSize: 12
     opacity: enabled ? 1 : 0.4
-    contentItem: Text {
-        text: button.text
-        textFormat: Text.PlainText
-        font: button.font
-        color: button.accent ? "#151516" : "#efefed"
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
+    readonly property color ink: accent || selected ? Theme.green : hovered ? Theme.text : Theme.muted
+    contentItem: RowLayout {
+        spacing: 6
+        Symbol { visible: button.glyph !== ""; name: button.glyph; tint: button.ink; Layout.preferredWidth: 12; Layout.preferredHeight: 12 }
+        AppText { text: button.text; font: button.font; color: button.ink; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
+        Rectangle {
+            visible: button.shortcut !== ""
+            implicitWidth: key.implicitWidth + 7; implicitHeight: 18
+            radius: 3; color: Theme.hover
+            AppText { id: key; anchors.centerIn: parent; text: button.shortcut; mono: true; font.pixelSize: 9; color: Theme.muted }
+        }
     }
     background: Rectangle {
-        radius: 7
-        color: button.accent ? (button.hovered ? "#f88e70" : "#ef6a47") : button.selected ? "#39302c" : button.hovered ? "#323235" : "#252528"
-        border.color: button.selected ? "#ef6a47" : "#3b3b3e"
+        radius: 6
+        color: button.quiet ? "transparent" : button.accent || button.selected ? Theme.greenSoft : button.hovered ? Theme.hover : Theme.surface
+        border.width: button.quiet ? 0 : 1
+        border.color: button.accent || button.selected ? "#31533f" : button.hovered ? Theme.borderLit : Theme.border
     }
 }

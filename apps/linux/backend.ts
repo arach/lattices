@@ -53,6 +53,7 @@ async function refresh() {
       methods.has("clients.list") ? call<{ clients: Client[]; pending: Pending[] }>("clients.list") : Promise.resolve({ clients: [], pending: [] }),
       methods.has("bridge.status") ? call<{ devices: Client[]; pending: Pending[] }>("bridge.status") : Promise.resolve({ devices: [], pending: [] }),
     ]);
+    desktop.windows = desktop.windows.filter(window => window.pid !== process.ppid);
     emit({ type: "state", online: true, describe, ...desktop, pairingSupported: methods.has("clients.list"),
       clients: [...daemon.clients.map((client) => ({ ...client, kind: "daemon" })), ...companion.devices.map((client) => ({ ...client, kind: "companion", scope: client.capabilities?.join(", ") }))],
       pending: [...daemon.pending.map((request) => ({ ...request, kind: "daemon" })), ...companion.pending.map((request) => ({ ...request, kind: "companion" }))],

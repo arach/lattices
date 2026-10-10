@@ -1,0 +1,12 @@
+singleton Theme 1.0 Theme.qml
+ActionButton 1.0 ActionButton.qml
+ActivityPage 1.0 ActivityPage.qml
+AppText 1.0 AppText.qml
+BrandMark 1.0 BrandMark.qml
+HomePage 1.0 HomePage.qml
+InputField 1.0 InputField.qml
+NavRow 1.0 NavRow.qml
+OverviewPage 1.0 OverviewPage.qml
+SettingsPage 1.0 SettingsPage.qml
+Symbol 1.0 Symbol.qml
+WindowRow 1.0 WindowRow.qml
