@@ -136,3 +136,69 @@ test("a screenshot can name one element instead of the whole viewport", async ()
   expect(properties.clip).toBeDefined();
   expect(properties.padding).toBeDefined();
 });
+
+test("page exceptions reach the MCP caller with their real description and fallback text", async () => {
+  const { evaluateValue } = await import("./toolsets/browser/index.ts");
+  for (const [details, message] of [
+    [{ text: "Uncaught", exception: { description: "Error: Matched element is not editable.\n    at <anonymous>:1" } }, "Error: Matched element is not editable."],
+    [{ text: "Fallback diagnostic" }, "Fallback diagnostic"],
+    [{}, "Page evaluation failed."],
+  ] as const) {
+    const toolset = fakeToolset("page", ["page_evaluate"]);
+    toolset.callTool = async () => {
+      await evaluateValue({ call: async () => ({ exceptionDetails: details }) }, "throw new Error()");
+      throw new Error("Expected evaluation to throw");
+    };
+    const router = new McpRouter([toolset], "0");
+    const response = await router.handleRequest({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "page_evaluate", arguments: {} } }) as JsonObject;
+    const result = response.result as JsonObject;
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as JsonObject).error).toContain(message);
+  }
+});
+
+test("default Action launch renders off-screen; visible launches remain opt-in", async () => {
+  const { actionChromeRenderingArgs } = await import("./toolsets/browser/navigation.ts");
+  const [browser] = await loadToolsets(["browser"]);
+  const open = browser!.tools.find(tool => tool.name === "browser_open")!;
+  const background = (open.inputSchema.properties as JsonObject).background as JsonObject;
+  expect(background.default).toBe(true);
+  expect(actionChromeRenderingArgs(background.default as boolean)).toEqual(["--no-startup-window"]);
+  expect(actionChromeRenderingArgs(false)).toEqual(["about:blank"]);
+});
+
+test("headed layer bounds must contain the whole Chrome window", async () => {
+  const { windowIsOnLayer } = await import("./toolsets/browser/layer.ts");
+  const layer = { x: 3440, y: 1440, width: 1600, height: 1200 };
+  expect(windowIsOnLayer({ left: 3440, top: 1440, width: 1552, height: 1128 }, layer)).toBe(true);
+  expect(windowIsOnLayer({ left: 0, top: 0, width: 1440, height: 1000 }, layer)).toBe(false);
+  expect(windowIsOnLayer({ left: 3400, top: 1440, width: 1552, height: 1128 }, layer)).toBe(false);
+  expect(windowIsOnLayer({ left: 3440, top: 1440, width: 1700, height: 1128 }, layer)).toBe(false);
+});
+
+test("missing Action fails closed rather than selecting headless or a visible fallback", async () => {
+  const { HeadedBrowserLayer } = await import("./toolsets/browser/layer.ts");
+  await expect(new HeadedBrowserLayer("/nonexistent-action", "/nonexistent-profile").prepare())
+    .rejects.toThrow("No headless or on-screen fallback");
+});
+
+test("a Desktop-pinned Chrome is rejected before launch instead of trusting CDP coordinates", async () => {
+  const { assertUnpinnedBrowser } = await import("./toolsets/browser/layer.ts");
+  expect(() => assertUnpinnedBrowser("com.google.Chrome", "desktop-id")).toThrow("No browser was launched");
+  expect(() => assertUnpinnedBrowser("com.google.Chrome.for.Testing", undefined)).not.toThrow();
+});
+
+test("losing the native layer state must not forget a browser's off-screen requirement", async () => {
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { HeadedBrowserLayer } = await import("./toolsets/browser/layer.ts");
+  const root = await mkdtemp(join(tmpdir(), "browser-layer-test-"));
+  try {
+    await writeFile(join(root, ".action-layer-pid"), "1234");
+    const layer = new HeadedBrowserLayer("/nonexistent-action", root);
+    expect(layer.requiredFor(1234)).toBe(true); // no state.json, still guarded
+    expect(layer.requiredFor(1235)).toBe(false);
+    expect(layer.requiredFor(undefined)).toBe(false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

@@ -1,3 +1,5 @@
+import { checkDeadline, deadlineSleep, remainingTimeout } from "./transport.ts";
+
 /**
  * What "the click is done" means, as a value.
  *
@@ -144,4 +146,23 @@ export function unsatisfiedSelectorError(request: SettleRequest, label: string):
     `${label} ran, but waitForSelector ${request.selector} did not ${wanted} within ${request.waitMs}ms. `
     + "The interaction may not have had the effect it was expected to have.",
   );
+}
+
+/** Retry only a missing target, never an exception or a completed interaction.
+ * Host-side polling leaves no page timer that could act after the call expires.
+ * Resolution and mutation stay in one evaluation, avoiding a detached-node race.
+ */
+export async function waitForInteractionTarget<T>(
+  attempt: () => Promise<T | null>, waitMs: number, missingMessage: string,
+): Promise<T> {
+  const expiresAt = performance.now() + remainingTimeout(waitMs);
+  while (true) {
+    checkDeadline();
+    const result = await attempt();
+    if (result !== null) return result;
+    const remaining = Math.min(expiresAt - performance.now(), remainingTimeout(waitMs));
+    // Reserve a small reporting margin before the outer deadline expires.
+    if (remaining <= 20) throw new Error(missingMessage);
+    await deadlineSleep(Math.min(50, remaining - 20));
+  }
 }

@@ -161,3 +161,8 @@ export function assessNavigation(input: NavigationInput): NavigationOutcome {
   const { pageText: _pageText, ...successDiagnostics } = diagnostics;
   return { ok: true, requestedUrl, finalUrl, diagnostics: successDiagnostics };
 }
+
+/** Headed Chrome starts windowless; Action creates its first window on the virtual display. */
+export function actionChromeRenderingArgs(background: boolean): string[] {
+  return background ? ["--no-startup-window"] : ["about:blank"];
+}
