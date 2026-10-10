@@ -1,5 +1,6 @@
 import { hasCommand, run } from "./exec.ts";
 import type { HyprMonitor } from "./hyprland.ts";
+import { parsePointerDuration, systemdPointerTrial, type PointerTrial } from "./pointer-trial.ts";
 
 export interface MouseClient {
   id: string;
@@ -46,12 +47,19 @@ export interface MouseDependencies {
   run: typeof run;
   hasLanMouse: () => boolean;
   serviceState: () => Promise<string>;
+  startService: () => Promise<void>;
   restartService: () => Promise<void>;
+  trial: PointerTrial;
+  sleep: (ms: number) => Promise<void>;
+  log: (line: string) => void;
 }
 
 const defaults: MouseDependencies = {
   run,
   hasLanMouse: () => hasCommand("lan-mouse"),
+  trial: systemdPointerTrial,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  log: (line) => console.error(`[lattices-pointer] ${line}`),
   serviceState: async () => {
     const { withUserBus, unitState } = await import("./systemd.ts");
     return withUserBus((bus) => unitState(bus, "lan-mouse.service"));
@@ -60,27 +68,97 @@ const defaults: MouseDependencies = {
     const { withUserBus, changeUnit } = await import("./systemd.ts");
     await withUserBus((bus) => changeUnit(bus, "lan-mouse.service", "RestartUnit"));
   },
+  startService: async () => {
+    const { withUserBus, changeUnit } = await import("./systemd.ts");
+    await withUserBus((bus) => changeUnit(bus, "lan-mouse.service", "StartUnit"));
+  },
 };
 
 const CLI_TIMEOUT = 800;
 const listOutput = (deps: MouseDependencies) => deps.run("lan-mouse", ["cli", "list"], { timeoutMs: CLI_TIMEOUT });
 
 export async function pointerState(deps = defaults) {
-  if (!deps.hasLanMouse()) return { available: false, sharing: false, clients: [] as MouseClient[] };
+  const until = await deps.trial.until();
+  if (!deps.hasLanMouse()) return { available: false, sharing: false, clients: [] as MouseClient[], until };
   try {
     const clients = parseLanMouseClients(await listOutput(deps));
-    return { available: true, sharing: clients.some((c) => c.active), clients };
+    return { available: true, sharing: clients.some((c) => c.active), clients, until };
   } catch {
-    return { available: false, sharing: false, clients: [] as MouseClient[] };
+    // Share can start a stopped service; presence of the binary enables it.
+    return { available: true, sharing: false, clients: [] as MouseClient[], until };
   }
 }
 
+export async function pointerStatus(deps = defaults) {
+  const { sharing, clients, until } = await pointerState(deps);
+  return { sharing, clients, until };
+}
+
 export async function sharePointer(active: boolean, deps = defaults) {
-  if (!deps.hasLanMouse()) throw new Error("lan-mouse unavailable");
-  const clients = parseLanMouseClients(await listOutput(deps));
-  if (!clients.length && active) throw new Error("No lan-mouse clients");
-  await Promise.all(clients.map((client) => deps.run("lan-mouse", ["cli", active ? "activate" : "deactivate", client.id], { timeoutMs: CLI_TIMEOUT })));
+  if (active) return startPointerTrial("5m", deps);
+  await bringCursorHome(deps);
   return pointerState(deps);
+}
+
+export async function startPointerTrial(duration = "5m", deps = defaults) {
+  const durationMs = parsePointerDuration(duration);
+  if (!deps.hasLanMouse()) throw new Error("lan-mouse unavailable");
+  try {
+    await deps.trial.cancel();
+    let output: string;
+    try { output = await listOutput(deps); }
+    catch (error) {
+      // A responsive unmanaged daemon is already running. Do not start a duplicate.
+      if (await deps.serviceState() === "active") throw error;
+      await deps.startService();
+      for (let attempt = 0; ; attempt++) {
+        try { output = await listOutput(deps); break; }
+        catch (error) {
+          if (attempt === 4) throw error;
+          await deps.sleep(100);
+        }
+      }
+    }
+    const clients = parseLanMouseClients(output);
+    if (!clients.length) throw new Error("No lan-mouse clients");
+    await deps.trial.arm(durationMs);
+    const until = await deps.trial.until();
+    if (!until) throw new Error("Pointer trial deadline is not armed");
+    const outcomes = await Promise.allSettled(clients.map((client) => deps.run("lan-mouse", ["cli", "activate", client.id], { timeoutMs: CLI_TIMEOUT })));
+    const failed = outcomes.find((outcome) => outcome.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+    const state = await pointerState(deps);
+    if (!state.until || !state.sharing || state.clients.some((client) => !client.active))
+      throw new Error("Pointer trial activation did not complete");
+    deps.log(`start until=${state.until}`);
+    return { sharing: state.sharing, until: state.until };
+  } catch (error) {
+    // Partial activation or arming must not leave unprotected sharing behind.
+    await bringCursorHome(deps).catch(() => {});
+    throw error;
+  }
+}
+
+export async function keepPointerSharing(deps = defaults) {
+  await deps.trial.cancel();
+  deps.log("keep");
+  const state = await pointerState(deps);
+  return { sharing: state.sharing, until: state.until };
+}
+
+/** Runs only in the detached transient watchdog service. No files or tray timer. */
+export async function watchPointerTrial(deps = defaults) {
+  let failures = 0;
+  while (await deps.trial.until()) {
+    await deps.sleep(15_000);
+    if (!await deps.trial.until()) return;
+    try { parseLanMouseClients(await listOutput(deps)); failures = 0; }
+    catch { failures++; }
+    if (failures >= 2) {
+      await bringCursorHome(deps, "watchdog");
+      return;
+    }
+  }
 }
 
 export async function releasePointer(deps = defaults) {
@@ -128,8 +206,12 @@ export async function releasePointer(deps = defaults) {
 }
 
 /** Recovery primitive: release first; warp even if lan-mouse or systemd fails. */
-export async function bringCursorHome(deps = defaults) {
+export async function bringCursorHome(deps = defaults, reason?: "expiry" | "watchdog") {
+  if (reason) deps.log(`${reason} revert`);
+  const trialErrors: string[] = [];
+  try { await deps.trial.cancel(); } catch (error) { trialErrors.push(String(error)); }
   const release = await releasePointer(deps).catch((error) => ({ available: false, released: [], restarted: false, errors: [String(error)] }));
+  release.errors.push(...trialErrors);
   const monitors = JSON.parse(await deps.run("hyprctl", ["monitors", "-j"], { timeoutMs: 1500 })) as Monitor[];
   const monitor = pickHomeMonitor(monitors);
   const point = monitorCentre(monitor);

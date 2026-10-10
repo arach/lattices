@@ -2,11 +2,12 @@ import dbus from "dbus-next";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { bringCursorHome, pointerState, sharePointer } from "../mouse.ts";
+import { bringCursorHome, keepPointerSharing, pointerState, sharePointer } from "../mouse.ts";
+import { POINTER_UNITS } from "../pointer-trial.ts";
 import { busCall, changeUnit, deadline, managerCall, unitState } from "../systemd.ts";
 import { watchLanMouse } from "./events.ts";
 import { TrayItem } from "./item.ts";
-import { TrayMenu } from "./menu.ts";
+import { pointerMenu, TrayMenu } from "./menu.ts";
 
 const NAME = "org.kde.StatusNotifierItem.Lattices";
 const WATCHER = "org.kde.StatusNotifierWatcher";
@@ -72,8 +73,7 @@ export async function startTray() {
       item.update(sharing);
       const status = host ? "On" : unit === "activating" ? "Starting" : "Off";
       menu.update([
-        { id: 1, label: "Bring Cursor Home", enabled: !busy },
-        { id: 2, label: "Share Pointer", checked: sharing, enabled: !busy && pointer.available && pointer.clients.length > 0 },
+        ...pointerMenu(pointer, busy),
         { id: 6, separator: true },
         { id: 3, label: `Host: ${status} · ${pairing === null ? "Unknown" : pairing ? "Paired" : "Unpaired"}`, enabled: false },
         { id: 4, label: host || unit === "active" || unit === "activating" ? "Stop Host" : "Start Host", enabled: !busy && unit !== "unknown" && !(host && unit !== "active" && unit !== "activating") },
@@ -94,6 +94,7 @@ export async function startTray() {
     const action = async () => {
       if (id === 1) console.log(`[lattices-tray] mouse.home ${JSON.stringify(await bringCursorHome())}`);
       else if (id === 2) await sharePointer(!sharing);
+      else if (id === 8) await keepPointerSharing();
       else if (id === 4) {
         if (host && unit !== "active" && unit !== "activating") throw new Error("Host is running outside lattices-host.service");
         await changeUnit(bus, "lattices-host.service", host || unit === "active" || unit === "activating" ? "StopUnit" : "StartUnit");
@@ -132,8 +133,8 @@ export async function startTray() {
     bus.on("message", (message) => {
       if (message.interface === "org.freedesktop.DBus" && message.member === "NameOwnerChanged") {
         if (message.body[0] === WATCHER && message.body[2]) void register();
-      } else if (message.path?.includes("/unit/lan_2dmouse_2eservice") || message.path?.includes("/unit/lattices_2dhost_2eservice")) queueRefresh();
-      else if (message.interface === `${SYSTEMD}.Manager` && ["lan-mouse.service", "lattices-host.service"].includes(message.body[0])) queueRefresh();
+      } else if (message.path?.includes("/unit/lan_2dmouse_2eservice") || message.path?.includes("/unit/lattices_2dhost_2eservice") || message.path?.includes("/unit/lattices_2dpointer_2d")) queueRefresh();
+      else if (message.interface === `${SYSTEMD}.Manager` && ["lan-mouse.service", "lattices-host.service", ...Object.values(POINTER_UNITS)].includes(message.body[0])) queueRefresh();
     });
     await managerCall(bus, "Subscribe").catch(fail);
     await refresh();

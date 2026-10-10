@@ -42,6 +42,9 @@ function parseArgs(argv: string[]) {
 
 Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
                      [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--describe]
+       lattices-host mouse-share [--for 5m]
+       lattices-host mouse-keep
+       lattices-host mouse-status
        lattices-host mouse-home
        lattices-host tray
 
@@ -60,10 +63,9 @@ a LAN IP for a phone without Tailscale.`);
 
 async function main() {
   // Local primitives stay available when the network host is stopped.
-  if (process.argv[2] === "mouse-home") {
-    if (process.argv.length !== 3) throw new Error("Usage: lattices-host mouse-home");
-    const { bringCursorHome } = await import("./mouse.ts");
-    console.log(JSON.stringify(await bringCursorHome(), null, 2));
+  if (process.argv[2]?.startsWith("mouse-")) {
+    const { runMouseCommand } = await import("./mouse-cli.ts");
+    console.log(JSON.stringify(await runMouseCommand(process.argv.slice(2)), null, 2));
     return;
   }
   if (process.argv[2] === "tray") {

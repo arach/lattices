@@ -39,6 +39,11 @@ export async function unitState(bus: MessageBus, unit: string): Promise<string> 
 
 /** Await systemd's job receipt, including a daemon that is still stopping. */
 export async function changeUnit(bus: MessageBus, unit: string, action: "StartUnit" | "StopUnit" | "RestartUnit"): Promise<void> {
+  await unitJob(bus, unit, action, "ss", [unit, "replace"]);
+}
+
+/** Also used for transient units: do not activate clients until the timer is armed. */
+export async function unitJob(bus: MessageBus, unit: string, member: string, signature: string, body: unknown[]): Promise<void> {
   await managerCall(bus, "Subscribe").catch(() => {});
   const rule = `type='signal',sender='${DEST}',interface='${MANAGER}',member='JobRemoved'`;
   await busCall(bus, { destination: "org.freedesktop.DBus", path: "/org/freedesktop/DBus", interface: "org.freedesktop.DBus", member: "AddMatch", signature: "s", body: [rule] });
@@ -54,7 +59,7 @@ export async function changeUnit(bus: MessageBus, unit: string, action: "StartUn
   };
   bus.on("message", listener);
   try {
-    [jobPath] = await managerCall(bus, action, "ss", [unit, "replace"]);
+    [jobPath] = await managerCall(bus, member, signature, body);
     if (jobs.has(jobPath!)) settle(jobs.get(jobPath!)!);
     const result = await deadline(completion, 4000);
     if (result !== "done") throw new Error(`${unit}: ${result}`);

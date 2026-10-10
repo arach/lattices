@@ -65,7 +65,7 @@ only the tray, leaving the host and lan-mouse alone; start it again with
 State refreshes when the menu opens, on lan-mouse frontend events, and on
 systemd unit changes. Socket lifecycle notifications reconnect lan-mouse;
 the tray re-registers when Quickshell's tray watcher restarts. There is no
-background polling. Pairing status reads the host's existing trust records.
+background polling outside a pointer trial. Pairing status reads the host's existing trust records.
 If a host is already running outside `lattices-host.service`, Stop Host is
 disabled: quit that foreground host before starting the managed service.
 
@@ -86,6 +86,54 @@ monitor, otherwise the first real monitor, excluding LATS/headless/virtual,
 disabled and mirrored outputs. Coordinates account for scaling and rotation.
 It tries `hyprctl dispatch movecursor X Y`, with the Lua cursor dispatcher
 fallback required by Hyprland 0.55+.
+
+### Pointer sharing trials
+
+Turning Share Pointer on starts a five-minute trial. If lan-mouse is stopped,
+its user service starts first; every configured client is then activated.
+While the trial is armed, **Keep Sharing** appears immediately below Share
+Pointer. Keep cancels the deadline and watchdog and leaves sharing enabled.
+Bring Cursor Home and turning Share Pointer off cancel the trial and recover
+the cursor. The coral icon follows sharing, including after Keep.
+
+The same local commands work with the tray and network host stopped:
+
+```sh
+lattices-host mouse-share              # five minutes
+lattices-host mouse-share --for 1m
+lattices-host mouse-status             # sharing, clients, until
+lattices-host mouse-keep
+lattices-host mouse-home
+```
+
+In this checkout, substitute `bun packages/host-linux/src/main.ts` for
+`lattices-host`. Durations are positive whole numbers of seconds, optionally
+with `s`, `m`, or `h`: `90`, `30s`, `5m`, `1h`. `until` is an ISO 8601 UTC
+deadline during a trial and `null` otherwise. A running host exposes the same
+`mouse.share {"for":"5m"}`, `mouse.keep`, `mouse.status`, and `mouse.home`
+methods. Share defaults to five minutes when `for` is omitted.
+
+The trial belongs to the systemd user manager, independently of the process
+that requested it. `lattices-pointer-trial.timer` launches the transient
+`lattices-pointer-trial.service` to run `mouse-home --expired`. The timer and
+recovery service are submitted together through `StartTransientUnit` before
+activating clients; timer accuracy is 100 ms. Status reads the manager's
+deadline and paired timestamps, so fresh CLI processes report the same time.
+Units use the absolute Bun and checkout paths and the graphical session
+environment, without a shell or config-file changes. Keep/Home stop the
+timer, watchdog and any pending recovery service; recovery never stops itself.
+
+`lattices-pointer-watch.service` runs `mouse-check` only during a trial. This
+detached service checks `lan-mouse cli list` every 15 seconds with the same
+800 ms timeout. A success resets its failure count; two consecutive failures
+run Bring Cursor Home, including the existing service-restart fallback for an
+unreachable running daemon. A managed service keeps the count without a
+state file or a new CLI process on each tick, and survives the requesting
+process exiting or crashing. It restarts on failure while the deadline is
+armed. No watchdog runs after Keep, Home, Share off, or expiry. Each start,
+keep, expiry and watchdog revert writes one line to stderr/the user journal.
+These transient units survive a tray/host/CLI crash, not a user-manager
+restart or reboot. Keep this checkout and Bun executable in place.
 
 `dbus-next` is the one direct dependency: it serves the notifier/menu and
 talks to the systemd user manager without a GUI toolkit. The install command

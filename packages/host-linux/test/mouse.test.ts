@@ -59,6 +59,10 @@ function fake(over: Partial<MouseDependencies> = {}) {
   const deps: MouseDependencies = {
     hasLanMouse: () => true,
     serviceState: async () => "active",
+    startService: async () => {},
+    trial: { arm: async () => {}, cancel: async () => {}, until: async () => null },
+    sleep: async () => {},
+    log: () => {},
     restartService: async () => { restarts++; },
     run: async (cmd, args, options) => {
       calls.push([cmd, ...args]);
@@ -132,6 +136,8 @@ describe("pointer recovery", () => {
   });
   test("Share Pointer changes all clients through the CLI", async () => {
     const { deps, calls } = fake();
+    let armed = false;
+    deps.trial = { arm: async () => { armed = true; }, cancel: async () => { armed = false; }, until: async () => armed ? "2026-10-09T21:00:00.000Z" : null };
     await sharePointer(true, deps);
     expect(calls).toContainEqual(["lan-mouse", "cli", "activate", "0"]);
     await sharePointer(false, deps);
