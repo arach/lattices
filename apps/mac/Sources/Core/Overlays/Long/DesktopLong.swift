@@ -201,7 +201,8 @@ final class DesktopLong {
             DispatchQueue.main.async { self.place(animated: true) }
             return
         }
-        guard model.away != nil || info?["ended"] != nil else { return }
+        // A display marked elsewhere or back may move his home.
+        guard model.away != nil || info?["ended"] != nil else { return place(animated: true) }
         model.home()
         DispatchQueue.main.async { self.place(animated: true) }
         if let failed = info?["failed"] as? Bool {
@@ -230,12 +231,15 @@ final class DesktopLong {
     }
 
     private func homeOrigin(_ size: CGSize) -> CGPoint {
-        let screens = NSScreen.screens.map(\.visibleFrame)
+        // Not on a display that's showing another machine.
+        let here = NSScreen.screens.filter { !VisitController.isElsewhere($0) }
+        let screens = here.map(\.visibleFrame)
         if let saved = UserDefaults.standard.string(forKey: Self.homeKey).map(NSPointFromString),
            screens.contains(where: { $0.insetBy(dx: -4, dy: -4).contains(CGRect(origin: saved, size: size)) }) {
             return saved
         }
-        let visible = NSScreen.main?.visibleFrame ?? NSScreen.screens.first?.visibleFrame ?? .zero
+        // The menu bar's display, not whichever has focus.
+        let visible = here.first(where: { $0.frame.origin == .zero })?.visibleFrame ?? screens.first ?? NSScreen.screens.first?.visibleFrame ?? .zero
         return CGPoint(x: visible.maxX - size.width - 18, y: visible.minY + 14)
     }
 

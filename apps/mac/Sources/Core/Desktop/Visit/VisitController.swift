@@ -172,6 +172,12 @@ final class VisitController {
         return true
     }
 
+    /// Whether `screen` is marked elsewhere.
+    static func isElsewhere(_ screen: NSScreen) -> Bool {
+        guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else { return false }
+        return elsewhere.contains(uuid(id))
+    }
+
     private static var elsewhere: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: elsewhereKey) ?? [])
     }
