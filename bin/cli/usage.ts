@@ -121,6 +121,7 @@ Usage:
   lats call <method> [p]  Raw daemon API call (params as JSON)
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
+  lats --host <name> pair Pair with a lattices-host (approve on the host)
   lats scan               Show text from all visible windows
   lats scan --full        Full text dump
   lats scan search <q>    Full-text search across scanned windows

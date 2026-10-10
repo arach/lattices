@@ -3369,6 +3369,9 @@ switch (command) {
   case "hosts":
     await hostsCommand(args.slice(1));
     break;
+  case "pair":
+    await hostsCommand(args);
+    break;
   case "layer":
   case "layers":
     await layerCommand(args[1], ...args.slice(2));

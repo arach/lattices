@@ -70,7 +70,7 @@ export function parseShortcut(shortcut: string): { modifiers: string[]; key: str
 }
 
 /** wtype arguments that press `key` with `modifiers` held, `count` times. */
-export function wtypeKeyArgs(key: string, modifiers: string[] = [], count = 1, delayMs = 80): string[] {
+function strokeArgs(symbol: string, modifiers: string[], count: number, delayMs: number): string[] {
   const mods = modifiers.map((m) => {
     const mapped = MODIFIERS[m.toLowerCase()];
     if (!mapped) throw new Error(`Unknown modifier: ${m}`);
@@ -80,10 +80,23 @@ export function wtypeKeyArgs(key: string, modifiers: string[] = [], count = 1, d
   for (let i = 0; i < count; i++) {
     if (i > 0) args.push("-s", String(Math.round(delayMs)));
     for (const m of mods) args.push("-M", m);
-    args.push("-k", keysym(key));
+    args.push("-k", symbol);
     for (const m of [...mods].reverse()) args.push("-m", m);
   }
   return args;
+}
+
+export function wtypeKeyArgs(key: string, modifiers: string[] = [], count = 1, delayMs = 80): string[] {
+  return strokeArgs(keysym(key), modifiers, count, delayMs);
+}
+
+/** Visits already speak XKB: preserve A vs a, and Delete vs BackSpace. */
+export function wtypeKeysymArgs(key: string, modifiers: string[] = []): string[] {
+  return strokeArgs(key, modifiers, 1, 80);
+}
+
+export async function pressKeysym(key: string, modifiers: string[] = []) {
+  await run("wtype", wtypeKeysymArgs(key, modifiers));
 }
 
 export async function typeText(text: string, enter = false) {

@@ -12,6 +12,7 @@ export interface PendingPairing {
   deviceID: string;
   deviceName: string;
   platform: string;
+  node?: string;
   fingerprint: string;
   kind: "pair" | "upgrade";
   capabilities: string[];
@@ -28,7 +29,12 @@ interface Waiter {
 export class PairingApprovals {
   private pending = new Map<string, Waiter>();
 
-  constructor(private readonly timeoutMs = 120_000, private readonly notify = hasCommand("notify-send")) {}
+  constructor(
+    private readonly timeoutMs = 120_000,
+    private readonly notify = hasCommand("notify-send"),
+    /** What is being paired with, for the notification title. */
+    private readonly subject = ""
+  ) {}
 
   list(): PendingPairing[] {
     return [...this.pending.values()].map((w) => w.info);
@@ -48,6 +54,7 @@ export class PairingApprovals {
       deviceID: request.deviceID,
       deviceName: request.deviceName,
       platform: request.platform,
+      node: request.node,
       fingerprint: fingerprint(request.devicePublicKey),
       kind,
       capabilities,
@@ -70,9 +77,11 @@ export class PairingApprovals {
   }
 
   private showNotification(info: PendingPairing) {
-    const title = info.kind === "pair" ? `Pair ${info.deviceName}?` : `${info.deviceName} asks for more access`;
+    const to = this.subject ? ` with ${this.subject}` : "";
+    const title = info.kind === "pair" ? `Pair ${info.deviceName}${to}?` : `${info.deviceName} asks for more access${to}`;
     const body =
       `Code ${info.fingerprint} — check it matches the code on the device.\n` +
+      (info.node ? `From tailnet node ${info.node}.\n` : "") +
       (info.kind === "pair" ? "It will be able to: " : "New: ") +
       info.capabilities.join(", ");
     const child = spawn(
