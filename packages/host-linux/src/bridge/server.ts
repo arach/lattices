@@ -174,6 +174,13 @@ export function startBridge(options: BridgeOptions) {
     approvals,
     port: boundPort(),
     advertised: advert !== null,
+    async revoke(deviceID: string) {
+      if (!security.revoke(deviceID)) return false;
+      await Promise.all([...visits.channels]
+        .filter((channel) => channel.deviceID === deviceID)
+        .map((channel) => channel.finish(4001, "Device revoked")));
+      return true;
+    },
     async stop() {
       stopping = true;
       advert?.kill();
@@ -229,8 +236,8 @@ export function registerBridgeEndpoints(router: Router, bridge: ReturnType<typeo
     access: "mutate",
     params: [{ name: "deviceID", type: "string", required: true, description: "From bridge.status devices" }],
     returns: "Object with ok",
-    handler: (params) => {
-      if (!bridge.security.revoke(requireStr(params, "deviceID"))) throw RouterError.notFound("trusted device");
+    handler: async (params) => {
+      if (!await bridge.revoke(requireStr(params, "deviceID"))) throw RouterError.notFound("trusted device");
       return { ok: true };
     },
   });

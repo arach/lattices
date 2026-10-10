@@ -45,6 +45,8 @@ export class VisitChannel {
     this.arm();
   }
 
+  get deviceID() { return this.auth.device.id; }
+
   private arm() {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.finish(1001, "Visit timed out"), this.silenceMs);
