@@ -59,10 +59,11 @@ export function scopeOf(capabilities: string[]): Scope {
 /**
  * The scope a method needs. Reads need read; mutations need act, except
  * driving the desktop: computer.* input, and capture.live, whose VNC session
- * takes pointer and keyboard input.
+ * takes pointer and keyboard input. apps.open also needs drive because it
+ * accepts an arbitrary command.
  */
 export function scopeFor(info: Pick<MethodInfo, "method" | "access">): Scope {
-  if (info.method === "capture.live") return "drive";
+  if (info.method === "capture.live" || info.method === "apps.open") return "drive";
   if (info.access === "read") return "read";
   return info.method.startsWith("computer.") ? "drive" : "act";
 }

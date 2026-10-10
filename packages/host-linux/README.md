@@ -45,8 +45,8 @@ applied to the daemon socket:
 2. On the host, a notification shows the client's name, its tailnet node and
    the same code: Approve or Deny. Or, on the host itself:
    `lats call clients.list` then `lats call clients.approve '{"clientID":"…"}'`.
-   Approval is never accepted from a remote connection (`clients.approve` and
-   `clients.deny` are loopback-only), so a client cannot approve itself.
+   Approval is never accepted from a remote connection (`clients.approve`,
+   `clients.deny`, and companion `bridge.pairing.approve` / `deny` are loopback-only), so a client cannot approve itself.
    Undecided requests are denied after two minutes.
 3. Every later connection is signed: the WebSocket upgrade carries
    `x-lattices-device-id`, `-timestamp`, `-nonce` and `-signature`, an
@@ -60,8 +60,8 @@ Each client has a scope, matching LAT-014's grants:
 | Scope | Runs | Granted |
 | --- | --- | --- |
 | `read` | `access: "read"` methods (listed in `api.schema`) | always |
-| `act` | the rest: focus, place, move, displays, sessions, apps | by default |
-| `drive` | `computer.*` input (clicks, typing, scroll) and `capture.live` (VNC takes input) | only when asked for (`--drive`, or `scope: "drive"`) |
+| `act` | focus, place, move, displays, sessions | by default |
+| `drive` | `computer.*` input, `capture.live` (VNC takes input), and `apps.open` (arbitrary command) | only when asked for (`--drive`, or `scope: "drive"`) |
 
 Each scope includes the ones above it. Clients that paired with `mutate`
 before the split are `act`, and a request for `mutate` means `act`. Asking

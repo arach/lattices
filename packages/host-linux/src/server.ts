@@ -137,6 +137,7 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
     broadcast(event: string, data: unknown) {
       const frame = JSON.stringify({ event, data });
       for (const ws of sockets) {
+        if (gate(ws.data.auth, { method: "events.subscribe", access: "read" })) continue;
         if (!ws.data.events || ws.data.events.has(event)) ws.send(frame);
       }
     },
