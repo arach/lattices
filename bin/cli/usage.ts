@@ -103,6 +103,7 @@ Usage:
   lats state [list] [--since 2h] [--named]  Desktop maps recorded after each change, kept 72h (daemon required)
   lats state show [id]      One map: displays, their desktops and what's on each
   lats state save <name>    Record the desktop now under a name, before a risky change
+  lats state restore <id|name> [--plan]  Put windows back on the desktops and frames a map has (never touches display settings)
   lats layer delete <layer> Delete a layer from workspace.json
   lats voice say <text>   Speak text through the Voice helper
   lats voice stop         Stop speaking (pause, resume, skip, seek, list, select too)

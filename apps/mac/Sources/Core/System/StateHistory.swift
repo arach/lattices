@@ -201,6 +201,15 @@ final class StateHistory {
         return try Self.decoder.decode(StateMap.self, from: data)
     }
 
+    /// An exact id, an id prefix, or a name; the newest match wins.
+    func resolve(_ ref: String) -> String? {
+        let ids = ids()
+        if ids.contains(ref) { return ref }
+        if let byPrefix = ids.first(where: { $0.hasPrefix(ref) }) { return byPrefix }
+        let wanted = StateMap.id(for: Date(), name: ref).dropFirst(20)
+        return ids.first { $0.count > 19 && $0.dropFirst(20) == wanted }
+    }
+
     func latest() throws -> StateMap? {
         guard let id = ids().first else { return nil }
         return try load(id)

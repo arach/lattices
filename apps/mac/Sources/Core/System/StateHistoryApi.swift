@@ -42,8 +42,8 @@ extension StateHistory {
             handler: { params in
                 let history = StateHistory.shared
                 let map: StateMap
-                if let id = params?["id"]?.stringValue {
-                    guard let found = try? history.load(id) else { throw RouterError.notFound("state \(id)") }
+                if let ref = params?["id"]?.stringValue {
+                    guard let id = history.resolve(ref), let found = try? history.load(id) else { throw RouterError.notFound("state \(ref)") }
                     map = found
                 } else {
                     guard let found = try? history.latest() else { throw RouterError.notFound("no states recorded") }
@@ -66,6 +66,44 @@ extension StateHistory {
                     : DispatchQueue.main.sync { StateHistory.shared.record(name: name) }
                 guard let map else { throw RouterError.custom("could not record") }
                 return summary(map)
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "states.restore",
+            description: "Put windows back on the desktops and frames a recorded map has them at. Records the current state as 'before-restore' first, so it can be undone. Never changes display settings. Carries across desktops go through Mission Control and finish after this returns",
+            access: .mutate,
+            params: [
+                Param(name: "id", type: "string", required: true, description: "A map id, id prefix or name from states.list"),
+                Param(name: "plan", type: "bool", required: false, description: "Only say what would move (default false)"),
+            ],
+            returns: .custom("Object with 'id', 'moves' (wid, app, title, carryTo, frame), 'missing', 'notes', 'started'"),
+            handler: { params in
+                guard let ref = params?["id"]?.stringValue else { throw RouterError.missingParam("id") }
+                let history = StateHistory.shared
+                guard let id = history.resolve(ref), let map = try? history.load(id) else { throw RouterError.notFound("state \(ref)") }
+                let onlyPlan = params?["plan"]?.boolValue == true
+                let work = { () -> StateRestore.Plan in
+                    let plan = StateRestore.plan(map, live: StateRestore.live())
+                    if !onlyPlan && !plan.moves.isEmpty { StateRestore.apply(plan, map: map) }
+                    return plan
+                }
+                let plan = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object([
+                    "id": .string(map.id),
+                    "started": .bool(!onlyPlan && !plan.moves.isEmpty),
+                    "moves": .array(plan.moves.map { move in
+                        .object([
+                            "wid": .int(Int(move.wid)),
+                            "app": .string(move.app),
+                            "title": .string(move.title),
+                            "carryTo": move.carryTo.map(JSON.int) ?? .null,
+                            "frame": .object(["x": .double(move.frame.x), "y": .double(move.frame.y), "w": .double(move.frame.w), "h": .double(move.frame.h)]),
+                        ])
+                    }),
+                    "missing": .array(plan.missing.map(JSON.string)),
+                    "notes": .array(plan.notes.map(JSON.string)),
+                ])
             }
         ))
     }

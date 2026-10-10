@@ -52,6 +52,23 @@ export async function stateCommand(sub?: string, ...rest: string[]): Promise<voi
       console.log(`Saved ${s.id}: ${s.windows} windows on ${s.desktops} desktops.`);
       return;
     }
-    console.log("Usage: lats state [list [--since 2h] [--named] [--limit n] [--json]] | show [id] [--json] | save <name>");
+    if (sub === "restore") {
+      const ref = rest.find((a) => !a.startsWith("--"));
+      if (!ref) { console.log("Usage: lats state restore <id|name> [--plan]"); return; }
+      const plan = rest.includes("--plan");
+      const r = await daemonCall("states.restore", { id: ref, plan }) as any;
+      if (rest.includes("--json")) { console.log(JSON.stringify(r, null, 2)); return; }
+      console.log(`${plan ? "Would restore" : "Restoring"} ${r.id}:`);
+      if (!r.moves.length) console.log("  Everything is already where it was.");
+      for (const m of r.moves) {
+        const title = m.title ? ` — ${m.title.slice(0, 50)}` : "";
+        console.log(`  ${m.app}${title}${m.carryTo ? "  (to another desktop)" : ""}`);
+      }
+      for (const m of r.missing) console.log(`  Not open: ${m}`);
+      for (const n of r.notes) console.log(`  ${n}`);
+      if (r.started) console.log("Undo with: lats state restore before-restore");
+      return;
+    }
+    console.log("Usage: lats state [list [--since 2h] [--named] [--limit n] [--json]] | show [id] [--json] | save <name> | restore <id|name> [--plan]");
   });
 }
