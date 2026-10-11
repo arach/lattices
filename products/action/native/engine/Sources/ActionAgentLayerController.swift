@@ -1288,6 +1288,7 @@ final class ActionAgentLayerPiP {
         }
         self.panel = panel
         self.viewer = content
+        logger.log("agent-layer pip: layout panel=\(panel.frame) viewer=\(content.frame) controls=\(content.controls.frame) buttons=\(content.controls.arrangedSubviews.map(\.frame))")
     }
 
     /// Launch: grow out of the screen corner and fade up, expo out. Runs once.
