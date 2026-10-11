@@ -1311,6 +1311,7 @@ final class ActionAgentLayerPiP {
             panel.animator().setFrame(frame, display: true)
             panel.animator().alphaValue = 1
         }, completionHandler: { [weak self] in
+            self?.finishPresentation(panel)
             self?.logger.log("agent-layer pip: presented frame=\(panel.frame) alpha=\(panel.alphaValue)")
         })
         finishPresentation(panel)
@@ -1318,7 +1319,16 @@ final class ActionAgentLayerPiP {
 
     private func finishPresentation(_ panel: NSPanel) {
         panel.contentView?.layoutSubtreeIfNeeded()
-        panel.displayIfNeeded()
+        func invalidate(_ view: NSView) {
+            view.needsDisplay = true
+            for child in view.subviews {
+                invalidate(child)
+            }
+        }
+        if let content = panel.contentView {
+            invalidate(content)
+        }
+        panel.display()
         NSApplication.shared.updateWindows()
         if let event = NSEvent.otherEvent(
             with: .applicationDefined,
@@ -1444,7 +1454,9 @@ private final class ActionAgentLayerPreviewView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
         hostname.font = .systemFont(ofSize: 11, weight: .medium)
         hostname.textColor = .secondaryLabelColor
         hostname.lineBreakMode = .byTruncatingMiddle
