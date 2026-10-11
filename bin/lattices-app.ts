@@ -532,7 +532,11 @@ ${buildMetadata}    <key>LSMinimumSystemVersion</key>
 }
 
 function syncBundleResources(): void {
-  execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(binaryDir, "CompanionInstaller")], { stdio: "inherit" });
+  // The npm package runs bin/companion-installer.ts with the user's Bun; only
+  // the DMG needs the compiled copy, which embeds a whole Bun runtime.
+  const installer = resolve(binaryDir, "CompanionInstaller");
+  if (process.env.LATTICES_SKIP_COMPANION_INSTALLER === "1") rmSync(installer, { force: true });
+  else execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), installer], { stdio: "inherit" });
   mkdirSync(resourcesDir, { recursive: true });
   if (existsSync(iconPath)) {
     execFileSync("cp", [iconPath, resolve(resourcesDir, "AppIcon.icns")]);
