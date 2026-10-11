@@ -170,7 +170,9 @@ unpacked install inside the Action-owned identity.
 
 ## Action Browser MCP
 
-Server: `plugins/action-browser/server/index.ts`
+Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root — the
+browser tools are a toolset inside the lattices MCP, served by `lattices mcp`.
+See [the lattices MCP doc](../../../docs/mcp.md).
 
 ### Tools
 
@@ -190,26 +192,24 @@ Server: `plugins/action-browser/server/index.ts`
 - **Native runtime MCP** (`action`): observe / resolve / act / record on macOS
   through Action.app. This is what controls your *regular* Chrome window, and
   every other native app, via screen capture and accessibility.
-- **Browser MCP** (`action-browser` plugin): Action-owned Chrome identities plus
-  DOM-level tools over CDP.
+- **Browser MCP** (the `browser` toolset of `lattices mcp`): Action-owned Chrome
+  identities plus DOM-level tools over CDP.
 
-Install the browser plugin from the marketplace:
-
-```bash
-claude plugin marketplace add arach/lattices
-claude plugin install action-browser@action --scope user
-```
-
-Or point Claude at the local server with a default identity. Run these commands
-from any directory inside a Lattices checkout:
+Register it. The entry names the `lattices` binary and no path, so a repo move or
+a version bump cannot break it:
 
 ```bash
-ACTION_ROOT="$(git rev-parse --show-toplevel)/products/action"
-claude mcp add action-browser -s user \
-  -e ACTION_ROOT="$ACTION_ROOT" \
-  -e ACTION_BROWSER_PROFILE=work \
-  -- "$(command -v bun)" "$ACTION_ROOT/plugins/action-browser/server/index.ts"
+claude mcp add lattices -s user -- lattices mcp
 ```
+
+To pin a default identity, add the environment variable to that same entry:
+
+```bash
+claude mcp add lattices -s user -e ACTION_BROWSER_PROFILE=work -- lattices mcp
+```
+
+`ACTION_ROOT` is only needed for the Chrome Companion paths below, and only when
+the tools run from a published `lattices` install rather than a checkout.
 
 ### Agent workflow
 
@@ -272,18 +272,21 @@ as narrow as it was asked to.
 
 ## Plugin versioning
 
-Harnesses cache installed plugin metadata — skills, interface copy, MCP entry —
-by version. Bumping one manifest and not the others leaves an install serving
-stale tool descriptions, so all of them move together:
+Harnesses cache the Action Browser skill and interface metadata by plugin
+version. Bump all seven manifests together when that metadata changes:
 
 ```bash
 bun run plugin:version              # check that every manifest agrees
-bun run plugin:version -- 0.3.0     # set them all
+bun run plugin:version -- 0.4.1     # set them all
 ```
 
-Covers `.claude-plugin/marketplace.json`, the Claude/Codex/Kimi plugin manifests,
-and `SERVER_VERSION` in the MCP server. After a bump, reinstall or refresh the
-plugin in each harness so the cached copy is replaced.
+The check covers the root and Action product marketplace/Kimi manifests, plus
+the browser plugin's Claude, Codex, and Kimi manifests. Reinstall or refresh the
+plugin in each harness so its cached skill is replaced.
+
+The plugin no longer carries an MCP server or a `SERVER_VERSION`. Browser tools
+ship with the lattices CLI; updating that CLI and restarting its MCP process
+updates the server separately from refreshing this skill-only plugin.
 
 ## What is intentionally not done
 
@@ -305,12 +308,13 @@ and readiness checks. Zero fails immediately without opening a tab. Expiry
 returns an MCP tool error and cancels pending transport work; increasing
 `waitMs` does not remove the 10-second limit on individual HTTP/CDP operations.
 
-When configuring the MCP server locally, point to
-`products/action/plugins/action-browser/scripts/run-action-browser-mcp.sh` in
-the Lattices checkout instead of a version-pinned plugin cache. On the next MCP
-process start, `initialize` should report `0.3.0`, and `tools/list` should expose
+Configure the MCP server as `command: "lattices", args: ["mcp"]` — no path, so it
+cannot be pinned to a stale checkout or plugin cache. On the next MCP process
+start, `initialize` reports the lattices version, and `tools/list` exposes
 `browser_open.mode`, `profile`, and `newTab`. Existing MCP processes retain their
 loaded implementation until reloaded.
 
-The launcher resolves Bun from `ACTION_BUN_BIN`, PATH, or the standard user and
-Homebrew locations. An explicit invalid override fails with an actionable error.
+The `lattices` launcher resolves Bun from `LATTICES_BUN_BIN`, PATH, or the
+standard user and Homebrew locations, so it survives the bare system PATH a
+GUI-launched harness hands it. An explicit invalid override fails with an
+actionable error.
