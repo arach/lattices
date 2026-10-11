@@ -317,7 +317,7 @@ struct AppShellView: View {
         // fixed 632pt minimum otherwise makes the whole shell clip at 600pt.
         let scale = min(1, max(0.1, (availableWidth - 2 * Chrome.inset) / 608))
         return HStack(spacing: 18 * scale) {
-            statusSlot(width: 132 * scale) {
+            statusSlot(width: 150 * scale) {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(runningSessionCount > 0 ? Palette.running : Palette.textMuted)
@@ -326,7 +326,7 @@ struct AppShellView: View {
                 }
             }
 
-            statusSlot(width: 260 * scale) {
+            statusSlot(width: 242 * scale) {
                 Text(desktopShapeText)
             }
 
@@ -561,7 +561,7 @@ private struct SidebarFooterButton: View {
                 .frame(width: HudSidebarLayout.railWidth, height: HudSidebarLayout.rowHeight)
 
             Text(label)
-                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .semibold : .medium))
+                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .medium : .regular))
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)

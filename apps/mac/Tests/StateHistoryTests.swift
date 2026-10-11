@@ -2,7 +2,7 @@ import XCTest
 @testable import Lattices
 
 final class StateHistoryTests: XCTestCase {
-    private func map(frame x: Double = 0, title: String = "a", name: String? = nil) -> StateMap {
+    private func map(frame x: Double = 0, title: String = "a", name: String? = nil, layer: Int? = 0) -> StateMap {
         StateMap(
             id: StateMap.id(for: Date(timeIntervalSince1970: 0), name: name),
             taken: Date(),
@@ -10,7 +10,7 @@ final class StateHistoryTests: XCTestCase {
             displays: [.init(id: "U32", name: "U32", frame: .init(x: 0, y: 0, w: 3840, h: 2160), main: true, desktops: [1, 5], current: 1)],
             windows: [.init(wid: 7, app: "Ghostty", bundleId: nil, title: title, session: nil,
                             frame: .init(x: x, y: 0, w: 800, h: 600), desktops: [1], hidden: false)],
-            layer: 0
+            layer: layer
         )
     }
 
@@ -53,5 +53,12 @@ final class StateHistoryTests: XCTestCase {
         XCTAssertEqual(StateHistory.duration("30m"), 1800)
         XCTAssertEqual(StateHistory.duration("2h"), 7200)
         XCTAssertNil(StateHistory.duration("soon"))
+    }
+
+    func testLayerFocusOffRoundTripsWithoutRememberedSelection() throws {
+        let snapshot = map(layer: nil)
+        let restored = try StateHistory.decoder.decode(StateMap.self, from: StateHistory.encoder.encode(snapshot))
+        XCTAssertNil(restored.layer)
+        XCTAssertNotEqual(snapshot.fingerprint, map(layer: 0).fingerprint)
     }
 }

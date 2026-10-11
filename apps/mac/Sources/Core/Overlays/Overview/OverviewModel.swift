@@ -141,7 +141,7 @@ struct LiveOverviewActions: OverviewActions {
         guard let index = workspace.layers.firstIndex(where: { $0.id == layerId }) else {
             throw OverviewEditError.layerGone(layerId)
         }
-        guard index == workspace.activeLayerIndex else { throw OverviewEditError.notActive(layerId) }
+        guard index == workspace.activeLayerSelection else { throw OverviewEditError.notActive(layerId) }
         workspace.focusLayer(index: index)
     }
 }
