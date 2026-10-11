@@ -1228,6 +1228,10 @@ final class ActionAgentLayerPiP {
         panel.hasShadow = true
         panel.animationBehavior = .utilityWindow
         panel.title = "Action Agent Layer"
+        panel.setAccessibilityElement(true)
+        panel.setAccessibilityRole(.window)
+        panel.setAccessibilitySubrole(.floatingWindow)
+        panel.setAccessibilityLabel(panel.title)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.minSize = CGSize(width: 380, height: 180)
 
@@ -1452,12 +1456,22 @@ private final class ActionAgentLayerPreviewView: NSView {
         addSubview(viewer.controls)
         addSubview(hostname)
         addSubview(hideButton)
+        layoutContent()
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func layout() {
         super.layout()
+        layoutContent()
+    }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        super.resizeSubviews(withOldSize: oldSize)
+        layoutContent()
+    }
+
+    private func layoutContent() {
         let headerY = bounds.height - Self.headerHeight
         hostname.frame = CGRect(x: 10, y: headerY + 5, width: max(bounds.width - 70, 0), height: 16)
         hideButton.frame = CGRect(x: bounds.width - 54, y: headerY + 1, width: 46, height: 24)
@@ -1467,6 +1481,7 @@ private final class ActionAgentLayerPreviewView: NSView {
         let width = min(bounds.width, availableHeight * aspect)
         let height = width / aspect
         viewer.frame = CGRect(x: (bounds.width - width) / 2, y: Self.footerHeight + (availableHeight - height) / 2, width: width, height: height)
+        viewer.controls.layoutSubtreeIfNeeded()
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
