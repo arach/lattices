@@ -1228,6 +1228,10 @@ final class ActionAgentLayerPiP {
         panel.hasShadow = true
         panel.animationBehavior = .utilityWindow
         panel.title = "Action Agent Layer"
+        panel.setAccessibilityElement(true)
+        panel.setAccessibilityRole(.window)
+        panel.setAccessibilitySubrole(.floatingWindow)
+        panel.setAccessibilityLabel(panel.title)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.minSize = CGSize(width: 380, height: 180)
 
@@ -1272,6 +1276,8 @@ final class ActionAgentLayerPiP {
         preview.onDoubleClick = { [weak self] in self?.toggleEnlarged() }
         preview.onHide = { [weak self] in self?.dismiss() }
         panel.contentView = preview
+        preview.needsLayout = true
+        preview.layoutSubtreeIfNeeded()
         for case let button as ActionAgentLayerControlButton in content.controls.arrangedSubviews {
             switch button.title {
             case "Stop": button.toolTip = "Stop this layer task without bringing its app forward"
@@ -1282,6 +1288,7 @@ final class ActionAgentLayerPiP {
         }
         self.panel = panel
         self.viewer = content
+        logger.log("agent-layer pip: layout panel=\(panel.frame) viewer=\(content.frame) controls=\(content.controls.frame) buttons=\(content.controls.arrangedSubviews.map(\.frame))")
     }
 
     /// Launch: grow out of the screen corner and fade up, expo out. Runs once.
@@ -1289,18 +1296,52 @@ final class ActionAgentLayerPiP {
         guard !presented, let panel else { return }
         presented = true
         let frame = panel.frame
+        panel.contentView?.layoutSubtreeIfNeeded()
         guard !Self.reduceMotion else {
             panel.orderFrontRegardless()
+            finishPresentation(panel)
             return
         }
         panel.alphaValue = 0
         panel.setFrame(Self.tucked(frame, scale: 0.82), display: false)
         panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { context in
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.42
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
             panel.animator().setFrame(frame, display: true)
             panel.animator().alphaValue = 1
+        }, completionHandler: { [weak self] in
+            self?.finishPresentation(panel)
+            self?.logger.log("agent-layer pip: presented frame=\(panel.frame) alpha=\(panel.alphaValue)")
+        })
+        finishPresentation(panel)
+    }
+
+    private func finishPresentation(_ panel: NSPanel) {
+        panel.contentView?.layoutSubtreeIfNeeded()
+        func invalidate(_ view: NSView) {
+            view.needsDisplay = true
+            for child in view.subviews {
+                invalidate(child)
+            }
+        }
+        if let content = panel.contentView {
+            invalidate(content)
+        }
+        panel.display()
+        NSApplication.shared.updateWindows()
+        if let event = NSEvent.otherEvent(
+            with: .applicationDefined,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            subtype: 0,
+            data1: 0,
+            data2: 0
+        ) {
+            NSApplication.shared.postEvent(event, atStart: false)
         }
     }
 
@@ -1413,7 +1454,9 @@ private final class ActionAgentLayerPreviewView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
         hostname.font = .systemFont(ofSize: 11, weight: .medium)
         hostname.textColor = .secondaryLabelColor
         hostname.lineBreakMode = .byTruncatingMiddle
@@ -1426,12 +1469,22 @@ private final class ActionAgentLayerPreviewView: NSView {
         addSubview(viewer.controls)
         addSubview(hostname)
         addSubview(hideButton)
+        layoutContent()
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func layout() {
         super.layout()
+        layoutContent()
+    }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        super.resizeSubviews(withOldSize: oldSize)
+        layoutContent()
+    }
+
+    private func layoutContent() {
         let headerY = bounds.height - Self.headerHeight
         hostname.frame = CGRect(x: 10, y: headerY + 5, width: max(bounds.width - 70, 0), height: 16)
         hideButton.frame = CGRect(x: bounds.width - 54, y: headerY + 1, width: 46, height: 24)
@@ -1441,6 +1494,7 @@ private final class ActionAgentLayerPreviewView: NSView {
         let width = min(bounds.width, availableHeight * aspect)
         let height = width / aspect
         viewer.frame = CGRect(x: (bounds.width - width) / 2, y: Self.footerHeight + (availableHeight - height) / 2, width: width, height: height)
+        viewer.controls.layoutSubtreeIfNeeded()
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
