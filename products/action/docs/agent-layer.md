@@ -95,7 +95,9 @@ acceptance record by itself.
 Build and diagnose on the development host. `native:doctor` rebuilds and signs;
 it is not a read-only preflight and must not be used to repair an installation
 target implicitly. Install a matched native app and orchestration runtime with
-rollback instead. `ACTION_ROOT` is the product/runtime root, not the monorepo.
+rollback instead. For a packaged runtime, set `ACTION_ROOT=<extract>/products/action`,
+not the extraction root. Keep the archive's sibling `bin/` and `products/`
+directories together so the runtime can import `bin/host-pairing.ts`.
 
 ## Private browser workflow
 
