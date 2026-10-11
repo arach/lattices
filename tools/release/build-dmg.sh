@@ -102,7 +102,7 @@ if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
     cp "$ASSISTANT_KNOWLEDGE" "$BUNDLE/Contents/Resources/docs/assistant-knowledge.md"
 fi
 
-bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/MacOS/CompanionInstaller"
+bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/Resources/companion-installer.js"
 
 # Helper apps (Voice) go in Contents/Helpers, built by their products' own
 # packaging scripts. See bin/embedded-helpers.ts.
@@ -117,10 +117,6 @@ else
     # Inside out: embedded helpers first, then nested executables, then the
     # bundle. No --deep, which would re-sign the helpers as Lattices.
     bun "$ROOT/bin/embedded-helpers.ts" sign "$BUNDLE" "$SIGN_IDENTITY" --timestamp
-
-    codesign --force --options runtime --timestamp \
-        --entitlements "$ROOT/tools/release/CompanionInstaller.entitlements" \
-        --sign "$SIGN_IDENTITY" "$BUNDLE/Contents/MacOS/CompanionInstaller"
 
     codesign --force --options runtime --timestamp \
         --entitlements "$APP_DIR/Lattices.entitlements" \
