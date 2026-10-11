@@ -322,6 +322,10 @@ not install anything. `runtime-provenance.json` records the artifact identities
 and marks host desktop-isolation acceptance as uncertified. Keep the previous
 runtime for rollback and preserve host quarantine when installing a candidate.
 
+The extracted archive contains sibling `bin/` and `products/` directories.
+Set `ACTION_ROOT=<extract>/products/action`, not the extraction root, and keep
+`bin/host-pairing.ts` in place; the runtime imports that canonical dependency.
+
 ## Scripts And Helpers
 
 Call native work through package.json scripts from `products/action`:
