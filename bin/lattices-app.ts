@@ -407,7 +407,6 @@ function signBundle(): void {
   const sign = (signer: string, label: string) => {
     // Inside out: embedded helpers (Contents/Helpers) first, under the same signer.
     signHelpers(bundlePath, signer);
-    runCodesign(["--force", "--options", "runtime", "--entitlements", resolve(cliRoot, "tools/release/CompanionInstaller.entitlements"), "--sign", signer, resolve(binaryDir, "CompanionInstaller")]);
     // Sign the Mach-O first, then the bundle — more reliable than --deep and
     // keeps a stable TeamIdentifier so macOS TCC grants survive rebuilds.
     const binaryArgs = ["--force", "--options", "runtime", "--sign", signer];
@@ -532,12 +531,9 @@ ${buildMetadata}    <key>LSMinimumSystemVersion</key>
 }
 
 function syncBundleResources(): void {
-  // The npm package runs bin/companion-installer.ts with the user's Bun; only
-  // the DMG needs the compiled copy, which embeds a whole Bun runtime.
-  const installer = resolve(binaryDir, "CompanionInstaller");
-  if (process.env.LATTICES_SKIP_COMPANION_INSTALLER === "1") rmSync(installer, { force: true });
-  else execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), installer], { stdio: "inherit" });
   mkdirSync(resourcesDir, { recursive: true });
+  rmSync(resolve(binaryDir, "CompanionInstaller"), { force: true });
+  execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(resourcesDir, "companion-installer.js")], { stdio: "inherit" });
   if (existsSync(iconPath)) {
     execFileSync("cp", [iconPath, resolve(resourcesDir, "AppIcon.icns")]);
   }
