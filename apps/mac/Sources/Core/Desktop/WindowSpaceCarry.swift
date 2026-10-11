@@ -223,6 +223,40 @@ enum WindowSpaceCarry {
         return matching.count == 1 ? matching[0] : nil
     }
 
+    /// Adds a Desktop to the display at `bounds` with its own Spaces bar's
+    /// add button, the "+" Mission Control shows at the bar's end. Blocks
+    /// like `carry`; never call it on the main thread.
+    static func addDesktop(onDisplayAt bounds: CGRect) -> Outcome {
+        precondition(!Thread.isMainThread, "WindowSpaceCarry blocks; run it off the main thread")
+        guard WindowRelocationGate.lock.try() else {
+            return .failed("Another window relocation is in progress; retry after it finishes")
+        }
+        defer { WindowRelocationGate.lock.unlock() }
+        guard let windowManager = windowManagerApp() else { return .failed("WindowManager isn't running") }
+        guard openMissionControl(windowManager) else { return .failed("Mission Control didn't open") }
+        defer { closeMissionControl(windowManager) }
+        let centre = CGPoint(x: bounds.midX, y: bounds.midY)
+        func bar() -> AXUIElement? {
+            missionControlDisplays(windowManager)
+                .first { frame($0)?.contains(centre) ?? false }
+                .flatMap { children($0).first { identifier($0) == "mc.spaces" } }
+        }
+        func count() -> Int {
+            bar().flatMap { children($0).first { identifier($0) == "mc.spaces.list" } }.map { children($0).count } ?? 0
+        }
+        guard waitUntil(timeout: 1.5, { bar() != nil }), let group = bar(),
+              let add = children(group).first(where: { identifier($0) == "mc.spaces.add" })
+        else { return .failed("Mission Control shows no add button for that display") }
+        let before = count()
+        let pressed = AXUIElementPerformAction(add, kAXPressAction as CFString)
+        guard pressed == .success, waitUntil(timeout: 1.5, { count() > before }) else {
+            DiagnosticLog.shared.warn("WindowSpaceCarry: add desktop press=\(pressed.rawValue) before=\(before) after=\(count())")
+            return .failed("Mission Control didn't add the Desktop")
+        }
+        DiagnosticLog.shared.info("WindowSpaceCarry: added desktop display=\(bounds) desktops=\(before)->\(count())")
+        return .moved
+    }
+
     private static func windowTitle(_ wid: UInt32) -> String? {
         guard let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, wid) as? [[String: Any]] else { return nil }
         return windows.first?[kCGWindowName as String] as? String

@@ -53,28 +53,48 @@ final class OverviewMonitorLayoutTests: XCTestCase {
     }
     func testTwoChooseSideBySideWideAndStackedTall() {
         let monitors = desk(2)
-        for (room, choice) in [(CGSize(width: 1200, height: 430), OverviewMonitorLayout.Arrangement.sideBySide),
+        for (room, choice) in [(CGSize(width: 1200, height: 430), OverviewMonitorLayout.Arrangement.spatial),
                                (CGSize(width: 500, height: 900), .stacked)] {
             let plan = OverviewMonitorLayout.plan(monitors, in: room, preferred: nil)
             XCTAssertEqual(plan.arrangement, choice)
             assertFits(plan, monitors: monitors, room: room)
         }
     }
-    func testThreeChooseLeastWasteAndKeepMainOrPinnedLargest() {
-        let monitors = desk(3)
-        for room in [CGSize(width: 1200, height: 460), CGSize(width: 540, height: 950)] {
-            for preferred in [nil, UInt32(102)] as [UInt32?] {
-                let plan = OverviewMonitorLayout.plan(monitors, in: room, preferred: preferred)
-                XCTAssertTrue([.focusColumn, .focusRow].contains(plan.arrangement))
-                XCTAssertEqual(plan.placements.first?.id, Int(preferred ?? 100))
-                XCTAssertEqual(plan.placements.filter(\.compact).count, 2)
-                assertFits(plan, monitors: monitors, room: room)
-                let leader = plan.placements[0].map
-                XCTAssertTrue(plan.placements.dropFirst().allSatisfy { $0.map.width * $0.map.height <= leader.width * leader.height })
+    func testEveryMonitorSharesOneScale() {
+        for count in [2, 3] {
+            let monitors = desk(count)
+            for room in [CGSize(width: 1200, height: 460), CGSize(width: 540, height: 950), CGSize(width: 1600, height: 700)] {
+                for preferred in [nil, UInt32(101)] as [UInt32?] {
+                    let plan = OverviewMonitorLayout.plan(monitors, in: room, preferred: preferred)
+                    XCTAssertEqual(plan.placements.count, count)
+                    XCTAssertEqual(plan.placements.first?.id, Int(preferred ?? 100))
+                    assertFits(plan, monitors: monitors, room: room)
+                    let scales = plan.placements.map { p in p.map.width / monitors.first { $0.id == p.id }!.display.bounds.width }
+                    XCTAssertLessThan((scales.max()! - scales.min()!) * 1440, 2, "unequal scales \(scales) in \(room)")
+                }
             }
         }
-        XCTAssertEqual(OverviewMonitorLayout.plan(monitors, in: CGSize(width: 1200, height: 460), preferred: nil).arrangement, .focusColumn)
-        XCTAssertEqual(OverviewMonitorLayout.plan(monitors, in: CGSize(width: 540, height: 950), preferred: nil).arrangement, .focusRow)
+    }
+    func testSpatialFollowsTheDeskArrangement() {
+        // A panel left of main and the agent layer hanging below main's right edge.
+        var input = MonitorLayoutFixture.inputs(3)
+        func place(_ i: Int, _ bounds: CGRect) {
+            let d = input.displays[i]
+            input.displays[i] = .init(index: d.index, name: d.name, bounds: bounds, desktops: d.desktops,
+                currentSpaceId: d.currentSpaceId, displayId: d.displayId, availability: d.availability, isMain: d.isMain)
+        }
+        place(1, CGRect(x: -3840, y: 0, width: 3840, height: 2160))
+        place(2, CGRect(x: 3440, y: 1440, width: 1440, height: 900))
+        let monitors = OverviewProjection.make(input, scope: OverviewScope(), selection: []).desk
+        let room = CGSize(width: 1600, height: 700)
+        let plan = OverviewMonitorLayout.plan(monitors, in: room, preferred: nil)
+        XCTAssertEqual(plan.arrangement, .spatial)
+        assertFits(plan, monitors: monitors, room: room)
+        let frame = { (id: Int) in plan.placements.first { $0.id == id }!.frame }
+        XCTAssertLessThan(frame(101).maxX, frame(100).minX)
+        XCTAssertGreaterThan(frame(102).minX, frame(100).maxX)
+        XCTAssertGreaterThan(frame(102).minY, frame(100).minY)
+        XCTAssertGreaterThan(plan.placements.first { $0.id == 101 }!.map.width, plan.placements.first { $0.id == 100 }!.map.width)
     }
     func testOffEmptyAsleepAndMirroredCollapseButExplicitChoicesWin() throws {
         let suite = "monitors.activity." + UUID().uuidString

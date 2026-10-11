@@ -185,13 +185,36 @@ struct OverviewDisplayBlock: View {
         let count = CGFloat(monitor.spaces.count)
         let row = HStack(alignment: .top, spacing: OverviewStage.thumbGap) {
             ForEach(monitor.spaces) { space in thumb(space) }
+            if monitor.display.isAgentLayer { addDesktop }
         }
-        if thumbSize.width * count + OverviewStage.thumbGap * (count - 1) > mapSize.width + 1 {
+        let tiles = count + (monitor.display.isAgentLayer ? 1 : 0)
+        if thumbSize.width * tiles + OverviewStage.thumbGap * (tiles - 1) > mapSize.width + 1 {
             ScrollView(.horizontal, showsIndicators: false) { row }
                 .frame(width: mapSize.width, alignment: .leading)
         } else {
             row
         }
+    }
+
+    /// Mission Control's "+", for the agent layer's display.
+    private var addDesktop: some View {
+        let busy = model.addingDesktop == monitor.display.displayId
+        let aspect = monitor.display.bounds.width / max(1, monitor.display.bounds.height)
+        return Button { model.addDesktop(to: monitor.display) } label: {
+            RoundedRectangle(cornerRadius: 3)
+                .strokeBorder(Palette.textMuted.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                .overlay(Group {
+                    if busy { ProgressView().controlSize(.small) } else {
+                        Image(systemName: "plus").font(.system(size: 12, weight: .medium)).foregroundColor(Palette.textMuted)
+                    }
+                })
+                .frame(width: thumbSize.width, height: thumbSize.width / aspect)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.addingDesktop != nil)
+        .help("Add a Desktop to \(monitor.display.name)")
+        .accessibilityLabel("Add a Desktop to \(monitor.display.name)")
     }
 
     /// A Desktop in miniature with its name and count. The dot marks the

@@ -923,6 +923,27 @@ final class OverviewModel: ObservableObject {
         return true
     }
 
+    /// The display a Desktop is being added to.
+    @Published private(set) var addingDesktop: UInt32?
+
+    /// Mission Control's add button for that display; the desktop watch
+    /// brings the new Desktop into the strip.
+    func addDesktop(to display: OverviewDisplay) {
+        guard addingDesktop == nil, moving.isEmpty else { return }
+        addingDesktop = display.displayId
+        compositionNotice = nil
+        let bounds = CGDisplayBounds(display.displayId)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome = WindowSpaceCarry.addDesktop(onDisplayAt: bounds)
+            DispatchQueue.main.async {
+                self.addingDesktop = nil
+                DesktopModel.shared.refreshNow()
+                self.refresh()
+                if case .failed(let reason) = outcome { self.compositionNotice = "Couldn't add a Desktop: " + reason }
+            }
+        }
+    }
+
     /// Reserve the complete batch so another action cannot interleave its relocations.
     @Published private(set) var moveProgress: String?
 

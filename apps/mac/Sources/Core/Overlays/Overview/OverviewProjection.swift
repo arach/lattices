@@ -58,6 +58,11 @@ struct OverviewDisplay: Equatable {
     /// One live snapshot supplies activity independent of list/search scope.
     var hasCurrentWindows: Bool? = nil
 
+    /// Action's agent layer, the virtual display it hangs off the desktop.
+    var isAgentLayer: Bool {
+        displayId != 0 && CGDisplayVendorNumber(displayId) == 0x4163 && CGDisplayModelNumber(displayId) == 0x4C59
+    }
+
     func desktopNumber(of spaceId: Int) -> Int? {
         desktops.firstIndex(of: spaceId).map { $0 + 1 }
     }
