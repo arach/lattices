@@ -1272,6 +1272,8 @@ final class ActionAgentLayerPiP {
         preview.onDoubleClick = { [weak self] in self?.toggleEnlarged() }
         preview.onHide = { [weak self] in self?.dismiss() }
         panel.contentView = preview
+        preview.needsLayout = true
+        preview.layoutSubtreeIfNeeded()
         for case let button as ActionAgentLayerControlButton in content.controls.arrangedSubviews {
             switch button.title {
             case "Stop": button.toolTip = "Stop this layer task without bringing its app forward"
@@ -1289,18 +1291,42 @@ final class ActionAgentLayerPiP {
         guard !presented, let panel else { return }
         presented = true
         let frame = panel.frame
+        panel.contentView?.layoutSubtreeIfNeeded()
         guard !Self.reduceMotion else {
             panel.orderFrontRegardless()
+            finishPresentation(panel)
             return
         }
         panel.alphaValue = 0
         panel.setFrame(Self.tucked(frame, scale: 0.82), display: false)
         panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { context in
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.42
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
             panel.animator().setFrame(frame, display: true)
             panel.animator().alphaValue = 1
+        }, completionHandler: { [weak self] in
+            self?.logger.log("agent-layer pip: presented frame=\(panel.frame) alpha=\(panel.alphaValue)")
+        })
+        finishPresentation(panel)
+    }
+
+    private func finishPresentation(_ panel: NSPanel) {
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.displayIfNeeded()
+        NSApplication.shared.updateWindows()
+        if let event = NSEvent.otherEvent(
+            with: .applicationDefined,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            subtype: 0,
+            data1: 0,
+            data2: 0
+        ) {
+            NSApplication.shared.postEvent(event, atStart: false)
         }
     }
 
