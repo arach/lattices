@@ -230,6 +230,24 @@ final class LatticesApi {
 
         return .object([
             "version": .string("1.0"),
+            "build": .object([
+                "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"),
+                "revision": .string(Bundle.main.object(forInfoDictionaryKey: "LatticesBuildRevision") as? String ?? "unknown"),
+                "builtAt": .string(Bundle.main.object(forInfoDictionaryKey: "LatticesBuildTimestamp") as? String ?? "unknown"),
+                "bundlePath": .string(Bundle.main.bundlePath)
+            ]),
+            // Product-family discovery, not a claim that these methods run on this daemon.
+            "relatedServices": .object([
+                "action": .object([
+                    "ownership": .string("Separate Action native host and MCP runtime; not Lattices workspace layers"),
+                    "discovery": .string("lats action capabilities"),
+                    "primaryTransport": .string("MCP"),
+                    "mcpDiscoveryTool": .string("action.capabilities"),
+                    "privateBrowserEntryPoint": .string("action.layer.open {browser:true,url:...}"),
+                    "rawWebSocketSupportsLayerOrchestration": .bool(false),
+                    "availability": .string("Verify the installed Action build and connected MCP tool list; daemon availability is not Action capability parity")
+                ])
+            ]),
             "models": .array(modelsList),
             "methods": .array(methodsList),
             "aliases": .object(MethodAliases.table
@@ -977,15 +995,11 @@ final class LatticesApi {
             description: "List all workspace layers and the active index",
             access: .read,
             params: [],
-            returns: .custom("Object with 'layers' array (id, label, index, slot: the ⌘⌥ pad digit or null, projectCount) and 'active' index"),
+            returns: .custom("Object with 'layers' array (id, label, index, slot, projectCount), 'active' index or null when off, 'focusActive' and 'rememberedIndex'"),
             handler: { _ in
+                Self.onMain {
                 let wm = WorkspaceManager.shared
-                guard let config = wm.config, let layers = config.layers else {
-                    return .object([
-                        "layers": .array([]),
-                        "active": .int(0)
-                    ])
-                }
+                let layers = wm.layers
                 return .object([
                     "layers": .array(layers.enumerated().map { i, layer in
                         .object([
@@ -996,9 +1010,12 @@ final class LatticesApi {
                             "projectCount": .int(layer.projects.count)
                         ])
                     }),
-                    "active": .int(wm.activeLayerIndex),
+                    "active": wm.activeLayerSelection.map { .int($0) } ?? .null,
+                    "focusActive": .bool(wm.isLayerFocusActive),
+                    "rememberedIndex": .int(wm.activeLayerIndex),
                     "stage": Self.layerStageStatus()
                 ])
+                }
             }
         ))
 
@@ -1010,7 +1027,7 @@ final class LatticesApi {
                 Param(name: "layer", type: "string", required: false, description: "Layer id or label (default: every layer)"),
                 Param(name: "index", type: "int", required: false, description: "Layer index"),
             ],
-            returns: .custom("Object with 'active' index and 'layers': each with id, label, index, slot, active, layout and 'entries' {index, name, rule, pattern, missing, windows {wid, app, title, presence, where}}. presence is showing, elsewhere, parked or hidden"),
+            returns: .custom("Object with 'active' index or null when off, 'focusActive', 'rememberedIndex' and 'layers': each with id, label, index, slot, active, layout and 'entries' {index, name, rule, pattern, missing, windows {wid, app, title, presence, where}}. presence is showing, elsewhere, parked or hidden"),
             handler: { params in
                 try Self.onMain {
                     let wm = WorkspaceManager.shared
@@ -1021,7 +1038,9 @@ final class LatticesApi {
                     let overviews = wm.overviews(in: DesktopModel.shared.allWindows())
                         .filter { only == nil || $0.index == only }
                     return .object([
-                        "active": .int(wm.activeLayerIndex),
+                        "active": wm.activeLayerSelection.map { .int($0) } ?? .null,
+                        "focusActive": .bool(wm.isLayerFocusActive),
+                        "rememberedIndex": .int(wm.activeLayerIndex),
                         "layers": .array(overviews.map { wm.layerMembersJSON($0) }),
                     ])
                 }
@@ -1071,24 +1090,32 @@ final class LatticesApi {
             }
         ))
 
+        for method in ["layers.exit", "layers.reveal"] {
         api.register(Endpoint(
-            method: "layers.reveal",
-            description: "Show All: put back every window a layer switch parked and unhide every app it hid",
+            method: method,
+            description: "Exit Layers: turn layer focus off, restore parked windows and unhide apps; retry unavailable windows when their desktop is shown",
             access: .mutate,
             params: [],
-            returns: .custom("Object with 'unparked', 'stillParked' and 'rescued' counts, 'unhidden' app names, and the resulting 'stage'"),
+            returns: .custom("Object with 'focusActive': false, 'active': null, 'unparked', 'stillParked', 'rescued', 'unhidden', 'stillHidden', 'recoveryPending' and 'stage'"),
             handler: { _ in
-                let outcome = LayerStage.shared.showAll()
+                Self.onMain {
+                let outcome = WorkspaceManager.shared.exitLayers(showFeedback: false)
                 return .object([
                     "ok": .bool(true),
+                    "focusActive": .bool(false),
+                    "active": .null,
                     "unparked": .int(outcome.unparked.count),
                     "stillParked": .int(outcome.stillParked),
                     "rescued": .int(outcome.rescued),
                     "unhidden": .array(outcome.unhiddenApps.map { .string($0) }),
+                    "stillHidden": .array(outcome.stillHiddenApps.map { .string($0) }),
+                    "recoveryPending": .bool(outcome.remainingToRestore > 0),
                     "stage": Self.layerStageStatus()
                 ])
+                }
             }
         ))
+        }
 
         api.register(Endpoint(
             method: "overlay.publish",
