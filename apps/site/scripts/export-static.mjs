@@ -15,6 +15,7 @@ import swift from 'shiki/langs/swift.mjs'
 import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
 import { copyActionReferences } from './action-docs.mjs'
+import { actionDescription } from '../src/lib/action-schema.ts'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import { stripMdxImports } from '../src/lib/markdown.ts'
@@ -77,7 +78,7 @@ const postUpdated = await getLastUpdatedBatch(
 await writeRoute(
   '/action',
   'Action — computer use from Lattices',
-  'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
+  actionDescription,
   renderActionPage(),
 )
 await copyActionDocs()

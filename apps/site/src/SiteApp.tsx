@@ -10,6 +10,7 @@ import ConceptExperimentPage from './components/ConceptExperimentPage'
 import FamilyPage from './components/FamilyPage'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
 import { routeBrand } from './lib/brand'
+import { actionDescription } from './lib/action-schema'
 
 export default function SiteApp() {
   const [path, setPath] = useState(() => normalizePath(window.location.pathname))
@@ -138,7 +139,7 @@ function resolveRoute(path: string): Route {
     return {
       kind: 'action',
       title: 'Action — computer use from Lattices',
-      description: 'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
+      description: actionDescription,
     }
   }
 
