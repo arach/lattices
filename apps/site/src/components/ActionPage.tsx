@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import actionDownload from "../action-download.json";
 import type { MouseEvent } from "react";
 import { ActionMark } from "./ActionMark";
-import actionMiraArt from "../../../../products/action/docs/assets/brand/landing-mira.webp";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
 import { ActionDemo } from "./ActionDemo";
 import { ActionQuickStart } from "./ActionQuickStart";
@@ -217,19 +216,6 @@ export default function ActionPage() {
               </article>
             </div>
           </div>
-        </section>
-
-        <section className="action-companion" aria-labelledby="action-companion-title">
-          <div className="action-companion-copy">
-            <p className="action-kicker">Field companion</p>
-            <h2 id="action-companion-title">The runtime has a witness.</h2>
-            <p>
-              The Action visual language is a technical field manual. Mira sits in the margin while the Mac does the work.
-            </p>
-          </div>
-          <figure className="action-companion-art">
-            <img src={actionMiraArt} alt="Mira, a compact field companion in goggles and a scarf, sitting beside a capture console" />
-          </figure>
         </section>
 
         <section className="action-source" aria-labelledby="action-source-title">
