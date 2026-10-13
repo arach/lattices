@@ -57,20 +57,6 @@ enum SpaceAssignments {
         return assigned
     }
 
-    /// Clears the app's assignment, the same as Assign To: None in its Dock
-    /// menu. The Dock reads the setting at launch, so it restarts; windows and
-    /// desktops are kept.
-    static func unassign(bundleId: String) -> Bool {
-        let id = bundleId.lowercased()
-        CFPreferencesAppSynchronize(domain)
-        var raw = CFPreferencesCopyAppValue(key, domain) as? [String: Any] ?? [:]
-        guard raw.removeValue(forKey: id) != nil else { return false }
-        CFPreferencesSetAppValue(key, raw as CFDictionary, domain)
-        CFPreferencesAppSynchronize(domain)
-        NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").forEach { $0.terminate() }
-        return true
-    }
-
     static func json(_ assignment: Assignment, displays: [DisplaySpaces]) -> JSON {
         let running = NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier?.lowercased() == assignment.bundleId }
         var object: [String: JSON] = [

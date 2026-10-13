@@ -54,7 +54,6 @@ Machines and displays:
   lats display restore [display]  Put gathered windows back where they sat
   lats display lend <display>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
   lats display assignments  Apps macOS holds to one desktop (Dock › Assign To)
-  lats display unassign <app>  Clear an app's assignment (restarts the Dock)
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
   lats --host <name> pair Pair with a lattices-host (approve on the host)

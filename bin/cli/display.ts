@@ -56,13 +56,6 @@ export async function displayCommand(sub?: string, ...rest: string[]): Promise<v
       }
       return;
     }
-    if (sub === "unassign") {
-      const app = rest.join(" ").trim();
-      if (!app) { console.log("Usage: lats display unassign <app>"); return; }
-      const result = await daemonCall("spaces.unassign", { app }) as any;
-      console.log(result.unassigned ? `Unassigned ${app}; the Dock restarted to apply it.` : `${app} isn't assigned to a desktop.`);
-      return;
-    }
-    console.log("Usage: lats display [list|gather <display> [--to <display>]|restore [display]|lend <display>|assignments|unassign <app>]");
+    console.log("Usage: lats display [list|gather <display> [--to <display>]|restore [display]|lend <display>|assignments]");
   });
 }

@@ -1006,30 +1006,6 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "spaces.unassign",
-            description: "Clear an app's desktop assignment, the same as Assign To: None in its Dock menu. Restarts the Dock to apply it; windows and desktops are kept",
-            access: .mutate,
-            params: [
-                Param(name: "app", type: "string", required: true, description: "App name or bundle id"),
-            ],
-            returns: .custom("Object with 'bundleId' and 'unassigned' (false when the app had no assignment)"),
-            handler: { params in
-                guard let query = params?["app"]?.stringValue?.trimmingCharacters(in: .whitespaces), !query.isEmpty else {
-                    throw RouterError.missingParam("app")
-                }
-                let assignments = SpaceAssignments.current()
-                let lowered = query.lowercased()
-                let bundleId = assignments.first(where: { $0.bundleId == lowered })?.bundleId
-                    ?? NSWorkspace.shared.runningApplications.first(where: {
-                        $0.localizedName?.lowercased() == lowered
-                    })?.bundleIdentifier?.lowercased()
-                guard let bundleId else { throw RouterError.notFound("app \(query)") }
-                let unassigned = Self.onMain { SpaceAssignments.unassign(bundleId: bundleId) }
-                return .object(["bundleId": .string(bundleId), "unassigned": .bool(unassigned)])
-            }
-        ))
-
-        api.register(Endpoint(
             method: "layers.list",
             description: "List all workspace layers and the active index",
             access: .read,

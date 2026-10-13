@@ -220,7 +220,7 @@ final class ActionRuntime {
         } else if let assigned = assignedConflict {
             blockedReason = "app-assigned-desktop"
             let name = resolved.app ?? "This app"
-            assignmentMessage = "\(name) is assigned to \(SpaceAssignments.describe(spaceId: assigned, displays: displays)) in macOS, which pulls its windows back there. Move it there, or unassign it: lats display unassign \"\(name)\""
+            assignmentMessage = "\(name) is assigned to \(SpaceAssignments.describe(spaceId: assigned, displays: displays)) in macOS (Dock › Options › Assign To), which pulls its windows back there"
             trace.append("blocked: \(name) is assigned to desktop \(assigned)")
         } else {
             DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) display=\(sourceDisplay.displayIndex) spaces=\(before.spaceIds) → display=\(targetDisplay.displayIndex) space=\(spaceId)")
