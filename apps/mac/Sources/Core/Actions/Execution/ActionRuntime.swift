@@ -176,11 +176,21 @@ final class ActionRuntime {
         } else {
             targetDisplay = sourceDisplay
         }
+        // macOS holds an app assigned to a desktop (Dock › Options › Assign
+        // To) on that desktop. Sent to its display, it goes there; sent to
+        // another desktop on that display, macOS would pull it straight back.
+        let binding = SpaceAssignments.binding(forPid: pid)
+        let assignedHere: Int? = {
+            guard case .desktop(let assigned)? = binding,
+                  targetDisplay.spaces.contains(where: { $0.id == assigned }) else { return nil }
+            return assigned
+        }()
         // A placement without a display keeps the window on its own desktop.
-        let spaceId = requestedSpaceId ?? (displayIndex == nil ? sourceSpaceId : targetDisplay.currentSpaceId)
+        let spaceId = requestedSpaceId ?? (displayIndex == nil ? sourceSpaceId : assignedHere ?? targetDisplay.currentSpaceId)
         guard targetDisplay.spaces.contains(where: { $0.id == spaceId }) else {
             throw RouterError.custom("Desktop \(spaceId) does not belong to display \(targetDisplay.displayIndex), or is a full-screen Space")
         }
+        let assignedConflict = SpaceAssignments.conflict(binding, destinationSpaceId: spaceId, displays: displays)
         guard let sourceScreen = onMain({ DisplayGeometryMapper.screen(for: sourceDisplay, in: NSScreen.screens) }),
               let targetScreen = onMain({ DisplayGeometryMapper.screen(for: targetDisplay, in: NSScreen.screens) }) else {
             throw RouterError.custom("Could not resolve source and destination displays")
@@ -201,11 +211,17 @@ final class ActionRuntime {
         let tolerance = Self.verificationTolerance(forApp: resolved.app)
         var outcome: WindowRelocation.Result?
         var blockedReason: String?
+        var assignmentMessage: String?
         if dryRun {
             trace.append("dry run; skipped relocation")
         } else if !AXIsProcessTrusted() {
             blockedReason = "accessibility-not-trusted"
             trace.append("blocked: Accessibility permission required")
+        } else if let assigned = assignedConflict {
+            blockedReason = "app-assigned-desktop"
+            let name = resolved.app ?? "This app"
+            assignmentMessage = "\(name) is assigned to \(SpaceAssignments.describe(spaceId: assigned, displays: displays)) in macOS, which pulls its windows back there. Move it there, or unassign it: lats display unassign \"\(name)\""
+            trace.append("blocked: \(name) is assigned to desktop \(assigned)")
         } else {
             DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) display=\(sourceDisplay.displayIndex) spaces=\(before.spaceIds) → display=\(targetDisplay.displayIndex) space=\(spaceId)")
             outcome = WindowRelocation.execute(from: before, to: destination, tolerance: tolerance, environment: environment)
@@ -269,7 +285,13 @@ final class ActionRuntime {
         if let title = resolved.title { receipt["title"] = .string(title) }
         if let session = resolved.session { receipt["session"] = .string(session) }
         if let failure = outcome?.failure { receipt["failureReason"] = .string(failure) }
-        if let blockedReason {
+        if let assigned = assignedConflict {
+            receipt["assignedSpaceId"] = .int(assigned)
+        }
+        if let assignmentMessage {
+            receipt["blockedReason"] = .string("app-assigned-desktop")
+            receipt["message"] = .string(assignmentMessage)
+        } else if let blockedReason {
             receipt["blockedReason"] = .string(blockedReason)
             receipt["requiredPermissions"] = .array([.string("accessibility")])
         }

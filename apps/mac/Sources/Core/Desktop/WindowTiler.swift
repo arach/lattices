@@ -853,6 +853,23 @@ enum WindowTiler {
         return result
     }
 
+    /// Each desktop's Space id by the UUID macOS uses for it in
+    /// com.apple.spaces. A display's first desktop has the empty UUID.
+    static func spaceIdsByUUID() -> [String: Int] {
+        guard let mainConn = CGS.mainConnectionID,
+              let copyManaged = CGS.copyManagedDisplaySpaces,
+              let managed = copyManaged(mainConn())?.takeRetainedValue() as? [[String: Any]] else { return [:] }
+        var result: [String: Int] = [:]
+        for display in managed {
+            for space in display["Spaces"] as? [[String: Any]] ?? [] where (space["type"] as? Int ?? 0) == 0 {
+                guard let uuid = space["uuid"] as? String,
+                      let sid = space["id64"] as? Int ?? space["ManagedSpaceID"] as? Int else { continue }
+                if result[uuid] == nil { result[uuid] = sid }
+            }
+        }
+        return result
+    }
+
     /// Get the current active Space ID
     static func getCurrentSpace() -> Int {
         guard let mainConn = CGS.mainConnectionID, let getActive = CGS.getActiveSpace else { return 0 }

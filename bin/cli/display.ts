@@ -44,6 +44,25 @@ export async function displayCommand(sub?: string, ...rest: string[]): Promise<v
       console.log(result.asking ? `Asking where to gather ${result.name}'s windows.` : `Nothing on ${result.name} to gather.`);
       return;
     }
-    console.log("Usage: lats display [list|gather <display> [--to <display>]|restore [display]|lend <display>]");
+    if (sub === "assignments" || sub === "assigned") {
+      const {assignments} = await daemonCall("spaces.assignments") as {assignments: any[]};
+      if (!assignments.length) { console.log("No apps are assigned to a desktop."); return; }
+      const names = await daemonCall("spaces.list").then((ds: any[]) => new Map(ds.map(d => [d.displayIndex, d.name])), () => new Map());
+      for (const a of assignments) {
+        const where = a.assignedTo === "all" ? "All desktops"
+          : a.assignedTo === "missing" ? "a desktop that no longer exists"
+          : `Desktop ${a.desktop ?? "?"}${names.get(a.display) ? ` on ${names.get(a.display)}` : ""}`;
+        console.log(`  ${(a.app ?? a.bundleId).padEnd(28)} ${where}`);
+      }
+      return;
+    }
+    if (sub === "unassign") {
+      const app = rest.join(" ").trim();
+      if (!app) { console.log("Usage: lats display unassign <app>"); return; }
+      const result = await daemonCall("spaces.unassign", { app }) as any;
+      console.log(result.unassigned ? `Unassigned ${app}; the Dock restarted to apply it.` : `${app} isn't assigned to a desktop.`);
+      return;
+    }
+    console.log("Usage: lats display [list|gather <display> [--to <display>]|restore [display]|lend <display>|assignments|unassign <app>]");
   });
 }

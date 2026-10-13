@@ -191,7 +191,7 @@ enum WindowMovementService {
     static func failureMessage(for receipt: JSON) -> String? {
         if receipt["status"]?.stringValue == "ok", receipt["verified"]?.boolValue == true { return nil }
         if receipt["status"]?.stringValue == "blocked" {
-            return receipt["blockedReason"]?.stringValue ?? "Grant Accessibility to move windows"
+            return receipt["message"]?.stringValue ?? receipt["blockedReason"]?.stringValue ?? "Grant Accessibility to move windows"
         }
         return receipt["failureReason"]?.stringValue
             ?? receipt["message"]?.stringValue
