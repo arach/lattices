@@ -15,6 +15,28 @@ cd lattices && bun link
 
 Verify: `lattices help` should print usage info.
 
+### One-command setup
+
+For a new Mac, the setup script installs Homebrew when needed, tmux, Bun,
+and the CLI. Review the [installer source](https://github.com/arach/lattices/blob/main/scripts/install.sh) before running:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+```
+
+The published npm CLI is currently **0.11.1** (August 13, 2026); the Mac app
+release is **0.12.0**. Install the Mac app with Homebrew:
+
+```bash
+brew tap arach/tap
+brew trust arach/tap
+brew install --cask arach/tap/lattices
+```
+
+The cask requires Apple Silicon and macOS 26 or later. It installs the app;
+the optional CLI is available with `bun install -g @arach/lattices`.
+You can also download the [disk image](https://github.com/arach/lattices/releases/download/v0.12.0/Lattices.dmg).
+
 ## 2. Launch the menu bar app
 
 ```bash

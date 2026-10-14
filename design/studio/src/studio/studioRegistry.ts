@@ -7,7 +7,7 @@ import { ENG_DOC_GROUPS } from "@/studio/lib/engDocs";
  */
 
 export type Bucket = "foundations" | "studies" | "docs";
-export type Surface = "macos" | "cross";
+export type Surface = "macos" | "cross" | "linux";
 export type Status = "concept" | "in-flight" | "shipped";
 
 export type LatticesPage = StudioPage<Bucket, Surface, Status>;
@@ -155,6 +155,16 @@ const studioPages: readonly LatticesPage[] = [
       "apps/mac/Sources/Core/Overlays/HUD/HUDWindowHints.swift",
     ],
   },
+  {
+    href: "/studio/studies/linux-command-center",
+    label: "Linux command center — three directions",
+    bucket: "studies",
+    surface: "linux",
+    status: "concept",
+    blurb:
+      "Lattices on Omarchy/Hyprland taken three ways: Mission Control (every space and window as an inventory), Flight Deck (one space to scale, keyboard first) and Operator Console (the lats CLI as the product). One local simulation drives all three.",
+    source: ["bin/lattices.ts", "docs/layers.md"],
+  },
 ];
 
 /**
@@ -179,7 +189,8 @@ export const pages: readonly LatticesPage[] = [...studioPages, ...docPages];
 
 const defined = defineStudio({
   pages,
-  surfaceOrder: ["macos", "cross"],
+  surfaceOrder: ["macos", "cross", "linux"],
+  surfaceLabels: { macos: "macOS", cross: "Cross-platform", linux: "Linux" },
   defaultSurface: "macos",
   buckets: [{ key: "foundations" }, { key: "studies" }, { key: "docs" }],
   statuses: {

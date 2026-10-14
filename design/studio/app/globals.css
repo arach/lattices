@@ -6,6 +6,7 @@
 @import "./studies/shell.css";
 @import "./studies/shell-b.css";
 @import "./studies/menubar.css";
+@import "./studies/linux-command-center.css";
 
 @source "../app/**/*.{ts,tsx}";
 @source "../src/**/*.{ts,tsx}";

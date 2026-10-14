@@ -1469,86 +1469,41 @@ button.nav-link {
   line-height: 1.75;
 }
 
-.install-chooser {
-  padding: 96px 0 54px;
-}
-
-.install-chooser-head {
-  margin-bottom: 36px;
-  text-align: center;
-}
-
-.install-chooser-head h2 {
-  margin: 0 auto;
-}
-
-.install-chooser-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.install-chooser-grid article {
-  display: flex;
-  min-height: 220px;
-  flex-direction: column;
-  align-items: flex-start;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 22px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  text-align: left;
-}
-
-.install-chooser-label {
-  margin-bottom: 22px;
-  color: var(--green);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-.install-chooser-grid h3 {
-  margin: 0 0 10px;
-  font-size: 17px;
-}
-
-.install-chooser-grid p {
-  margin: 0 0 26px;
-  color: var(--text-dim);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.install-chooser-grid a {
-  margin-top: auto;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 620;
-}
-
-.install-chooser-grid a span {
-  margin-left: 3px;
-  color: var(--green);
-}
-
-.install-chooser-grid small {
-  margin-top: 10px;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.install-chooser-grid small code {
-  display: block;
-  overflow-wrap: anywhere;
-  font-size: inherit;
-}
-
-.install-chooser-footnote {
-  margin-top: 18px;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: center;
+.install-chooser { padding: 96px 0 54px; scroll-margin-top: 80px; }
+.install-chooser-head { margin-bottom: 42px; text-align: center; }
+.install-chooser-head h2 { margin: 0 auto; }
+.install-chooser-head p { color: var(--text-dim); margin: 16px 0 0; }
+.install-main { display: grid; grid-template-columns: 1.15fr 1fr; border: 1px solid var(--border-lit); border-radius: 16px; overflow: hidden; background: var(--surface); }
+.install-download { padding: 42px; grid-row: span 2; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.install-app-mark { width: 76px; height: 76px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--border-lit); border-radius: 16px; margin-bottom: 26px; }
+.install-main h3 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 12px; }
+.install-main p { color: var(--text-dim); font-size: 15px; line-height: 1.6; margin: 0 0 28px; }
+.install-primary { display: inline-flex; align-items: center; gap: 12px; background: var(--text); color: var(--bg); border-radius: 8px; padding: 16px 22px; font-weight: 650; font-size: 15px; transition: opacity .15s; }
+.install-primary:hover { opacity: .82; }
+.install-primary svg { width: 19px; height: 19px; }
+.install-main small { display: block; color: var(--text-dim); font-size: 12px; line-height: 1.6; margin-top: 14px; }
+.install-main .install-directions { font-size: 13px; margin: 26px 0 0; }
+.install-brew { border-left: 1px solid var(--border-lit); padding: 42px; display: flex; flex-direction: column; justify-content: center; background: color-mix(in srgb, var(--bg) 60%, var(--surface)); }
+.install-brew-title { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.install-brew-title h3 { margin: 0; font-size: 21px; }
+.install-brew-title span { font-size: 11px; color: var(--text-dim); border: 1px solid var(--border-lit); padding: 4px 8px; border-radius: 4px; }
+.install-command { padding: 18px; border: 1px solid var(--border-lit); border-radius: 8px; background: var(--bg); }
+.install-command code { font-size: 12px; overflow-wrap: anywhere; color: var(--text-dim); }
+.install-developer { margin-top: 24px; border-bottom: 1px solid var(--border-lit); }
+.install-developer summary { padding: 18px 0; cursor: pointer; font-size: 14px; font-weight: 600; }
+.install-developer summary span { color: var(--text-dim); font-weight: 400; margin-left: 12px; font-size: 13px; }
+.install-developer-options { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 32px; padding: 22px 0 32px; }
+.install-developer-options h3 { font-size: 15px; margin: 0 0 14px; }
+.install-developer-options code { font-size: 12px; overflow-wrap: anywhere; }
+.install-developer-options p { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 12px 0; }
+.install-developer-options a { font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.install-chooser :is(a, summary):focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+@media (max-width: 760px) {
+  .install-main { grid-template-columns: 1fr; }
+  .install-download, .install-brew { padding: 28px; }
+  .install-brew { border-left: 0; border-top: 1px solid var(--border-lit); }
+  .install-developer-options { grid-template-columns: 1fr; gap: 28px; }
+  .install-developer summary span { display: block; margin: 8px 0 0 18px; }
 }
 
 /* ── Hero pillars ─────────────────────────────────── */
@@ -5610,4 +5565,41 @@ button.nav-link {
     padding: 48px 0;
   }
   :is(.blink-page, .speech-page) .action-proof { padding: 48px 16px; }
+}
+
+.install-npm { padding: 32px 42px; border-left: 1px solid var(--border-lit); border-top: 1px solid var(--border-lit); }
+.install-npm h3 { font-size: 21px; }
+.install-npm p { margin-bottom: 20px; }
+.install-npm small a { text-decoration: underline; text-underline-offset: 3px; }
+.install-copy-command { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.install-copy-command button { background: var(--surface); color: var(--text); border: 1px solid var(--border-lit); border-radius: 4px; padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.install-copy-command button:hover { background: var(--bg); }
+.install-copy-command button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+@media (max-width: 760px) { .install-download { grid-row: auto; } .install-npm { padding: 28px; border-left: 0; } }
+
+/* Ambient install lighting, intensified by hover and keyboard focus. */
+.install-main { border-color: color-mix(in srgb, var(--green) 24%, var(--border-lit)); box-shadow: 0 0 70px color-mix(in srgb, var(--green) 7%, transparent); }
+.install-main > :is(.install-download, .install-brew, .install-npm) {
+  position: relative; isolation: isolate;
+  background: radial-gradient(ellipse at 20% 0%, color-mix(in srgb, var(--green) 11%, transparent), transparent 75%), var(--surface);
+}
+.install-main > :is(.install-download, .install-brew, .install-npm)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 35% 0%, color-mix(in srgb, var(--green) 23%, transparent), transparent 85%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--green) 55%, transparent);
+  opacity: 0; transition: opacity 220ms ease;
+}
+.install-main > :focus-within::before { opacity: 1; }
+.install-app-mark, .install-command, .install-copy-command button { transition: border-color 220ms ease, box-shadow 220ms ease, background-color 220ms ease; }
+.install-main > :focus-within .install-command { border-color: color-mix(in srgb, var(--green) 60%, var(--border-lit)); }
+.install-primary { transition: box-shadow 220ms ease, background-color 220ms ease; }
+.install-primary:hover, .install-primary:focus-visible { opacity: 1; box-shadow: 0 0 32px color-mix(in srgb, var(--green) 38%, transparent); }
+.install-copy-command button:hover { background: color-mix(in srgb, var(--green) 18%, var(--surface)); border-color: var(--green); box-shadow: 0 0 18px color-mix(in srgb, var(--green) 20%, transparent); }
+@media (hover: hover) {
+  .install-main > :hover::before { opacity: 1; }
+  .install-main > :hover :is(.install-app-mark, .install-command) { border-color: color-mix(in srgb, var(--green) 55%, var(--border-lit)); box-shadow: 0 0 24px color-mix(in srgb, var(--green) 10%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-main > :is(.install-download, .install-brew, .install-npm)::before,
+  .install-app-mark, .install-command, .install-copy-command button, .install-primary { transition: none; }
 }

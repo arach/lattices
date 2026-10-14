@@ -125,7 +125,7 @@ export function SiteHeader() {
   // The initial theme is set synchronously by the inline script in index.html
   // to avoid a flash of wrong-theme content. This effect re-syncs on toggle.
   const [theme, setTheme] = useState<'light' | 'dark'>(
-    () => (document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'dark',
+    () => (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') as 'light' | 'dark') || 'dark',
   )
 
   useEffect(() => {
@@ -155,6 +155,7 @@ export function SiteHeader() {
             <span>lattices</span>
           </a>
           <nav className="site-links" aria-label="Primary navigation">
+            <a href="/learn">Learn</a>
             <a href="/blog" className="nav-blog-link">Blog</a>
             <a href="/docs/overview">Docs</a>
             <ProductsMenu />

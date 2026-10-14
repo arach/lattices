@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import actionDownload from "../action-download.json";
 import type { MouseEvent } from "react";
 import { ActionMark } from "./ActionMark";
-import actionHeroArt from "../../../../products/action/docs/assets/brand/landing-hero.webp";
-import actionMiraArt from "../../../../products/action/docs/assets/brand/landing-mira.webp";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
-import actionProductFilm from "../../../../products/action/docs/assets/action-record-the-work.mp4";
-import actionProductFilmCaptions from "../../../../products/action/docs/assets/action-record-the-work.vtt";
-import actionProductFilmPoster from "../../../../products/action/docs/assets/action-record-the-work-poster.jpg";
+import { ActionDemo } from "./ActionDemo";
+import { ActionQuickStart } from "./ActionQuickStart";
+import { actionSchema } from "../lib/action-schema";
+import "../styles/action-demo.css";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
 import { LatticesLogo } from "./LandingPage";
 import { ThemeToggle } from "./ThemeToggle";
@@ -64,6 +63,9 @@ export default function ActionPage() {
 
   return (
     <div className="action-page">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(actionSchema()).replace(/</g, "\\u003c") }} />
+      <link rel="alternate" type="text/plain" href="/action/llms.txt" title="Action agent documentation" />
+      <link rel="describedby" type="application/json" href="/action/agent.json" />
       <iframe ref={downloadFrame} title="Action download" hidden />
       {downloadStatus !== "idle" && (
         <aside className="action-download-notice" role="status" aria-live="polite">
@@ -85,7 +87,7 @@ export default function ActionPage() {
           </a>
           <div className="nav-links">
             <a href="/" className="nav-link action-nav-optional">Lattices</a>
-            <a href="/docs/agents" className="nav-link action-nav-optional">For agents</a>
+            <a href="/action/agents/" data-router="reload" className="nav-link action-nav-optional">For agents</a>
             <a href={sourceUrl} className="nav-link action-nav-source">Source</a>
             <ThemeToggle
               theme={theme}
@@ -97,38 +99,29 @@ export default function ActionPage() {
       </nav>
 
       <main className="action-shell">
-        <section className="action-hero" aria-labelledby="action-title">
-          <div className="action-hero-art" aria-hidden="true">
-            <img src={actionHeroArt} alt="" />
-          </div>
-          <div className="action-hero-inner">
-            <div className="action-hero-copy">
-              <img className="action-hero-mark" src={`/brand/action/action-${theme}.svg`} width={80} height={80} alt="" />
-              <p className="action-kicker action-hero-kicker">A Lattices product · native macOS automation</p>
-              <h1 id="action-title">Action is a unified API for computer use.</h1>
-              <p className="action-hero-lead">
-                Record and share macOS runs with video, screenshots, accessibility context, and traces.
+        <section className="action-demo-hero" aria-labelledby="action-title">
+          <div className="action-demo-intro">
+            <div>
+              <h1 id="action-title">An API for agents to use your computer.</h1>
+              <p className="action-demo-lead">
+                Give agents a workspace of their own. Follow their work in a live preview.
               </p>
+            </div>
+            <div className="action-demo-install">
               <div className="action-hero-actions">
                 <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-primary-cta action-primary-cta">
                   Download for macOS
                   <span aria-hidden="true">↓</span>
                 </a>
-                <a href="/docs/agents" className="hero-secondary-cta action-secondary-cta">
-                  Install for agents
+                <a href="#get-started" className="hero-secondary-cta action-secondary-cta">
+                  Get started
                 </a>
               </div>
-              <p className="action-agent-entry">
-                Reading this as an agent? <a href="/docs/agents">Start here</a> for capabilities, connection, and which browser to drive.
-              </p>
-              <p className="action-platform-note">
-                <span>macOS native</span>
-                <span>local first</span>
-                <span>inspectable runs</span>
-              </p>
+              <p className="action-demo-platform">macOS + Linux · CLI + MCP</p>
             </div>
-
           </div>
+          <ActionDemo />
+          <ActionQuickStart />
         </section>
 
         <div className="action-tech-rail" aria-label="Core technologies">
@@ -137,46 +130,6 @@ export default function ActionPage() {
           <span>AX + OCR</span>
           <span>CLI + MCP</span>
         </div>
-
-        <section className="action-film" aria-labelledby="action-film-title">
-          <div className="action-film-heading">
-            <div>
-              <p className="action-kicker">Product film · 21 seconds</p>
-              <h2 id="action-film-title">Drive any actions on the Mac, safely.</h2>
-            </div>
-            <p>
-              Watch Action use a real browser and native macOS runtime, then leave the video, trace, screenshots, and context attached to the run.
-            </p>
-          </div>
-          <div className="action-film-frame">
-            <video
-              className="action-film-video"
-              controls
-              playsInline
-              preload="metadata"
-              poster={actionProductFilmPoster}
-              aria-label="Action product film: Give your agents a way to use your Mac"
-            >
-              <source src={actionProductFilm} type="video/mp4" />
-              <track
-                kind="captions"
-                srcLang="en"
-                label="English"
-                src={actionProductFilmCaptions}
-              />
-              <a href={actionProductFilm}>Open the Action product film.</a>
-            </video>
-          </div>
-          <div className="action-film-foot" aria-hidden="true">
-            <span>Observe</span>
-            <i />
-            <span>Act</span>
-            <i />
-            <span>Record</span>
-            <i />
-            <span>Review</span>
-          </div>
-        </section>
 
         <section id="architecture" className="action-architecture" aria-labelledby="action-architecture-title">
           <div className="action-architecture-copy">
@@ -215,7 +168,7 @@ export default function ActionPage() {
             </div>
             <article>
               <span className="action-boundary-label action-boundary-label-product">Action</span>
-              <h3>Unified API for computer use</h3>
+              <h3>An API for computer use</h3>
               <p>Target resolution, on-device actions, capture, trace, and review for one inspectable piece of work.</p>
               <a href={downloadUrl} data-router="reload" onClick={startDownload}>Download Action &rarr;</a>
             </article>
@@ -253,19 +206,6 @@ export default function ActionPage() {
               </article>
             </div>
           </div>
-        </section>
-
-        <section className="action-companion" aria-labelledby="action-companion-title">
-          <div className="action-companion-copy">
-            <p className="action-kicker">Field companion</p>
-            <h2 id="action-companion-title">The runtime has a witness.</h2>
-            <p>
-              The Action visual language is a technical field manual. Mira sits in the margin while the Mac does the work.
-            </p>
-          </div>
-          <figure className="action-companion-art">
-            <img src={actionMiraArt} alt="Mira, a compact field companion in goggles and a scarf, sitting beside a capture console" />
-          </figure>
         </section>
 
         <section className="action-source" aria-labelledby="action-source-title">

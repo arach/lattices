@@ -16,6 +16,7 @@ import { TilingStudy } from "@/studio/studies/Tiling";
 import { CrossAppTabsStudy } from "@/studio/studies/CrossAppTabs";
 import { SpaceBezelStudy } from "@/studio/studies/SpaceBezel";
 import { ActionDefinitionsStudy } from "@/studio/studies/ActionDefinitions";
+import { LinuxCommandCenterStudy } from "@/studio/studies/LinuxCommandCenter";
 import {
   HOME_HREF,
   pages,
@@ -73,6 +74,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
   if (page?.href === "/studio/studies/action-definitions") return <ActionDefinitionsStudy page={page} />;
   if (page?.href === "/studio/studies/cross-app-tabs") return <CrossAppTabsStudy page={page} />;
   if (page?.href === "/studio/studies/space-bezel") return <SpaceBezelStudy page={page} />;
+  if (page?.href === "/studio/studies/linux-command-center") return <LinuxCommandCenterStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;
 }

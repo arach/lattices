@@ -5,7 +5,10 @@ import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.12.0/Lattices.dmg";
+const latticesAppVersion = "0.12.0";
+const latticesCliVersion = "0.11.1";
+const latticesDownloadURL = `https://github.com/arach/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`;
+const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 
 export function LatticesLogo({ size = 20 }: { size?: number }) {
   // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
@@ -484,6 +487,23 @@ const tickerMethods = [
 ];
 
 export default function App() {
+  const brewCommand = "brew tap arach/tap\nbrew trust arach/tap\nbrew install --cask arach/tap/lattices";
+  const [brewCopy, setBrewCopy] = useState("Copy");
+  async function copyBrew() {
+    try {
+      await navigator.clipboard.writeText(brewCommand);
+      setBrewCopy("Copied");
+      window.setTimeout(() => setBrewCopy("Copy"), 2000);
+    } catch { setBrewCopy("Select to copy"); }
+  }
+  const [installCopy, setInstallCopy] = useState("Copy");
+  async function copyInstall() {
+    try {
+      await navigator.clipboard.writeText("bun install -g @arach/lattices");
+      setInstallCopy("Copied");
+      window.setTimeout(() => setInstallCopy("Copy"), 2000);
+    } catch { setInstallCopy("Select to copy"); }
+  }
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
   const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
@@ -508,6 +528,7 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
+            <a href="/learn" className="nav-link">Learn</a>
             <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
@@ -766,7 +787,7 @@ export default function App() {
 
         {/* Product spine */}
         <section className="home-sec fade-in fade-in-delay-2" id="features">
-          <SectionHead kicker="The product spine" title="Three jobs, one surface." />
+          <SectionHead title="See your workspace. Put it to work." />
           <div className="home-spine">
             <article>
               <span className="home-spine-num">01</span>
@@ -903,64 +924,63 @@ export default function App() {
         <section className="home-sec" id="local-first">
           <div className="local-trust fade-in">
             <div>
-              <h2>The core runs on your Mac.</h2>
+              <h2>Your workspace, under your control.</h2>
             </div>
             <p>
-              Lattices runs as a local service and exposes a typed API over
-              localhost. Workspace control and action traces stay on-device.
+              Arrange windows, switch projects, and see what your agents do.
+              Workspace control and action history stay on your Mac.
               Optional vision-model features may send screen context to the
-              provider you configure. The source is open, and agent actions are
-              recorded and verifiable.
+              provider you choose. Lattices is open source, so you can inspect
+              how it works.
             </p>
           </div>
         </section>
 
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
-            <h2>Start where you work.</h2>
+            <h2>Make yourself at home.</h2>
+            <p>Get Lattices for your Mac. Everything else is optional.</p>
           </div>
-          <div className="install-chooser-grid">
-            <article>
-              <span className="install-chooser-label">App</span>
-              <h3>Native macOS app</h3>
-              <p>Manage projects, windows, and layers with a click.</p>
-              <a
-                href={latticesDownloadURL}
-                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}
-              >
-                Download for macOS <span aria-hidden="true">↗</span>
+          <div className="install-main">
+            <div className="install-download">
+              <div className="install-app-mark"><LatticesLogo size={48} /></div>
+              <h3>Lattices for Mac</h3>
+              <p>Your windows, projects, and tools. A little more together.</p>
+              <a className="install-primary" href={latticesDownloadURL}
+                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}>
+                <DownloadIcon /> Download for Mac
               </a>
-              <small>Apple Silicon · .dmg</small>
-            </article>
-            <article>
-              <span className="install-chooser-label">CLI</span>
-              <h3>Command line</h3>
-              <p>Launch, search, place, and script the same workspace.</p>
-              <a href="/docs/quickstart">
-                Get the CLI <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npm i -g @arach/lattices</code></small>
-            </article>
-            <article>
-              <span className="install-chooser-label">Skills</span>
-              <h3>Agent skills</h3>
-              <p>Install lattices, action, speech, and blink for every coding agent.</p>
-              <a href="/docs/agents">
-                Get the catalog <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npx skills add arach/lattices</code></small>
-            </article>
-            <article>
-              <span className="install-chooser-label">API</span>
-              <h3>Typed agent API</h3>
-              <p>Build agents and scripts against the whole desktop.</p>
-              <a href="/docs/api">
-                Read the API <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npm i @lattices/sdk</code></small>
-            </article>
+              <small>{latticesDownloadMeta}</small>
+              <p className="install-directions">Open the download. Drag Lattices into Applications.</p>
+            </div>
+            <div className="install-brew">
+              <div className="install-brew-title"><h3>Prefer Homebrew?</h3></div>
+              <p>The same Mac app, installed from your terminal.</p>
+              <div className="install-command install-copy-command">
+                <code style={{ whiteSpace: "pre-wrap" }}>{brewCommand}</code>
+                <button type="button" onClick={copyBrew} aria-label="Copy Homebrew install commands">{brewCopy}</button>
+              </div>
+              <small>Apple Silicon · macOS 26 or later</small>
+              <span className="sr-only" role="status">{brewCopy === "Copied" ? "Homebrew commands copied" : ""}</span>
+            </div>
+            <div className="install-npm">
+              <h3>Install with Bun</h3>
+              <p>The command line for your workspace.</p>
+              <div className="install-command install-copy-command">
+                <code>bun install -g @arach/lattices</code>
+                <button type="button" onClick={copyInstall} aria-label="Copy Bun install command">{installCopy}</button>
+              </div>
+              <small>CLI {latticesCliVersion} · <a href="/docs/quickstart">Setup guide</a></small>
+              <span className="sr-only" role="status">{installCopy === "Copied" ? "Command copied" : ""}</span>
+            </div>
           </div>
-          <p className="install-chooser-footnote">Same service, same live state. Pick the surface that fits.</p>
+          <details className="install-developer">
+            <summary>Developer setup <span>Agent skills &amp; API</span></summary>
+            <div className="install-developer-options">
+              <div><h3>Agent skills</h3><code>npx skills add arach/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
+              <div><h3>Typed API</h3><code>npm i @lattices/sdk</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
+            </div>
+          </details>
         </section>
 
         {/* CTA */}
@@ -978,7 +998,7 @@ export default function App() {
               </span>
               <span className="cta-download-copy">
                 <span>Download for macOS</span>
-                <span className="cta-download-meta">Apple Silicon · .dmg</span>
+                <span className="cta-download-meta">{latticesDownloadMeta}</span>
               </span>
               <span className="cta-download-go" aria-hidden="true">
                 <DownloadIcon />
@@ -1000,7 +1020,7 @@ export default function App() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/lattices')}
+              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/@arach/lattices')}
             >
               CLI package
             </a>
@@ -1045,7 +1065,7 @@ export default function App() {
               GitHub
             </a>
             <a
-                href="https://www.npmjs.com/package/@arach/lattices"
+              href="https://www.npmjs.com/package/@arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
             >

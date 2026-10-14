@@ -1773,65 +1773,66 @@ Provide either `wid` or `session`. If `wid` is given, it takes priority.
 
 #### `window.move`
 
-Move a specific window to another display, into a placement slot, or to a
-different macOS Space. `window.place` stays the canonical placement mutation;
-`window.move` adds the display-to-display move that preserves the window's
-normalized geometry.
+Move a specific window to a display and desktop in one verified operation.
+Without a placement, the window keeps its normalized position and size on the
+target display. A Space ID identifies one desktop on one display; Desktop 2
+on a physical monitor differs from Desktop 2 on a virtual display.
 
 **Params**:
 
-| Field       | Type             | Required | Description                                        |
-|-------------|------------------|----------|----------------------------------------------------|
-| `wid`       | number           | no       | Target CGWindowID (preferred)                      |
-| `session`   | string           | no       | Session name (legacy target)                       |
-| `display`   | number           | no       | Target display index (`spaces.list` `displayIndex`) |
-| `placement` | string \| object | no       | Placement slot on the target display               |
-| `position`  | string           | no       | Alias for `placement`                              |
-| `spaceId`   | number           | no       | Target Space ID (from `spaces.list`)               |
-| `dryRun`    | bool             | no       | Plan and validate without moving the window        |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | number | no | Target CGWindowID (preferred) |
+| `session` | string | no | Session name (legacy target) |
+| `display` | number | no | Target display index from `spaces.list` |
+| `spaceId` | number | no | Absolute target Space ID from `spaces.list` |
+| `placement` | string \| object | no | Placement slot on the target display |
+| `position` | string | no | Alias for `placement` |
+| `dryRun` | bool | no | Validate and plan without moving the window or changing the view |
 
-Provide `wid` or `session` — there is no frontmost fallback — plus at least one
-of `display`, `placement`, or `spaceId`. Invalid combinations are rejected
-synchronously:
+Provide `wid` or `session`, plus at least one of `display`, `spaceId`, or
+`placement`. There is no frontmost-window fallback.
 
-- `spaceId` cannot be combined with `display` or `placement`; move Spaces and
-  geometry in separate calls.
-- An unknown `placement` string or unresolvable `display` index is an error,
-  not a silent default.
+- `spaceId` selects its owning display when `display` is omitted. If both are
+  supplied, the Space must belong to that display. A mismatch is an error.
+- `display` alone selects that display's current desktop. Display indexes
+  resolve through stable display UUIDs.
+- `placement` can accompany either destination. Without a placement, a
+  cross-display move maps the source frame onto the target visible frame and
+  clamps it to fit. A same-display desktop move preserves the frame.
+- Unknown displays, Spaces, and placements are errors. A window must belong
+  to one ordinary desktop; full-screen and multi-Space windows are rejected
+  when their relocation cannot be verified.
 
-**Semantics**:
+For an inactive source desktop, Lattices first carries the window to the
+source display's current desktop. It then moves the window to the target
+display and carries it to the requested desktop. Mission Control can appear
+during these steps. Keep the pointer free until the operation finishes.
 
-- `display` **without** `placement` — the window's normalized `x/y/w/h` within
-  its source display's visible frame is preserved onto the target display's
-  visible frame and clamped to fit. Display indexes resolve to screens through
-  stable display UUIDs, not array order.
-- `display` **with** `placement` (or `placement` alone) — routes through the
-  canonical `window.place` execution path; the receipt carries
-  `compatibilityMethod: "window.move"`.
-- `session` + `spaceId` — waits for `moveWindowToSpace` and returns
-  `{ ok, wid, spaceId, moved, method }` instead of fire-and-forget.
-- `wid` + `spaceId` — synchronous Space move through the CGS primitive. Returns
-  `{ ok, moved, method, fromSpaceIds }`; `method` is `"CGS"` when the window
-  actually moved or `"switch-view"` when macOS denied the move and only the
-  view switched. An unknown `spaceId` is rejected with `Not found`, and CGS
-  being unavailable is an error. `dryRun: true` validates the target and
-  returns `status: "planned"` without touching the window or the view.
-
-**Returns** (geometry moves): an execution receipt with `status`
+**Returns**: an execution receipt with `status`
 (`ok`/`planned`/`blocked`/`failed`), before/target/after frames in `mutations`,
-`sourceDisplay` and `display` (name, index, visible frame), `targetResolution`,
-`verified`, `trace`, and undo metadata. Successful moves are undoable via
-`actions.undo`.
+`sourceDisplay`, `display`, `spaceId`, `fromSpaceIds`, and `afterSpaceIds`.
+`verified` requires `verifiedFrame`, `verifiedDisplay`, and `verifiedSpace`
+to succeed. An AX call or a desktop view switch alone cannot report success.
+A placement receipt retains `action.type: "window.place"` and
+`compatibilityMethod: "window.move"`.
+
+On partial failure, Lattices attempts to restore the original display,
+desktop, and frame. The receipt reports `failureReason`, `rollback`, and the
+observed final state. Successful moves support `actions.undo`, including the
+original desktop. Allow up to 60 seconds for verification and recovery.
 
 ```js
-// Move window 4182 to display 1, keeping its relative size and position
-await daemonCall('window.move', { wid: 4182, display: 1 })
+// Move to the current desktop on display 0, preserving relative geometry.
+await daemonCall('window.move', { wid: 4182, display: 0 }, 60000)
 
-// Move it to display 1 and snap it into the right half
-await daemonCall('window.move', { wid: 4182, display: 1, placement: 'right' })
+// Choose the exact physical display and desktop in one operation.
+await daemonCall('window.move', { wid: 4182, display: 0, spaceId: 3 }, 60000)
 
-// Plan only — validate the move and preview frames without executing
-await daemonCall('window.move', { wid: 4182, display: 1, dryRun: true })
+// Preview a move and placement without changing the window or desktop view.
+await daemonCall('window.move', {
+  wid: 4182, display: 0, spaceId: 3, placement: 'left', dryRun: true
+})
 ```
 
 #### `window.assignLayer`
@@ -2047,7 +2048,9 @@ Restart a specific pane's process within a session.
 |--------|------|-------------|
 | `projects.list` | read | Discovered projects |
 | `projects.scan` | write | Re-scan project directory |
-| `layers.list` | read | Workspace layers and active index |
+| `layers.list` | read | Workspace layers, focus state, and active index |
+| `layers.exit` | write | Exit layers and restore windows on their existing desktops |
+| `layers.reveal` | write | Compatibility alias for `layers.exit` |
 | `layer.activate` | write | Activate a workspace layer using an explicit mode |
 | `layer.switch` | write | Compatibility wrapper for launch-style layer activation |
 | `group.launch` | write | Launch a tab group |
@@ -2094,7 +2097,7 @@ repo or adding a `.lattices.json` config.
 
 #### `layers.list`
 
-List configured workspace layers and the active index.
+List configured workspace layers and whether layer focus is active.
 
 **Params**: none
 
@@ -2106,11 +2109,57 @@ List configured workspace layers and the active index.
     { "id": "web", "label": "Web", "index": 0, "projectCount": 2 },
     { "id": "mobile", "label": "Mobile", "index": 1, "projectCount": 2 }
   ],
-  "active": 0
+  "active": 0,
+  "focusActive": true,
+  "rememberedIndex": 0,
+  "stage": { "parked": [], "hidden": [] }
 }
 ```
 
-Returns empty `layers` array if no workspace config is loaded.
+`active` is `null` after exiting layers. `rememberedIndex` retains the last
+selected layer index; it does not mean that layer focus is active. `stage`
+lists windows parked and apps hidden by Lattices. Returns an empty `layers`
+array if no workspace config is loaded.
+
+#### `layers.exit`
+
+Exit layer focus and restore windows that Lattices parked or hid. Saved
+layer definitions and window desktop assignments remain intact. Apps the
+user hid stay hidden. Select a layer explicitly to enter layer focus again.
+
+**Params**: none
+
+**Returns**:
+
+```json
+{
+  "ok": true,
+  "focusActive": false,
+  "active": null,
+  "unparked": 3,
+  "stillParked": 0,
+  "rescued": 0,
+  "unhidden": ["Slack"],
+  "stillHidden": [],
+  "recoveryPending": false,
+  "stage": { "parked": [], "hidden": [] }
+}
+```
+
+`unparked` counts restored windows. `rescued` counts untracked windows
+recovered from the parking corner. `stillParked` and `stillHidden` report
+restoration that remains pending; `ok` confirms exit, not complete recovery.
+
+A window on an inactive desktop can remain parked until that desktop is
+visible. Lattices retains its saved position and retries restoration when
+you visit the desktop. The exit action does not switch desktops or gather
+windows onto the current desktop. Check `recoveryPending` and `stage` for
+outstanding recovery.
+
+#### `layers.reveal`
+
+Compatibility alias for `layers.exit`, with the same result. The former
+Show All action also exits layer focus.
 
 #### `layer.activate`
 

@@ -291,6 +291,25 @@ When you switch to a layer:
 
 The app remembers which layer was last active across restarts.
 
+### Exiting layers
+
+Choose **Exit Layers** to return to ordinary desktop use. Lattices clears
+the active layer, restores windows it parked, and unhides apps it hid.
+Your saved layers and window assignments remain available.
+
+```bash
+lats layer exit            # Exit layers
+lats layer off             # Same action
+```
+
+Windows stay on their existing macOS desktops. If a parked window belongs
+to a desktop that is not showing, Lattices keeps its saved position and
+retries restoration when you visit that desktop. Exiting layers does not
+move all windows onto the current desktop.
+
+Choose a layer to enter layers again. **Show All Windows**,
+`lats layer reveal`, and `lats layer show-all` use the same exit action.
+
 ### Named layer switching
 
 You can switch layers by name from the CLI:
@@ -337,13 +356,16 @@ import { daemonCall } from '@lattices/cli'
 
 // List available layers
 const { layers, active } = await daemonCall('layers.list')
-console.log(`Active: ${layers[active].label}`)
+console.log(active === null ? 'Layers off' : `Active: ${layers[active].label}`)
 
 // Switch to a layer by index
 await daemonCall('layer.switch', { index: 0 })
 
 // Switch to a layer by name
 await daemonCall('layer.switch', { name: 'hudson' })
+
+// Exit layers while keeping saved definitions and desktop assignments
+await daemonCall('layers.exit')
 ```
 
 The `layer.switch` call focuses and tiles all windows in the target
@@ -352,37 +374,40 @@ event is broadcast to all connected clients.
 
 More methods in the [Agent API reference](/docs/api).
 
-## Rule-backed Studio layers
+## Rule-backed layers
 
-Studio layers are live window rules stored in `~/.lattices/layers.json`.
-They are separate from `workspace.json` launch-and-tile layers: Studio
-layers do not launch projects. They resolve matching desktop windows,
-then recall or scope those windows in Studio and Screen Map.
+All layer definitions, including rules created in Studio, live in
+`~/.lattices/workspace.json`. If that file is absent, Lattices imports the
+old `~/.lattices/layers.json` once and leaves the old file unchanged.
+Subsequent edits belong in `workspace.json`. Exiting layers preserves
+these definitions.
 
-Each layer has a `match` array. A window joins the layer when it matches
-any clause in that array. Inside one clause, every present positive field
-must match, and every clause in `not` must fail.
+Give a project entry a `match` clause to find windows by rule. A layer
+matches a window through any of its entries. Inside one clause, every
+present positive field must match, and every clause in `not` must fail.
 
 ```json
-[
-  {
-    "id": "review",
-    "name": "Review",
-    "match": [
-      {
+{
+  "id": "review",
+  "label": "Review",
+  "projects": [
+    {
+      "match": {
         "appEquals": "Google Chrome",
         "titleRegex": "(GitHub|Pull Request)",
         "not": [
           { "titleContains": "Actions" }
         ]
-      },
-      {
+      }
+    },
+    {
+      "match": {
         "sessionContains": "lattices",
         "isOnScreen": true
       }
-    ]
-  }
-]
+    }
+  ]
+}
 ```
 
 Supported clause fields:
@@ -401,9 +426,8 @@ Supported clause fields:
 | `spaceId` | Window belongs to this macOS Space id |
 | `not` | Exclusion clauses; any match rejects the window |
 
-`app` and `titleContains` are the original substring fields, so older
-`layers.json` files continue to work. New layers created from plucked
-windows use `appEquals` by default to avoid accidental substring matches.
+`app` and `titleContains` match substrings. Use `appEquals` to match an
+exact app name.
 
 ### Layer bar
 

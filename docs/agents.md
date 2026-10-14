@@ -44,6 +44,28 @@ downloads the latest signed `Action.app` release to `/Applications`.
 `lattices action call <method>` talks to the Action agent on
 ws://127.0.0.1:4319 without a monorepo checkout.
 
+## Action private layers
+
+Action private layers create virtual displays. Lattices workspace layers group
+windows and use `layer.activate`; they do not create Action's private surface.
+For private browser work, use Action MCP `layer_open { browser: true }`,
+`layer_snapshot`, `layer_click/type/js`, and `layer_close`.
+
+First run `lats action capabilities` and query `capabilities` plus `tools/list`
+on the active Action MCP connection. Compare source/native fingerprints, check
+`safety.privateLayer`, and require host acceptance for desktop preservation.
+Stop on quarantine; do not rebuild an installation target or fall back to a
+regular browser. A missing block is not proof of isolation. Reconnect MCP after
+updates and repeat discovery. Matching a published version does not verify
+MCP or native feature parity.
+
+The CLI offers layer lifecycle, snapshot, PiP, and recording. Browser flags,
+input, navigation, and JavaScript require MCP. Raw Action WebSocket and the
+Lattices daemon do not provide that orchestration. Follow the
+[Action skill](https://github.com/arach/lattices/blob/main/skills/action/SKILL.md)
+and [layer reference](https://github.com/arach/lattices/blob/main/products/action/docs/agent-layer.md)
+for leases, operator takeover, cleanup, and acceptance requirements.
+
 ## Canonical mutations
 
 These are the preferred action identifiers:

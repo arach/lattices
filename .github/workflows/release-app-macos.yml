@@ -15,10 +15,12 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   dmg:
+    permissions:
+      contents: write
     name: Build DMG
     runs-on: macos-latest
     environment: release
@@ -31,7 +33,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Configure private HudsonKit access
         shell: bash
@@ -237,7 +241,7 @@ jobs:
           fi
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Lattices-${{ steps.version.outputs.version }}-dmg
           path: dist/Lattices.dmg
