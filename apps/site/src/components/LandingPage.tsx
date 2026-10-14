@@ -6,8 +6,8 @@ import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesAppVersion = "0.12.0";
-const latticesCliVersion = "0.11.1";
+const latticesAppVersion = "0.14.0";
+const latticesCliVersion = "0.14.0";
 const latticesDownloadURL = `https://github.com/arach/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`;
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 
