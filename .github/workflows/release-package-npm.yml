@@ -10,7 +10,7 @@ on:
         default: false
         type: boolean
       build_app:
-        description: 'Rebuild the bundled macOS app before publishing'
+        description: 'Rebuild the app (false reuses the signed app from the matching GitHub release)'
         required: false
         default: true
         type: boolean
@@ -41,6 +41,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode 26
+        if: ${{ inputs.build_app || !inputs.publish }}
         shell: bash
         run: |
           set -euo pipefail
@@ -55,6 +56,7 @@ jobs:
           sudo xcode-select -s "$xcode/Contents/Developer"
 
       - name: Configure private HudsonKit access
+        if: ${{ inputs.build_app || !inputs.publish }}
         shell: bash
         run: |
           set -euo pipefail
@@ -97,12 +99,36 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.publish }}
         run: |
           set -euo pipefail
-          # Build once for normal releases. CLI-only releases may deliberately
-          # reuse the committed app bundle, avoiding an unrelated Swift rebuild.
+          # Reuse the verified release app when requested, so npm and the DMG
+          # carry identical signed binaries without resolving dependencies again.
           if [[ "${{ github.event_name }}" == "push" || "${{ inputs.build_app }}" == "true" ]]; then
             npm run prepack
           else
-            echo "Reusing committed apps/mac/Lattices.app for this CLI-only release."
+            version="$(node -p 'require("./package.json").version')"
+            assets="$(mktemp -d)"
+            mount_dir="$(mktemp -d)"
+            trap 'hdiutil detach "$mount_dir" >/dev/null 2>&1 || true' EXIT
+            gh release download "v$version" --dir "$assets" --pattern Lattices.dmg --pattern release-manifest.json
+            python3 - "$assets" "$version" <<'PY'
+          import hashlib, json, pathlib, sys
+          assets = pathlib.Path(sys.argv[1])
+          manifest = json.loads((assets / 'release-manifest.json').read_text())
+          assert manifest['version'] == sys.argv[2], 'Release version mismatch'
+          assert manifest['tier'] == 'free', 'Public packages require the free tier'
+          assert manifest['notarization'] == 'Accepted', 'Release was not notarized'
+          assert hashlib.sha256((assets / 'Lattices.dmg').read_bytes()).hexdigest() == manifest['assets']['Lattices.dmg'], 'DMG hash mismatch'
+          PY
+            hdiutil attach "$assets/Lattices.dmg" -readonly -nobrowse -mountpoint "$mount_dir"
+            app="$mount_dir/Lattices.app"
+            codesign --verify --deep --strict "$app"
+            spctl --assess --type execute "$app"
+            signing_details="$(codesign -dv "$app" 2>&1)"
+            [[ "$signing_details" == *"TeamIdentifier=2U83JFPW66"* ]]
+            [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
+            revision="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sourceCommit"])' "$assets/release-manifest.json")"
+            [[ "$(/usr/libexec/PlistBuddy -c 'Print :LatticesBuildRevision' "$app/Contents/Info.plist")" == "$revision" ]]
+            ditto "$app" apps/mac/Lattices.app
+            test -x apps/mac/Lattices.app/Contents/MacOS/Lattices
           fi
           # Primary package (@arach/lattices) — updates the public npm page.
           npm publish --ignore-scripts --provenance --access public
@@ -112,3 +138,4 @@ jobs:
           npm pkg set name=@arach/lattices
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
