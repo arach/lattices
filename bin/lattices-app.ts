@@ -510,6 +510,19 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
             </array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.lattices.overview-window</string>
+            <key>UTTypeDescription</key>
+            <string>Lattices Overview Window</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
     <string>${version}</string>
     <key>CFBundleShortVersionString</key>

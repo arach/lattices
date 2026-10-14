@@ -75,19 +75,26 @@ function installedVersion(appPath: string): string | null {
 }
 
 function quitApp(): boolean {
-  if (!isRunning()) return false;
+  const appPath = installedPath();
+  if (!appPath) return false;
+  const directory = mkdtempSync(join(tmpdir(), "action-quit-"));
+  const reply = join(directory, "reply.json");
   try {
-    execFileSync(
-      "/usr/bin/osascript",
-      ["-e", `tell application id "${ACTION_BUNDLE_ID}" to quit`],
-      { stdio: "ignore" }
-    );
-  } catch {}
-  const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline && isRunning()) {
-    execFileSync("/bin/sleep", ["0.1"], { stdio: "ignore" });
+    // The native command distinguishes launchers from persistent display owners.
+    // A bundle-wide Apple Event or pgrep cannot make that distinction.
+    execFileSync("/usr/bin/open", ["-n", "-g", appPath, "--args", "quit-app", "--reply-file", reply], { stdio: "ignore" });
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (existsSync(reply)) {
+        try { return JSON.parse(readFileSync(reply, "utf8")).status === "quit"; }
+        catch { /* The helper may still be writing its reply. */ }
+      }
+      execFileSync("/bin/sleep", ["0.1"], { stdio: "ignore" });
+    }
+    return false;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
-  return !isRunning();
 }
 
 /**
@@ -348,7 +355,7 @@ switch (first) {
     break;
   case "quit":
   case "stop":
-    console.log(quitApp() ? "Action stopped." : "Action is not running.");
+    console.log(quitApp() ? "Action launcher stopped; prepared workspaces remain available." : "Could not confirm Action launcher quit.");
     break;
   case "mcp": {
     const checkout = findCheckout();

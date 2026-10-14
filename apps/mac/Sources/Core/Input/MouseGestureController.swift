@@ -35,6 +35,11 @@ private struct MouseEventSnapshot {
     let location: CGPoint
     let flags: CGEventFlags
     let buttonNumber: Int64
+    let sourcePID: Int64
+
+    var isHardwareHandoffChord: Bool {
+        MouseHandoffGesture.qualifies(button: buttonNumber, flags: flags, sourcePID: sourcePID)
+    }
 }
 
 private struct MouseGestureOverlayTheme {
@@ -109,6 +114,9 @@ final class MouseGestureController: ObservableObject {
         var lockedDirection: MouseGestureDirection?
         var pathPoints: [GesturePathPoint]
         var visual: MouseShortcutVisualDefinition?
+        var handoffCandidate = false
+        var handoffEligible = false
+        var initialFlags: CGEventFlags = []
 
         init(buttonNumber: Int64, startPoint: CGPoint, overlay: MouseGestureOverlay) {
             self.buttonNumber = buttonNumber
@@ -241,6 +249,10 @@ final class MouseGestureController: ObservableObject {
         installObserversIfNeeded()
         refresh()
         startHealthMonitoring()
+        if LogitechDeviceHandoff.isEnabled {
+            DiagnosticLog.shared.info("Device handoff enabled: Control + right-drag left/right at least 68pt, release button and Control; paired channels cycle 1-2-3")
+            LogitechDeviceHandoff.shared.inspectHardware()
+        }
     }
 
     func stop() {
@@ -557,13 +569,15 @@ final class MouseGestureController: ObservableObject {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
-            buttonNumber: buttonNumber
+            buttonNumber: buttonNumber,
+            sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)
         )
         // NSScreen.screens reads are safe off-main; Preferences/Store snapshot
         // reads are lock-protected (see MouseShortcutStore).
         let tuning = MouseShortcutStore.shared.tuning
         let canRecognize = Preferences.shared.mouseGesturesEnabled
-            && MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
+            && (MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
+                || (LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord))
         let onScreen = (screen(containing: snapshot.location) != nil)
 
         if !onScreen {
@@ -690,6 +704,9 @@ final class MouseGestureController: ObservableObject {
             self.releaseOverlay(overlay)
         }
         let newSession = GestureSession(buttonNumber: snapshot.buttonNumber, startPoint: snapshot.location, overlay: overlay)
+        newSession.handoffCandidate = LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord
+        newSession.handoffEligible = newSession.handoffCandidate
+        newSession.initialFlags = snapshot.flags
         newSession.visual = MouseShortcutStore.shared.visualHint(for: button)
         session = newSession
         scheduleStaleSessionCleanup(for: newSession)
@@ -715,7 +732,8 @@ final class MouseGestureController: ObservableObject {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
-            buttonNumber: buttonNumber
+            buttonNumber: buttonNumber,
+            sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)
         )
 
         DispatchQueue.main.async { [weak self] in
@@ -732,6 +750,7 @@ final class MouseGestureController: ObservableObject {
         MouseShortcutStore.shared.reloadIfNeeded()
 
         session.currentPoint = snapshot.location
+        session.handoffEligible = session.handoffEligible && snapshot.isHardwareHandoffChord
         session.recordPoint(snapshot.location)
         scheduleStaleSessionCleanup(for: session)
         let button = MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber))
@@ -800,7 +819,8 @@ final class MouseGestureController: ObservableObject {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
-            buttonNumber: buttonNumber
+            buttonNumber: buttonNumber,
+            sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)
         )
         guard let trackingState = currentTrackingState(),
               trackingState.buttonNumber == buttonNumber else {
@@ -860,6 +880,19 @@ final class MouseGestureController: ObservableObject {
         self.session = nil
         staleSessionTimer?.invalidate()
         staleSessionTimer = nil
+
+        if session.handoffCandidate {
+            session.overlay.dismiss(immediately: true)
+            if session.handoffEligible && snapshot.isHardwareHandoffChord,
+               let direction = MouseHandoffGesture.direction(delta: delta, threshold: tuning.dragThreshold) {
+                // handleMouseUp already cleared tap tracking. Switch only after
+                // physical release, never while right-button state is held.
+                LogitechDeviceHandoff.shared.requestSwitch(direction: direction)
+            } else {
+                replayRightStroke(session: session, end: snapshot.location, flags: snapshot.flags)
+            }
+            return
+        }
 
         let shapeResult = shapeRecognizer.recognize(points: session.pathPoints)
         if let shape = shapeResult.shape {
@@ -1100,7 +1133,8 @@ final class MouseGestureController: ObservableObject {
     }
 
     private func replayMouseClick(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
-        for type in [CGEventType.otherMouseDown, .otherMouseUp] {
+        let types: [CGEventType] = buttonNumber == 1 ? [.rightMouseDown, .rightMouseUp] : [.otherMouseDown, .otherMouseUp]
+        for type in types {
             guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)) else { continue }
             guard let event = CGEvent(
                 mouseEventSource: nil,
@@ -1113,6 +1147,21 @@ final class MouseGestureController: ObservableObject {
             event.setIntegerValueField(CGEventField.eventSourceUserData, value: Self.syntheticMarker)
             event.flags = flags
             event.post(tap: CGEventTapLocation.cghidEventTap)
+        }
+    }
+
+    private func replayRightStroke(session: GestureSession, end: CGPoint, flags: CGEventFlags) {
+        var events: [(CGEventType, CGPoint, CGEventFlags)] = [(.rightMouseDown, session.startPoint, session.initialFlags)]
+        // Preserve an unrecognized stroke's path. The replay marker bypasses
+        // this controller; a plain click has no intervening drag samples.
+        events += session.pathPoints.dropFirst().map { (.rightMouseDragged, $0.cgPoint, flags) }
+        events.append((.rightMouseUp, end, flags))
+        for (type, point, modifiers) in events {
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
+                                      mouseCursorPosition: point, mouseButton: .right) else { continue }
+            event.flags = modifiers
+            event.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
+            event.post(tap: .cghidEventTap)
         }
     }
 
