@@ -53,7 +53,7 @@ struct PermissionsAssistantView: View {
             }
 
             VStack(spacing: 6) {
-                ForEach(Capability.allCases) { cap in
+                ForEach(Capability.available) { cap in
                     sidebarRow(cap)
                 }
             }
@@ -492,7 +492,7 @@ struct PermissionsAssistantView: View {
             permChecker.requestAccessibility()
         case .screenSearch:
             // Turning on OCR is the moment we ask for Screen Recording.
-            OcrModel.shared.setEnabled(true)
+            ScreenText.shared.setEnabled(true)
         case .voiceCapture:
             permChecker.requestMicrophone()
             return

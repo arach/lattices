@@ -41,6 +41,42 @@ Override the voice port only for tests/dev with `LATTICES_VOICE_PORT`
 4. Hold **Option** and speak a command
 5. Release **Option** — Lattices transcribes and executes
 
+## Voice API
+
+The `voice` domain covers listening and speaking. The daemon serves
+listening. The Voice helper (Lattices › Apps) speaks; the daemon forwards
+those calls to it.
+
+| Verb | CLI | Does |
+|------|-----|------|
+| `voice.say`     | `lats voice say "text"` | Speak text. Returns the job id; the job is queued, not finished. |
+| `voice.stop`     | `lats voice stop` | Stop speaking and clear the queue. |
+| `voice.pause` / `voice.resume`     | `lats voice pause` / `resume` | Pause or resume the current job. |
+| `voice.skip`     | `lats voice skip` | Skip to the next queued job. |
+| `voice.seek`     | `lats voice seek <seconds>` | Seek the current job. |
+| `voice.list`     | `lats voice list` | List voices. |
+| `voice.select`     | `lats voice select <voice>` | Choose the default voice for a provider. |
+| `voice.lease` / `voice.release` | — | Hold the speaker so other agents do not talk over you. A lease also ends when the connection closes. |
+| `voice.listen`     | `lats voice listen` | Start voice capture. |
+| `voice.stopListening`     | `lats voice stopListening` | Stop voice capture and run the transcript. |
+| `voice.simulate`     | `lats voice simulate "text"` | Parse and run a command as if spoken. |
+| `voice.status`     | `lats voice status` | Listening state, plus the Voice helper under `helper`. |
+
+`voice.stop` used to stop listening. It now stops speaking. For one
+release, a `voice.stop` made while Lattices is listening and nothing is
+speaking fails with `voice_stop_changed` and points to
+`voice.stopListening`.
+
+If the Voice helper is not installed, the speaking verbs fail with
+`helper_not_installed` and the fix: **Lattices › Apps › Install Voice**.
+If it is installed but not running, they fail with `helper_unreachable`;
+open Voice from **Lattices › Apps**. There is no fallback. Speaking verbs
+need the helper's local capability
+(`~/Library/Application Support/Speech/RPC/capability`), which exists only
+while Voice runs; the `lats` CLI sends it for you, and a client that
+does not gets `helper_unauthorized`. The daemon still accepts the older `speech.*` names, and
+sends each `speech.changed` event again as `voice.changed`.
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -79,7 +115,7 @@ Move windows to screen positions.
 ```
 
 Voice tiling should resolve into the same canonical daemon mutation used
-by other agent surfaces: `window.place`.
+by other agent surfaces: `windows.place`.
 
 ### Focus
 
@@ -88,7 +124,7 @@ Bring a window or app to the front.
 ```
 "Focus Safari"
 "Switch to Slack"
-"Go to the lattices window"
+"Go to the lats window"
 ```
 
 ### Open / Launch
@@ -192,7 +228,7 @@ The voice command window has four sections:
 
 ## Search architecture
 
-Voice search uses the same backend as `lattices search`:
+Voice search uses the same backend as `lats search`:
 
 1. **Quick search** — window titles, app names, session tags (instant)
 2. **Complete search** — adds terminal cwd/processes + OCR content

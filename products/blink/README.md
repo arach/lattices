@@ -1,53 +1,154 @@
 # Blink
 
-**[lattices.dev/blink](https://lattices.dev/blink)** · Spatial notes from Lattices.
+Spatial notes for macOS, with floating native panels and a CLI over local Markdown.
 
-Spatial note-taking for macOS: notes are first-class floating glass panels you
-arrange on screen. Native Swift/AppKit bones on
-[HudsonKit](https://github.com/arach/hudson), web editor surfaces
-(CodeMirror 6) in WKWebViews. Triad-only: menubar popover · command palette ·
-floating panels — no main window; the desktop is the workspace.
+Keep notes beside the work they describe, with each panel remembering its position
+and size. Create or recall a note from the menu bar, command palette, or global
+hotkey. Scripts and agents edit the same files, and the running app picks up their
+changes.
 
-Source lives in the Lattices monorepo at
-[`products/blink`](https://github.com/arach/lattices/tree/main/products/blink).
-Blink remains a separately signed app and runtime.
+[Product page](https://lattices.dev/blink) · [CLI reference](docs/cli.md)
 
-This is **v2**, a from-scratch native rewrite. The original Tauri + React app
-remains available at the [`v1-final`](https://github.com/arach/blink/tree/v1-final)
-tag.
+## Install and run
 
-## Build & run
+The packaged app and CLI require macOS 14+ on Apple Silicon. Install the package
+with Bun; its command launchers require Node.js 18+.
 
 ```sh
-swift build                 # app + CLI; resolves the pinned Hudson revision
-(cd web/editor && bun install && bun run build)   # editor bundle (once)
-./scripts/run-app.sh --debug --restart            # assemble + launch dist/Blink.app
-swift build --product blink                       # notes CLI; see docs/cli.md
-swift test                                        # BlinkCore unit tests
+bun add --global @arach/blink
+blink app install
+blink app open
 ```
 
-Hudson resolves from a pinned Git revision by default. For local Hudson
-development, set `BLINK_HUDSON_SOURCE=path` and optionally set
-`BLINK_HUDSON_PATH` (the default path override is `../../../hudson`).
+The package includes the native `blink` CLI. `blink app install` downloads and
+validates a Blink release, then installs `Blink.app` in `/Applications`.
+`blink app open` launches the installed app. To update it, run `blink app update`.
+You can also get the app from the [download page](https://lattices.dev/blink/download).
 
-## Layout
+Blink runs from the menu bar without a Dock icon. Press Hyper+N to create a note;
+Hyper means Control+Option+Shift+Command. The default Hyper+B shortcut shows or
+hides the note panels. Hotkeys are configurable in [config.json](docs/config.md).
 
-- `Sources/BlinkApp` — menubar app: AppDelegate, status item + popover,
-  Carbon hotkeys (Hyper+N), AppModel, PanelManager, WebBridge, NotePanel
-- `Sources/BlinkCore` — pure Swift: Note model, slug/UUIDv5 identity,
-  frontmatter codec, atomic file store, NoteStore actor
-- `Sources/BlinkCLI` — agent-friendly CLI over the same notes on disk
-- `web/editor` — vanilla CodeMirror 6 bundle hosted by note panels
-- `docs/` — [CLI](docs/cli.md) and [configuration](docs/config.md) reference
-- `landing/` — marketing site (GitHub Pages deploys `landing/out`)
+## Build from source
 
-## Notes on disk
+Use macOS 14+, a Swift 6 toolchain, Bun, and Node.js 18+. The editor build script
+runs with Node. SwiftPM resolves a pinned revision of the Hudson repository
+over SSH, so the build needs Git access to that repository.
 
-One markdown file per note in `~/Library/Application Support/Blink/Notes/`,
-metadata in YAML frontmatter — local-first, human-readable, no side database.
-All writes are atomic (temp + fsync + rename); saves flush on panel close and
-app quit.
+From the Lattices repository root:
 
-Blink's other agent-first surface is
-[`config.json`](docs/config.md): behavior, hotkeys, panel appearance, and editor
-theme are file-backed and hot-applied while the app is running.
+```sh
+cd products/blink
+(cd web/editor && bun install && bun run build)
+./scripts/run-app.sh --debug --restart
+```
+
+The launch script builds `BlinkApp`, bundles the editor into `dist/Blink.app`, and
+launches that bundle. `--restart` stops an existing process from the same bundle
+path. Build the editor first: the native script does not build it for you.
+
+To build and inspect the notes CLI from the product directory:
+
+```sh
+swift build --product blink
+.build/debug/blink ls --json
+```
+
+Use `.build/debug/blink` in place of `blink` in the note examples below. The
+`blink app` installer belongs to the packaged command wrapper, not the Swift
+executable.
+
+The repository root also provides build and test scripts:
+
+```sh
+bun run blink:build
+bun run blink:check
+```
+
+These run the product's Swift build and tests. For local Hudson development,
+set `BLINK_HUDSON_SOURCE=path` and optionally `BLINK_HUDSON_PATH`; its default
+is `../../../hudson`, relative to this product. See [Package.swift](Package.swift)
+for dependency selection and [release documentation](docs/release.md) for packaging.
+
+## Notes and panels
+
+The CLI can create and edit notes while the app is closed. Live panel commands
+need Blink running with the same data directory.
+
+```sh
+blink present readme-review "# README review" --slot 6 --writer agent
+blink desk open readme-review
+blink type readme-review "Check the build commands." --writer agent
+blink cat readme-review
+blink ls --json
+```
+
+`present` creates or updates a note's content and presentation. `type` appends text
+with a typed reveal in an open panel; `write` replaces the body without that
+animation. `desk open` opens or focuses the note's single panel. See the
+[CLI reference](docs/cli.md) for search, placement, JSON output, and other commands.
+
+Notes live in `~/Library/Application Support/Blink/Notes/`, one Markdown file per
+note with YAML frontmatter. Writes are atomic, and Blink preserves frontmatter
+keys it does not own. The app watches this directory and reconciles external
+changes through `NoteStore`.
+
+The same application-support directory holds `config.json` for behavior and
+appearance, and `edits.sqlite` for the append-only edit ledger. Markdown remains
+the source of truth for note contents. Configuration changes apply while the app
+is running. Per-device panel frames and the open-panel set live in `UserDefaults`.
+
+Set `BLINK_HOME` to override the file-backed data directory for tests or agent
+work. It does not redirect `UserDefaults`, and the app disables mobile sharing
+when the override is set.
+
+Use [workspaces](docs/workspaces.md) to group notes and give them shared visual
+settings. Named desk arrangements save and restore the open panels:
+
+```sh
+blink desk save review
+blink desk ls --json
+blink desk restore review
+```
+
+## Relationship to Lattices
+
+Lattices manages the desktop workspace; Blink owns its note panels and data.
+Blink is a separate app with its own signing, lifecycle, CLI, and store. It shares
+the monorepo, website, and [agent skill catalog](../../skills/blink/SKILL.md)
+with Lattices core.
+
+Use `blink` for note operations. This checkout does not expose Blink through a
+Lattices CLI subcommand or MCP server. Its live app interface includes a local
+Unix socket at `~/Library/Application Support/Blink/blink.sock`, used by desk
+save and restore; it is separate from the [Lattices daemon](../../docs/api.md).
+The product's agent API and MCP design documents describe proposals.
+
+## Architecture
+
+Native Swift/AppKit panels host the CodeMirror 6 editor in `WKWebView`.
+`NoteStore` owns note mutations; `PanelManager` owns panel identity, geometry,
+and save flushing. The CLI uses the same BlinkCore file storage as the app.
+
+```text
+Sources/BlinkApp/    Menu bar, panels, palette, editor bridge, local socket
+Sources/BlinkCore/   Notes, frontmatter, storage, workspaces, desk layouts
+Sources/BlinkCLI/    Native notes and panel commands
+Sources/BlinkPeer/   Encrypted local-network pairing and snapshot transport
+web/editor/         CodeMirror editor and its bundle build
+apps/ios/           Read-only iPhone and iPad companion
+Tests/              Core and peer protocol tests
+packages/npm/       Published CLI wrapper and app installer
+scripts/            Local app bundling and launch
+tools/release/      CLI and DMG packaging, signing, and release tooling
+docs/               CLI, configuration, workspaces, sync, and release docs
+```
+
+## Documentation
+
+- [CLI](docs/cli.md): note operations, live panels, and structured output.
+- [Configuration](docs/config.md): hotkeys, behavior, panel appearance, and editor theme.
+- [Workspaces](docs/workspaces.md): note groups and shared visual settings.
+- [iOS companion](docs/ios-sync.md): pairing, offline snapshots, and build instructions.
+- [Releases](docs/release.md): build artifacts, signing, and distribution.
+- [Product page](https://lattices.dev/blink): overview and downloads.

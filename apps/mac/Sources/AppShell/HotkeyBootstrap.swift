@@ -1,16 +1,17 @@
 import AppKit
+import Carbon
 
 enum HotkeyBootstrap {
     static func registerHotkeys() {
         let store = HotkeyStore.shared
         store.register(action: .workspaceAssistant) { AssistantAccess.show() }
         store.register(action: .unifiedWindow) { ScreenMapWindowController.shared.toggle() }
-        store.register(action: .screenMap) { ScreenMapWindowController.shared.showPage(.screenMap) }
+        store.register(action: .screenMap) { ScreenMapWindowController.shared.showPage(.overview) }
         store.register(action: .bezel) { WorkspaceInspectorPresenter.show() }
         store.register(action: .cheatSheet) { SettingsWindowController.shared.show(section: "shortcuts") }
         store.register(action: .desktopInventory) {
             DiagnosticLog.shared.info("Hotkey: desktopInventory triggered")
-            ScreenMapWindowController.shared.showPage(.desktopInventory)
+            ScreenMapWindowController.shared.showPage(.overview)
         }
         store.register(action: .voiceCommand) {
             DiagnosticLog.shared.info("Hotkey: voiceCommand triggered")
@@ -45,28 +46,101 @@ enum HotkeyBootstrap {
         }
 
         registerLayerHotkeys(store: store)
+        LayerChordMonitor.shared.start()
+        DisplayGather.shared.start()
         registerTilingHotkeys(store: store)
     }
 
     private static func registerLayerHotkeys(store: HotkeyStore) {
-        store.register(action: .layerNext) { SessionLayerStore.shared.cycleNext() }
-        store.register(action: .layerPrev) { SessionLayerStore.shared.cyclePrev() }
-        store.register(action: .layerTag) { SessionLayerStore.shared.tagFrontmostWindow() }
+        store.register(action: .layerPrev) { stepLayer(.left) }
+        store.register(action: .layerNext) { stepLayer(.right) }
+        store.register(action: .layerUp) { stepLayer(.up) }
+        store.register(action: .layerDown) { stepLayer(.down) }
+        store.register(action: .layerTag) { WorkspaceManager.shared.addFrontmostWindowToActiveLayer() }
 
-        let workspace = WorkspaceManager.shared
-        let configLayerCount = (workspace.config?.layers ?? []).count
-        let maxLayers = max(configLayerCount, 9)
-        for (index, action) in HotkeyAction.layerActions.prefix(maxLayers).enumerated() {
-            store.register(action: action) {
-                let session = SessionLayerStore.shared
-                if !session.layers.isEmpty && index < session.layers.count {
-                    session.switchTo(index: index)
-                } else {
-                    workspace.focusLayer(index: index)
-                }
-                EventBus.shared.post(.layerSwitched(index: index))
+        for (offset, action) in HotkeyAction.layerActions.enumerated() {
+            let slot = offset + 1
+            store.register(action: action) { selectSlot(slot) }
+        }
+
+        // ⌘⌥ + numpad 1–9 reach the same slots: 1 2 3 is the pad's top row,
+        // as on the bezel. Fixed, beside the rebindable top-row digits.
+        let keypadKeyCodes: [UInt32] = [83, 84, 85, 86, 87, 88, 89, 91, 92]
+        for (offset, keyCode) in keypadKeyCodes.enumerated() {
+            let slot = offset + 1
+            HotkeyManager.shared.registerSingle(
+                id: 121 + UInt32(offset),
+                keyCode: keyCode,
+                modifiers: UInt32(cmdKey | optionKey)
+            ) { selectSlot(slot) }
+        }
+
+        // ⌘⌥0 and ⌘⌥ numpad 0: Classic, every window back as if Lattices
+        // weren't running. Again: Classic · one space.
+        for (offset, keyCode) in [UInt32(29), 82].enumerated() {
+            HotkeyManager.shared.registerSingle(
+                id: 130 + UInt32(offset),
+                keyCode: keyCode,
+                modifiers: UInt32(cmdKey | optionKey)
+            ) {
+                LayerAim.shared.cancel()
+                WorkspaceManager.shared.showClassic()
             }
         }
+
+        // ⌘⌥Z takes back the last layer edit.
+        HotkeyManager.shared.registerSingle(
+            id: 132,
+            keyCode: UInt32(kVK_ANSI_Z),
+            modifiers: UInt32(cmdKey | optionKey)
+        ) {
+            LayerAim.shared.cancel()
+            WorkspaceManager.shared.undoLayerEditFromHotkey()
+        }
+    }
+
+    /// Cmd+Opt+N aims at the layer in slot N of the pad; letting go of ⌘⌥
+    /// asks to switch to it (`LayerAim`). The middle slot, and any slot without a
+    /// layer, drops the aim and shows where you are instead.
+    private static func selectSlot(_ slot: Int) {
+        if LayerPreview.shared.select(slot: slot) { return }
+        let workspace = WorkspaceManager.shared
+        guard let index = LayerSlots.index(forSlot: slot), workspace.layers.indices.contains(index) else {
+            LayerAim.shared.cancel()
+            showCurrentLayer()
+            return
+        }
+        LayerAim.shared.aim(at: index)
+        LayerPreview.shared.arm()
+    }
+
+    /// Shows the bezel on the layer you're on, without switching.
+    static func showCurrentLayer() {
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        guard !layers.isEmpty else { return }
+        let current = min(max(workspace.activeLayerIndex, 0), layers.count - 1)
+        workspace.showBezel(for: current, in: layers)
+        LayerPreview.shared.arm()
+    }
+
+    /// Cmd+Opt+arrows aim across the pad the way they point, from the layer
+    /// last aimed at; letting go of ⌘⌥ asks to switch (`LayerAim`). They hop the
+    /// middle and don't wrap: at the pad's edge, the lit slot bumps the way
+    /// you pushed.
+    private static func stepLayer(_ direction: LayerSlots.Direction) {
+        // Frozen on a preview (Space mid-flip), its tap browses instead.
+        if LayerPreview.shared.step(direction) { return }
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        guard !layers.isEmpty else { return }
+        let from = LayerAim.shared.origin(in: workspace)
+        guard let index = LayerSlots.neighbour(of: from, direction, count: layers.count) else {
+            LayerAim.shared.bump(direction)
+            return
+        }
+        LayerAim.shared.aim(at: index)
+        LayerPreview.shared.arm()
     }
 
     private static func registerTilingHotkeys(store: HotkeyStore) {

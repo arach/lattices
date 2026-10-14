@@ -2,10 +2,14 @@
 /**
  * Keep the action-browser plugin version identical across every manifest.
  *
- * Harnesses cache installed plugin metadata — skills, interface copy, MCP server
- * entry — by version. Bumping one manifest and not the others is what leaves a
- * Claude Code or Kimi install serving stale tool text after the server has moved
- * on, so this is a release gate rather than a convenience.
+ * Harnesses cache installed plugin metadata by version, so bumping one manifest
+ * and not the others leaves an install serving stale skill text. This is a
+ * release gate rather than a convenience.
+ *
+ * The plugin no longer carries an MCP server -- the browser tools ship with the
+ * lattices CLI and are served by `lattices mcp` -- so there is no SERVER_VERSION
+ * to keep in step any more, and a stale plugin cache can no longer cost anyone
+ * their browser. It can only cost them the skill.
  *
  *   bun run plugin:version            # check that every manifest agrees
  *   bun run plugin:version -- 0.3.0   # set them all
@@ -26,10 +30,6 @@ const targets = [
   jsonTarget("plugins/action-browser/.codex-plugin/plugin.json", ["version"]),
   jsonTarget("plugins/action-browser/kimi.plugin.json", ["version"]),
   jsonTarget("kimi.plugin.json", ["version"]),
-  sourceTarget(
-    "plugins/action-browser/server/index.ts",
-    /(const SERVER_VERSION = ")([^"]+)(")/,
-  ),
 ];
 
 /**

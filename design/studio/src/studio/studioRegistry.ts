@@ -165,6 +165,20 @@ const studioPages: readonly LatticesPage[] = [
       "Lattices on Omarchy/Hyprland taken three ways: Mission Control (every space and window as an inventory), Flight Deck (one space to scale, keyboard first) and Operator Console (the lats CLI as the product). One local simulation drives all three.",
     source: ["bin/lattices.ts", "docs/layers.md"],
   },
+  {
+    href: "/studio/studies/product-family",
+    label: "Product family — homepage insertion",
+    bucket: "studies",
+    surface: "cross",
+    status: "concept",
+    blurb:
+      "A progressive homepage narrative where workspace, agents, Action, Blink, and Speech emerge in sequence, with earlier product-family surfaces retained for comparison.",
+    source: [
+      "apps/site/src/components/LandingPage.tsx",
+      "apps/site/src/components/SiteChrome.tsx",
+      "design/studio/public/product-family/board.html",
+    ],
+  },
 ];
 
 /**

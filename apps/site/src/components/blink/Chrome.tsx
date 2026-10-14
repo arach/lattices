@@ -1,4 +1,5 @@
-import { LatticesMark, ProductsMenu } from '../SiteChrome'
+import { LatticesMark } from '../LatticesMark'
+import { ProductsMenu } from '../SiteChrome'
 import { BlinkMark } from './BlinkMark'
 import { ThemeSwitcher } from './ThemeSwitcher'
 

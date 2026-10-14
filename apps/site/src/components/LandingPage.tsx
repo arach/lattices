@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
+import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
 const latticesAppVersion = "0.12.0";
@@ -474,7 +475,7 @@ const tickerMethods = [
   "lattices.search",
   "windows.search",
   "terminals.search",
-  "ocr.search",
+  "ocr.snapshot",
   "window.focus",
   "window.place",
   "layer.activate",
@@ -524,10 +525,11 @@ export default function App() {
       <nav className="nav">
         <div className="nav-inner">
           <a href="/" className="nav-brand">
-            <LatticesLogo size={20} />
+            <LatticesMark />
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
+            <ProductsMenu />
             <a href="/learn" className="nav-link">Learn</a>
             <a href="/blog" className="nav-link nav-blog-link">
               Blog
@@ -535,7 +537,6 @@ export default function App() {
             <a href="/docs/overview" className="nav-link">
               Docs
             </a>
-            <ProductsMenu />
             <a
               href="https://github.com/arach/lattices"
               target="_blank"
@@ -1051,6 +1052,7 @@ export default function App() {
             <span>macOS only. tmux optional.</span>
           </div>
           <nav className="footer-links" aria-label="Footer">
+            <a href="/products">Products</a>
             <a href="/docs/overview">Docs</a>
             <a href="/blog">Blog</a>
             <a href="/action">Action</a>

@@ -71,6 +71,7 @@ export function DocsPage({ slug }: DocsPageProps) {
             )}
           </header>
           <MarkdownRenderer content={doc.content} />
+          <DocPager currentSlug={doc.slug} />
         </article>
         <aside className="docs-toc" data-pagefind-ignore>
           <TableOfContents doc={doc} />
@@ -139,8 +140,73 @@ function NavGroups({ currentSlug, compact = false }: { currentSlug: string; comp
   )
 }
 
+function DocPager({ currentSlug }: { currentSlug: string }) {
+  const items = navGroups.flatMap((group) => group.items)
+  const index = items.findIndex((item) => item.id === currentSlug)
+  if (index < 0) return null
+  const prev = items[index - 1]
+  const next = items[index + 1]
+  if (!prev && !next) return null
+
+  return (
+    <nav className="docs-pager" aria-label="Previous and next page" data-pagefind-ignore>
+      {prev ? (
+        <a className="docs-pager-link" href={prev.href} rel="prev">
+          <small>Previous</small>
+          <span>{prev.title}</span>
+        </a>
+      ) : <span />}
+      {next && (
+        <a className="docs-pager-link next" href={next.href} rel="next">
+          <small>Next</small>
+          <span>{next.title}</span>
+        </a>
+      )}
+    </nav>
+  )
+}
+
+/** Tracks the heading nearest the top of the viewport for the on-this-page rail. */
+function useActiveHeading(ids: string[]): string | null {
+  const [active, setActive] = useState<string | null>(ids[0] ?? null)
+  const key = ids.join('|')
+
+  useEffect(() => {
+    const list = key ? key.split('|') : []
+    if (list.length === 0) return
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const offset = 120
+      let current = list[0]
+      for (const id of list) {
+        const el = document.getElementById(id)
+        if (!el) continue
+        if (el.getBoundingClientRect().top - offset <= 0) current = id
+        else break
+      }
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4
+      setActive(atBottom ? list[list.length - 1] : current)
+    }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [key])
+
+  return active
+}
+
 function TableOfContents({ doc }: { doc: DocPage }) {
   const headings = doc.headings.filter((heading) => heading.depth >= 2 && heading.depth <= 3)
+  const active = useActiveHeading(headings.map((heading) => heading.id))
 
   if (headings.length === 0) return null
 
@@ -150,7 +216,13 @@ function TableOfContents({ doc }: { doc: DocPage }) {
       <ul>
         {headings.map((heading) => (
           <li key={heading.id} className={heading.depth === 3 ? 'nested' : undefined}>
-            <a href={`#${heading.id}`}>{heading.text}</a>
+            <a
+              href={`#${heading.id}`}
+              className={active === heading.id ? 'active' : undefined}
+              aria-current={active === heading.id ? 'location' : undefined}
+            >
+              {heading.text}
+            </a>
           </li>
         ))}
       </ul>

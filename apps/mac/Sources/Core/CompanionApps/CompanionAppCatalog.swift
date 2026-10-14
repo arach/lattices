@@ -88,7 +88,7 @@ enum CompanionAppCatalog {
         ),
         CompanionProduct(
             id: .speech,
-            displayName: "Speech",
+            displayName: "Voice",
             bundleIdentifier: CompanionBundleIdentifiers.speech,
             productPageURL: nil,
             distribution: .standaloneApp

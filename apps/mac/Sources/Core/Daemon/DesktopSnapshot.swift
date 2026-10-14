@@ -31,7 +31,13 @@ enum DesktopSnapshot {
         }
 
         if let layer = WorkspaceManager.shared.activeLayer {
-            obj["activeLayer"] = .object([
+            // The layer as `layers.members` reports it: the windows it holds, on any desktop.
+            let read = { () -> JSON? in
+                let wm = WorkspaceManager.shared
+                return wm.overviews(in: desktop.allWindows()).first(where: \.isActive).map { wm.layerMembersJSON($0) }
+            }
+            let members = Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
+            obj["activeLayer"] = members ?? .object([
                 "id": .string(layer.id),
                 "index": .int(WorkspaceManager.shared.activeLayerIndex),
             ])

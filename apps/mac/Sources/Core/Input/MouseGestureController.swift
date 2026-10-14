@@ -35,6 +35,11 @@ private struct MouseEventSnapshot {
     let location: CGPoint
     let flags: CGEventFlags
     let buttonNumber: Int64
+    let sourcePID: Int64
+
+    var isHardwareHandoffChord: Bool {
+        MouseHandoffGesture.qualifies(button: buttonNumber, flags: flags, sourcePID: sourcePID)
+    }
 }
 
 private struct MouseGestureOverlayTheme {
@@ -109,6 +114,9 @@ final class MouseGestureController: ObservableObject {
         var lockedDirection: MouseGestureDirection?
         var pathPoints: [GesturePathPoint]
         var visual: MouseShortcutVisualDefinition?
+        var handoffCandidate = false
+        var handoffEligible = false
+        var initialFlags: CGEventFlags = []
 
         init(buttonNumber: Int64, startPoint: CGPoint, overlay: MouseGestureOverlay) {
             self.buttonNumber = buttonNumber
@@ -176,8 +184,6 @@ final class MouseGestureController: ObservableObject {
     private struct TapTrackingState {
         let buttonNumber: Int64
         let startPoint: CGPoint
-        let nativeClickPassthrough: Bool
-        var nativeClickBalanced: Bool
         let dragThreshold: CGFloat
         let axisBias: CGFloat
         let startedAt: CFAbsoluteTime
@@ -216,7 +222,6 @@ final class MouseGestureController: ObservableObject {
     private func setTrackingButton(
         _ value: Int64?,
         startPoint: CGPoint = .zero,
-        nativeClickPassthrough: Bool = false,
         tuning: MouseShortcutTuning = .defaults
     ) {
         trackingLock.lock()
@@ -224,8 +229,6 @@ final class MouseGestureController: ObservableObject {
             tapTrackingState = TapTrackingState(
                 buttonNumber: value,
                 startPoint: startPoint,
-                nativeClickPassthrough: nativeClickPassthrough,
-                nativeClickBalanced: !nativeClickPassthrough,
                 dragThreshold: tuning.dragThreshold,
                 axisBias: tuning.axisBias,
                 startedAt: CFAbsoluteTimeGetCurrent()
@@ -234,21 +237,6 @@ final class MouseGestureController: ObservableObject {
             tapTrackingState = nil
         }
         trackingLock.unlock()
-    }
-
-    private func markNativeClickBalanced(buttonNumber: Int64) -> Bool {
-        trackingLock.lock()
-        defer { trackingLock.unlock() }
-        guard var state = tapTrackingState,
-              state.buttonNumber == buttonNumber,
-              state.nativeClickPassthrough,
-              !state.nativeClickBalanced else {
-            return false
-        }
-
-        state.nativeClickBalanced = true
-        tapTrackingState = state
-        return true
     }
 
     private init() {
@@ -261,6 +249,10 @@ final class MouseGestureController: ObservableObject {
         installObserversIfNeeded()
         refresh()
         startHealthMonitoring()
+        if LogitechDeviceHandoff.isEnabled {
+            DiagnosticLog.shared.info("Device handoff enabled: Control + right-drag left/right at least 68pt, release button and Control; paired channels cycle 1-2-3")
+            LogitechDeviceHandoff.shared.inspectHardware()
+        }
     }
 
     func stop() {
@@ -501,6 +493,9 @@ final class MouseGestureController: ObservableObject {
             // the breaker — it backs off in escalating cooldowns rather than
             // re-enabling immediately and getting killed again.
             breaker.recordTrip()
+            DispatchQueue.main.async {
+                DiagnosticLog.shared.warn("MouseGesture: tap disabled by timeout — breaker tripped")
+            }
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
@@ -574,13 +569,15 @@ final class MouseGestureController: ObservableObject {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
-            buttonNumber: buttonNumber
+            buttonNumber: buttonNumber,
+            sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)
         )
         // NSScreen.screens reads are safe off-main; Preferences/Store snapshot
         // reads are lock-protected (see MouseShortcutStore).
         let tuning = MouseShortcutStore.shared.tuning
         let canRecognize = Preferences.shared.mouseGesturesEnabled
-            && MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
+            && (MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
+                || (LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord))
         let onScreen = (screen(containing: snapshot.location) != nil)
 
         if !onScreen {
@@ -597,10 +594,13 @@ final class MouseGestureController: ObservableObject {
         }
 
         // Browser apps own side-button navigation and middle-click tab
-        // behavior. Let the native click flow through untouched; only if a
-        // drag direction locks do we balance the native down with a synthetic
-        // up and claim the rest of the stroke as a gesture.
-        let passthroughClick = frontmostAppShouldBypassGestures()
+        // behavior. Consume the stroke like anywhere else; if it releases
+        // without a direction, processMouseUp replays a synthetic click via
+        // replayMouseClick. (Passing the real down through and balancing it
+        // with a synthetic up on lock proved fatal: the injected up moves the
+        // OS button state to "released", so the physical release is deduped
+        // and never reaches this tap — the gesture can only go stale.)
+        let ignoredFrontmostApp = frontmostAppShouldBypassGestures()
 
         // Mark this button as actively tracked before the OS sees a follow-up
         // drag/up — the tap thread reads this on subsequent events to decide
@@ -608,16 +608,15 @@ final class MouseGestureController: ObservableObject {
         setTrackingButton(
             buttonNumber,
             startPoint: snapshot.location,
-            nativeClickPassthrough: passthroughClick,
             tuning: tuning
         )
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDownConsume(
                 snapshot: snapshot,
-                nativeClickPassthrough: passthroughClick
+                ignoredFrontmostApp: ignoredFrontmostApp
             )
         }
-        return passthroughClick ? Unmanaged.passUnretained(event) : nil
+        return nil
     }
 
     private enum MouseDownPassthroughReason {
@@ -673,7 +672,7 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func processMouseDownConsume(snapshot: MouseEventSnapshot, nativeClickPassthrough: Bool) {
+    private func processMouseDownConsume(snapshot: MouseEventSnapshot, ignoredFrontmostApp: Bool) {
         dispatchPrecondition(condition: .onQueue(.main))
         MouseShortcutStore.shared.reloadIfNeeded()
         let button = MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber))
@@ -705,6 +704,9 @@ final class MouseGestureController: ObservableObject {
             self.releaseOverlay(overlay)
         }
         let newSession = GestureSession(buttonNumber: snapshot.buttonNumber, startPoint: snapshot.location, overlay: overlay)
+        newSession.handoffCandidate = LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord
+        newSession.handoffEligible = newSession.handoffCandidate
+        newSession.initialFlags = snapshot.flags
         newSession.visual = MouseShortcutStore.shared.visualHint(for: button)
         session = newSession
         scheduleStaleSessionCleanup(for: newSession)
@@ -717,7 +719,7 @@ final class MouseGestureController: ObservableObject {
             modifiers: snapshot.flags,
             candidate: nil,
             match: nil,
-            note: nativeClickPassthrough ? "tracking; native click passes through" : "tracking",
+            note: ignoredFrontmostApp ? "tracking; browser click replays on release" : "tracking",
             appInfo: appInfo
         )
     }
@@ -730,37 +732,12 @@ final class MouseGestureController: ObservableObject {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
-            buttonNumber: buttonNumber
+            buttonNumber: buttonNumber,
+            sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)
         )
-
-        let delta = CGPoint(
-            x: snapshot.location.x - trackingState.startPoint.x,
-            y: snapshot.location.y - trackingState.startPoint.y
-        )
-        let direction = Self.resolveDirection(
-            delta: delta,
-            threshold: trackingState.dragThreshold,
-            axisBias: trackingState.axisBias
-        )
-        if direction != nil,
-           markNativeClickBalanced(buttonNumber: buttonNumber) {
-            postSyntheticMouseUp(
-                buttonNumber: buttonNumber,
-                at: snapshot.location,
-                flags: snapshot.flags
-            )
-            DispatchQueue.main.async {
-                DiagnosticLog.shared.info("MouseGesture: balanced native mouseUp for claimed gesture button=\(buttonNumber)")
-            }
-        }
 
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDragged(snapshot: snapshot)
-        }
-        if trackingState.nativeClickPassthrough,
-           direction == nil,
-           !trackingState.nativeClickBalanced {
-            return Unmanaged.passUnretained(event)
         }
         return nil
     }
@@ -773,6 +750,7 @@ final class MouseGestureController: ObservableObject {
         MouseShortcutStore.shared.reloadIfNeeded()
 
         session.currentPoint = snapshot.location
+        session.handoffEligible = session.handoffEligible && snapshot.isHardwareHandoffChord
         session.recordPoint(snapshot.location)
         scheduleStaleSessionCleanup(for: session)
         let button = MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber))
@@ -841,33 +819,18 @@ final class MouseGestureController: ObservableObject {
         let snapshot = MouseEventSnapshot(
             location: event.location,
             flags: event.flags,
-            buttonNumber: buttonNumber
+            buttonNumber: buttonNumber,
+            sourcePID: event.getIntegerValueField(.eventSourceUnixProcessID)
         )
         guard let trackingState = currentTrackingState(),
               trackingState.buttonNumber == buttonNumber else {
             DispatchQueue.main.async { [weak self] in
                 self?.processMouseUpNoSession(snapshot: snapshot)
+                if self?.session != nil {
+                    DiagnosticLog.shared.warn("MouseGesture: mouseUp for untracked button=\(buttonNumber) while a session is live — release escaped tracking")
+                }
             }
             return Unmanaged.passUnretained(event)
-        }
-
-        if trackingState.nativeClickPassthrough {
-            let delta = CGPoint(
-                x: snapshot.location.x - trackingState.startPoint.x,
-                y: snapshot.location.y - trackingState.startPoint.y
-            )
-            let direction = Self.resolveDirection(
-                delta: delta,
-                threshold: trackingState.dragThreshold,
-                axisBias: trackingState.axisBias
-            )
-            if direction == nil, !trackingState.nativeClickBalanced {
-                setTrackingButton(nil)
-                DispatchQueue.main.async { [weak self] in
-                    self?.processMouseUpNativeClickPassthrough(snapshot: snapshot)
-                }
-                return Unmanaged.passUnretained(event)
-            }
         }
 
         // Clear tap-side tracking so a subsequent drag/up for this button
@@ -894,42 +857,6 @@ final class MouseGestureController: ObservableObject {
         )
     }
 
-    private func processMouseUpNativeClickPassthrough(snapshot: MouseEventSnapshot) {
-        dispatchPrecondition(condition: .onQueue(.main))
-        guard let activeSession = session,
-              activeSession.buttonNumber == snapshot.buttonNumber else {
-            recordObservedEvent(
-                phase: "up",
-                button: MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber)),
-                location: snapshot.location,
-                delta: .zero,
-                modifiers: snapshot.flags,
-                candidate: nil,
-                match: nil,
-                note: "native click passthrough",
-                appInfo: currentAppInfo()
-            )
-            return
-        }
-
-        let delta = CGPoint(
-            x: snapshot.location.x - activeSession.startPoint.x,
-            y: snapshot.location.y - activeSession.startPoint.y
-        )
-        recordObservedEvent(
-            phase: "up",
-            button: MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber)),
-            location: snapshot.location,
-            delta: delta,
-            modifiers: snapshot.flags,
-            candidate: nil,
-            match: nil,
-            note: "native click passthrough",
-            appInfo: currentAppInfo()
-        )
-        clearSession()
-    }
-
     private func processMouseUp(snapshot: MouseEventSnapshot) {
         dispatchPrecondition(condition: .onQueue(.main))
         MouseShortcutStore.shared.reloadIfNeeded()
@@ -938,6 +865,7 @@ final class MouseGestureController: ObservableObject {
 
         guard let session, session.buttonNumber == snapshot.buttonNumber else {
             // Session was cleared between the tap-thread dispatch and now.
+            DiagnosticLog.shared.warn("MouseGesture: mouseUp dropped — session already cleared for button=\(snapshot.buttonNumber)")
             return
         }
         session.currentPoint = snapshot.location
@@ -952,6 +880,19 @@ final class MouseGestureController: ObservableObject {
         self.session = nil
         staleSessionTimer?.invalidate()
         staleSessionTimer = nil
+
+        if session.handoffCandidate {
+            session.overlay.dismiss(immediately: true)
+            if session.handoffEligible && snapshot.isHardwareHandoffChord,
+               let direction = MouseHandoffGesture.direction(delta: delta, threshold: tuning.dragThreshold) {
+                // handleMouseUp already cleared tap tracking. Switch only after
+                // physical release, never while right-button state is held.
+                LogitechDeviceHandoff.shared.requestSwitch(direction: direction)
+            } else {
+                replayRightStroke(session: session, end: snapshot.location, flags: snapshot.flags)
+            }
+            return
+        }
 
         let shapeResult = shapeRecognizer.recognize(points: session.pathPoints)
         if let shape = shapeResult.shape {
@@ -1097,17 +1038,9 @@ final class MouseGestureController: ObservableObject {
     private func executeSingleAction(_ action: MouseShortcutActionDefinition, startPoint: CGPoint) -> GestureOutcome {
         switch action.type {
         case .spacePrevious:
-            guard WindowTiler.adjacentSpaceTarget(offset: -1, from: startPoint) != nil else {
-                return GestureOutcome(label: "No Previous Space", success: false, accessory: nil)
-            }
-            let switched = WindowTiler.switchToAdjacentSpace(offset: -1, from: startPoint)
-            return GestureOutcome(label: switched ? "Previous Space" : "Previous Space Blocked", success: switched, accessory: nil)
+            return switchSpaceViaGesture(offset: -1, label: "Previous Space", startPoint: startPoint)
         case .spaceNext:
-            guard WindowTiler.adjacentSpaceTarget(offset: 1, from: startPoint) != nil else {
-                return GestureOutcome(label: "No Next Space", success: false, accessory: nil)
-            }
-            let switched = WindowTiler.switchToAdjacentSpace(offset: 1, from: startPoint)
-            return GestureOutcome(label: switched ? "Next Space" : "Next Space Blocked", success: switched, accessory: nil)
+            return switchSpaceViaGesture(offset: 1, label: "Next Space", startPoint: startPoint)
         case .screenMapToggle:
             ScreenMapWindowController.shared.showScreenMapOverview()
             return GestureOutcome(label: "Screen Map Overview", success: true, accessory: nil)
@@ -1142,6 +1075,22 @@ final class MouseGestureController: ObservableObject {
                 accessory: nil
             )
         }
+    }
+
+    /// Space switches via gesture fire the same bezel as the Ctrl+arrow path so
+    /// both entry points confirm where you landed. Edge bumps get the dimmed
+    /// amber state instead of silently returning "No … Space".
+    private func switchSpaceViaGesture(offset: Int, label: String, startPoint: CGPoint) -> GestureOutcome {
+        let outcome = WindowTiler.switchToAdjacentSpaceWithOutcome(offset: offset, from: startPoint)
+        guard let plan = outcome.plan, outcome.switched || plan.isEdge else {
+            return GestureOutcome(label: "\(label) Blocked", success: false, accessory: nil)
+        }
+        WindowTiler.presentSpaceSwitchBezel(for: plan, switched: outcome.switched)
+        return GestureOutcome(
+            label: outcome.switched ? label : "No \(label)",
+            success: outcome.switched,
+            accessory: nil
+        )
     }
 
     private func label(for direction: MouseGestureDirection) -> String {
@@ -1184,7 +1133,8 @@ final class MouseGestureController: ObservableObject {
     }
 
     private func replayMouseClick(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
-        for type in [CGEventType.otherMouseDown, .otherMouseUp] {
+        let types: [CGEventType] = buttonNumber == 1 ? [.rightMouseDown, .rightMouseUp] : [.otherMouseDown, .otherMouseUp]
+        for type in types {
             guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)) else { continue }
             guard let event = CGEvent(
                 mouseEventSource: nil,
@@ -1200,21 +1150,19 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func postSyntheticMouseUp(buttonNumber: Int64, at point: CGPoint, flags: CGEventFlags) {
-        guard let mouseButton = CGMouseButton(rawValue: UInt32(buttonNumber)),
-              let event = CGEvent(
-                  mouseEventSource: nil,
-                  mouseType: .otherMouseUp,
-                  mouseCursorPosition: point,
-                  mouseButton: mouseButton
-              ) else {
-            return
+    private func replayRightStroke(session: GestureSession, end: CGPoint, flags: CGEventFlags) {
+        var events: [(CGEventType, CGPoint, CGEventFlags)] = [(.rightMouseDown, session.startPoint, session.initialFlags)]
+        // Preserve an unrecognized stroke's path. The replay marker bypasses
+        // this controller; a plain click has no intervening drag samples.
+        events += session.pathPoints.dropFirst().map { (.rightMouseDragged, $0.cgPoint, flags) }
+        events.append((.rightMouseUp, end, flags))
+        for (type, point, modifiers) in events {
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
+                                      mouseCursorPosition: point, mouseButton: .right) else { continue }
+            event.flags = modifiers
+            event.setIntegerValueField(.eventSourceUserData, value: Self.syntheticMarker)
+            event.post(tap: .cghidEventTap)
         }
-
-        event.setIntegerValueField(CGEventField.mouseEventButtonNumber, value: buttonNumber)
-        event.setIntegerValueField(CGEventField.eventSourceUserData, value: Self.syntheticMarker)
-        event.flags = flags
-        event.post(tap: CGEventTapLocation.cghidEventTap)
     }
 
     private func screen(containing cgPoint: CGPoint) -> NSScreen? {
@@ -1473,7 +1421,12 @@ private final class MouseGestureOverlay {
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         window.contentView = overlayView
-        window.orderFrontRegardless()
+        // Ordered in on first draw, not here: every gesture-button press
+        // makes an overlay, and a plain click never draws.
+    }
+
+    deinit {
+        window.orderOut(nil)
     }
 
     func track(
@@ -1490,6 +1443,7 @@ private final class MouseGestureOverlay {
     ) {
         fadeTimer?.invalidate()
         window.alphaValue = 1
+        if !window.isVisible { window.orderFrontRegardless() }
         let localPath = localPath(from: pathPoints)
         if direction != nil || localPath.count > 1 {
             overlayView.state = .tracking(
@@ -1525,6 +1479,7 @@ private final class MouseGestureOverlay {
     ) {
         fadeTimer?.invalidate()
         window.alphaValue = 1
+        if !window.isVisible { window.orderFrontRegardless() }
         overlayView.state = .committed(
             origin: localPoint(from: origin),
             direction: direction,
@@ -1560,11 +1515,20 @@ private final class MouseGestureOverlay {
             return
         }
 
+        guard window.isVisible else {
+            finishDismissal()
+            return
+        }
+
+        // The window is captured strongly: a click-replay overlay can be
+        // freed mid-fade, and a window left ordered in at the maximum level
+        // on every Space turns Mission Control's thumbnails into wallpaper.
+        let window = window
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = fadeDuration
             window.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            self?.window.orderOut(nil)
+            window.orderOut(nil)
             self?.finishDismissal()
         })
     }

@@ -62,7 +62,7 @@ All tools use the `lattices_` prefix.
 | `lattices_computer_press_key` | `computer.pressKey` | Defaults to `treatment: "stage"`; pass `execute` with an explicit target to press. |
 | `lattices_computer_hotkey` | `computer.hotkey` | Defaults to `treatment: "stage"`; pass `execute` with an explicit target to send. |
 | `lattices_window_focus` | `computer.focusWindow` | Defaults to `treatment: "stage"`; pass `present` or `execute` to focus. |
-| `lattices_window_place` | `window.place` | Returns the daemon action receipt. |
+| `lattices_window_place` | `windows.place` | Returns the daemon action receipt. |
 | `lattices_capture_window` | `capture.screenshotWindow` | Creates a run artifact. |
 | `lattices_capture_region` | `capture.screenshotRegion` | Creates a run artifact for an explicit rect or target window frame. |
 | `lattices_capture_zoom_artifact` | `capture.zoomArtifact` | Crops/scales an existing image artifact and links the derived artifact. |

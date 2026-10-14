@@ -31,11 +31,15 @@ if [ "$SKIP_SIGN" != "1" ]; then
     echo "    Sign identity: $SIGN_IDENTITY"
 fi
 
+command -v create-dmg >/dev/null || { echo "Install the packaging dependency: brew install create-dmg" >&2; exit 1; }
+
 echo "==> Building Lattices v$VERSION (release)..."
 # Resolve the same declarative feature flags used by the dev and package
 # builders. In particular, this enables Hudson Voice when apps/mac/build.json
 # declares the voice feature.
 eval "$(bun "$ROOT/bin/lattices-build-env.ts" shell)"
+build_metadata="$(bun "$ROOT/bin/lattices-build-metadata.ts")"
+eval "$build_metadata"
 cd "$APP_DIR"
 # Stream the full build (tee) so CI surfaces real compiler errors; on failure,
 # re-print just the error: lines for a quick scan. (Previously `| tail -3`
@@ -48,6 +52,10 @@ if ! swift build -c release 2>&1 | tee "$build_log"; then
     exit 1
 fi
 rm -f "$build_log"
+if [ "$(bun "$ROOT/bin/lattices-build-metadata.ts" digest)" != "$LATTICES_BUILD_SOURCEDIGEST" ] || [ "$(git -C "$ROOT" rev-parse HEAD)" != "$LATTICES_BUILD_REVISION" ]; then
+    echo "Error: Build inputs changed during compilation; rebuild from a stable checkout." >&2
+    exit 1
+fi
 
 echo "==> Creating app bundle..."
 rm -rf "$BUILD_DIR"
@@ -78,12 +86,26 @@ if [ -d "$DECK_BUILDER_RESOURCES" ]; then
     cp -R "$DECK_BUILDER_RESOURCES" "$BUNDLE/Contents/Resources/DeckBuilder"
 fi
 
+# SwiftPM resource bundles (Vox speech engine, DeckKit, ...). A signed app
+# can't carry them in its root, where the generated Bundle.module accessor
+# looks, so they live in Contents/Resources and the packages resolve them
+# from there. Missing ones make the app trap at launch on other machines.
+for resource_bundle in "$APP_DIR"/.build/release/*.bundle; do
+    [ -d "$resource_bundle" ] || continue
+    cp -R "$resource_bundle" "$BUNDLE/Contents/Resources/"
+done
+
 # Keep privacy and transport declarations in one canonical plist, then inject
 # the requested release version. This prevents release-only drift from the dev
 # bundle (for example a missing microphone usage description).
 cp "$APP_DIR/Info.plist" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildChannel string release" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildTrack string latest" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildRevision string $LATTICES_BUILD_REVISION" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildTimestamp string $LATTICES_BUILD_TIMESTAMP" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildSourceDigest string $LATTICES_BUILD_SOURCEDIGEST" "$BUNDLE/Contents/Info.plist"
 
 ASSISTANT_KNOWLEDGE="$ROOT/docs/assistant-knowledge.md"
 if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
@@ -91,7 +113,11 @@ if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
     cp "$ASSISTANT_KNOWLEDGE" "$BUNDLE/Contents/Resources/docs/assistant-knowledge.md"
 fi
 
-bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/MacOS/CompanionInstaller"
+bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/Resources/companion-installer.js"
+
+# Helper apps (Voice) go in Contents/Helpers, built by their products' own
+# packaging scripts. See bin/embedded-helpers.ts.
+bun "$ROOT/bin/embedded-helpers.ts" embed "$BUNDLE"
 echo "    App bundle created at $BUNDLE"
 
 # ── Codesign ──────────────────────────────────────────────
@@ -99,16 +125,16 @@ if [ "$SKIP_SIGN" = "1" ]; then
     echo "==> Skipping signing because LATTICES_SKIP_SIGN=1"
 else
     echo "==> Signing..."
-    codesign --force --options runtime --timestamp \
-        --entitlements "$ROOT/tools/release/CompanionInstaller.entitlements" \
-        --sign "$SIGN_IDENTITY" "$BUNDLE/Contents/MacOS/CompanionInstaller"
+    # Inside out: embedded helpers first, then nested executables, then the
+    # bundle. No --deep, which would re-sign the helpers as Lattices.
+    bun "$ROOT/bin/embedded-helpers.ts" sign "$BUNDLE" "$SIGN_IDENTITY" --timestamp
 
     codesign --force --options runtime --timestamp \
         --entitlements "$APP_DIR/Lattices.entitlements" \
         --sign "$SIGN_IDENTITY" \
         "$BUNDLE"
 
-    echo "    Signed Lattices.app"
+    echo "    Signed embedded helpers and Lattices.app"
 
     # Verify
     codesign --verify --deep --strict --verbose=2 "$BUNDLE" 2>&1 | tail -3
@@ -116,18 +142,7 @@ fi
 
 # ── Create DMG ────────────────────────────────────────────
 echo "==> Creating DMG..."
-DMG_STAGING=$(mktemp -d)
-cp -R "$BUNDLE" "$DMG_STAGING/"
-ln -s /Applications "$DMG_STAGING/Applications"
-
-hdiutil create \
-    -volname "Lattices" \
-    -srcfolder "$DMG_STAGING" \
-    -ov \
-    -format UDZO \
-    "$BUILD_DIR/$DMG_NAME"
-
-rm -rf "$DMG_STAGING"
+"$ROOT/tools/release/dmg/package.sh" "$BUNDLE" "$BUILD_DIR/$DMG_NAME"
 
 # Sign the DMG itself
 if [ "$SKIP_SIGN" = "1" ]; then

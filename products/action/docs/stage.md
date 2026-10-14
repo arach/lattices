@@ -41,3 +41,5 @@ Action owns the look of a take. The wallpaper is never written.
 
 - MCP: `action.stage.set`, `action.stage.clear`, `action.stage.status`
 - CLI: `bun packages/cli/src/main.ts stage set|clear|status`
+
+To work an app out of the user's sight instead of staging it for a take, see [Agent layer](agent-layer.md).

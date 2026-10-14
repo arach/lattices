@@ -62,6 +62,8 @@ export interface TargetQuery {
 }
 
 export interface ResolvedTarget {
+  /** Global screen point retained by coordinate resolution. */
+  point?: Point;
   id: string;
   mode: TargetResolutionMode;
   confidence: number;
@@ -354,6 +356,8 @@ export type AxActionTier =
   | "semantic"
   | "target-focus"
   | "app-api"
+  /** Click/type/key into the agent layer: save cursor + frontmost app, act, restore. */
+  | "blink"
   | "attention";
 
 export interface DriveLease {
@@ -373,6 +377,12 @@ export interface DriveLease {
   pointerControl?: boolean;
   stopFile: string;
   lastAxTier?: AxActionTier;
+  /** What the caller named itself, e.g. "Action MCP". */
+  client?: string;
+  /** The process the agent saw on the socket, e.g. "bun 41250 ← claude 41012". */
+  clientProcess?: string;
+  /** Acts recorded against this lease. */
+  actCount?: number;
 }
 
 export interface DriveStatusSnapshot {
@@ -395,6 +405,12 @@ export interface EngineDiagnostics {
   accessibility: PermissionState;
   screenRecording: PermissionState;
   notes?: string[];
+  /** Set by engines that drive another machine (LAT-013), e.g. "linux". */
+  platform?: string;
+  /** The remote host's name, for remote engines. */
+  host?: string;
+  /** The remote host's advertised capabilities (host.describe). */
+  capabilities?: string[];
 }
 
 export const guidedSessionPhases = [
@@ -494,6 +510,65 @@ export interface StageWorldStatus extends StageWorld {
   stopFile?: string;
   raised: Array<StageSubject & { title: string }>;
   scene?: StageSceneReport;
+}
+
+/**
+ * Who an agent layer dies with. Same contract as `StageOwner`: `caller` passes this
+ * process as `--parent-pid`; `detached` leaves teardown to `layer.close`.
+ */
+export type AgentLayerOwner = "caller" | "detached";
+
+/** The app whose windows live on the agent layer. One of the two is set. */
+export interface AgentLayerSubject {
+  bundleId?: string;
+  pid?: number;
+}
+
+export interface AgentLayerWindow {
+  pid: number;
+  bundleId: string | null;
+  title: string | null;
+  /** Frame before the window moved onto the layer. Restored at teardown. */
+  original: Bounds;
+  /**
+   * Opened after the layer went up (launched for it, ⌘N, a pop-up). Never on the
+   * operator's screen, so teardown closes it rather than restoring it.
+   */
+  born?: boolean;
+}
+
+/**
+ * State file written by the native `agent-layer` process. `bounds` is global,
+ * top-left origin, in points.
+ */
+export interface AgentLayerState {
+  workspace?: string;
+  previewDisplayId?: number | null;
+  previewFull?: boolean;
+  pid: number;
+  displayId: number;
+  bounds: Bounds;
+  pip: boolean;
+  /** The operator paused the agent from the viewer; acts are refused until they resume. */
+  paused?: boolean;
+  /** Movie path while a take is being recorded off the layer's feed. */
+  recording?: string | null;
+  windows: AgentLayerWindow[];
+  startedAt: string;
+}
+
+export interface AgentLayerStatus {
+  workspace?: string;
+  active: boolean;
+  owner: AgentLayerOwner;
+  ownerPid?: number;
+  subject?: AgentLayerSubject;
+  stopFile?: string;
+  stateFile?: string;
+  /** Present while the layer is up. */
+  layer?: AgentLayerState;
+  /** Set when `close` gave up waiting and the process may still be alive. */
+  pid?: number;
 }
 
 export interface TargetApp {
@@ -858,6 +933,7 @@ export interface CaptureEngine {
   captureFullScreenshot(path: string): Promise<RuntimeArtifact>;
   consumeStageControls(): Promise<string[]>;
   resolveTarget(query: TargetQuery): Promise<ResolvedTarget>;
-  performAction(action: RuntimeAction, target?: ResolvedTarget): Promise<void>;
+  /** Resolves to how the act landed (the host detail, e.g. "via=ax"), when the engine knows. */
+  performAction(action: RuntimeAction, target?: ResolvedTarget): Promise<string | undefined | void>;
   replayArtifact(path: string): Promise<void>;
 }

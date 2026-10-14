@@ -31,7 +31,7 @@ pi install npm:@arach/pi-lattices
 Start Lattices before using the tools:
 
 ```bash
-lattices app
+lats app
 ```
 
 ## High-value tools
@@ -54,7 +54,7 @@ lattices app
 | `lattices_computer_press_key` | `computer.pressKey` |
 | `lattices_computer_hotkey` | `computer.hotkey` |
 | `lattices_window_focus` | `computer.focusWindow` |
-| `lattices_window_place` | `window.place` |
+| `lattices_window_place` | `windows.place` |
 | `lattices_capture_window` | `capture.screenshotWindow` |
 | `lattices_capture_region` | `capture.screenshotRegion` |
 | `lattices_capture_zoom_artifact` | `capture.zoomArtifact` |
@@ -98,7 +98,7 @@ bun run --cwd packages/pi-lattices smoke:no-daemon
 Live status + safe staged call:
 
 ```bash
-lattices app
+lats app
 bun run --cwd packages/pi-lattices smoke:live
 ```
 

@@ -4,7 +4,7 @@ description: Read-only terminal and JSON views of the current macOS workspace
 order: 5.5
 ---
 
-`lattices map` is a read-only **drawing** of the current desktop. The structured
+`lats map` is a read-only **drawing** of the current desktop. The structured
 read is `desktop.snapshot` (one call: frontmost, layer, displays, windows,
 sessions, permissions). Map prefers that payload, then falls back to joining
 `spaces.list` and `windows.list` on older app builds. It either draws a
@@ -17,11 +17,11 @@ interactive **Studio / Screen Map** window and the **Hyper+3 HUD**.
 ## Terminal map
 
 ```bash
-lattices map
+lats map
 ```
 
 Example with two differently sized, vertically offset displays
-(`lattices map --width 110 --height 14`):
+(`lats map --width 110 --height 14`):
 
 ```text
 Desktop 7280×2395 @ 0,0 · 2 displays · 4 windows · 1 cell ≈ 92×184 pt
@@ -143,8 +143,8 @@ non-negative integers.
 ## JSON for agents
 
 ```bash
-lattices map --json
-lattices map --display 1 --json
+lats map --json
+lats map --display 1 --json
 ```
 
 The JSON form is a canonical projection of the same current-Space view; it is
@@ -197,7 +197,7 @@ in `map --display 1`. `--display` filters both terminal and JSON output. For eve
 known window, including hidden and off-Space windows, call `windows.list`
 directly instead. The versioned projection copies the documented display,
 Space, and window fields explicitly rather than passing through arbitrary
-future daemon fields; optional `latticesSession` and `layerTag` values remain
+future daemon fields; the optional `latticesSession` value remains
 available when `windows.list` supplies them.
 
 The two daemon reads happen close together but are not an atomic WindowServer
@@ -240,24 +240,24 @@ records to `NSScreen` by display UUID, with the existing index as a fallback.
 ## Surface and side-effect matrix
 
 A miniature workspace diagram on the desktop—often near the lower-left—is a
-HUD minimap, not terminal `lattices map` output.
+HUD minimap, not terminal `lats map` output.
 
 | Primitive | CLI / daemon method | Read or mutate | Moves or focuses windows? | Visible desktop surface? | Lifetime and exact cleanup | Structured verification? |
 |-----------|---------------------|----------------|---------------------------|--------------------------|----------------------------|--------------------------|
-| Terminal workspace map | `lattices map`; `spaces.list` + `windows.list` | Read-only | No | No; terminal output only | Ends with the command; no desktop cleanup | **Yes, preferred**; use `--json` |
-| Raw inventory | `lattices windows --json`; `windows.list` | Read-only | No | No | One-shot | **Yes, preferred** |
-| Resolve or plan a target | `lattices call window.resolve ...`; `window.resolve` | Read-only | No | No | One-shot | **Yes, preferred** before mutations |
+| Terminal workspace map     | `lats map`; `spaces.list` + `windows.list` | Read-only | No | No; terminal output only | Ends with the command; no desktop cleanup | **Yes, preferred**; use `--json` |
+| Raw inventory     | `lats windows --json`; `windows.list` | Read-only | No | No | One-shot | **Yes, preferred** |
+| Resolve or plan a target     | `lats call windows.resolve ...`; `windows.resolve` | Read-only | No | No | One-shot | **Yes, preferred** before mutations |
 | Studio / interactive Screen Map | No CLI/RPC open method; **Hyper+L** opens Studio | Opening is UI-only; Apply and explicit actions can mutate | Not merely by opening; Apply/focus/tile actions can | **Yes**, a normal Lattices window; preview mode can add an overlay | Hyper+L is an opener, not a close toggle. With map keyboard focus use **Escape** or **q**; the window close button also closes it and ends preview | No structured surface lifecycle API; do not open for verification |
 | HUD and HUD minimap | No CLI/RPC open method; **Hyper+3** toggles HUD | Opening is UI-only; chosen HUD actions can mutate | Selected actions can focus/tile | **Yes**, including the miniature map panels | Press **Hyper+3** while the HUD is active, or Escape from the base HUD. Tile/search submodes consume the first Escape, so another may be required. `M` cycles minimap hidden/docked/expanded. The Scattered and Full presets intentionally fade to ambient opacity instead of fully disappearing; while the HUD is active, use `X` (or `Option+X` from any HUD context) to select Classic, Glass, or Alive before dismissing when full teardown is required | No; agents should not open it for verification |
-| Live tab-stack chrome | `tabStacks.list`; `tabStacks.create` / `layout` / `select` / `delete` | List is read-only; the others mutate stack or window state | Create/layout can move windows; select focuses one | **Yes**, an enclosure and reserved rail independent of the HUD | Persists after Hyper+3 dismissal. Call `tabStacks.delete` with its `id` to remove the stack without closing member windows | `tabStacks.list` is structured; never create a stack only to verify state |
-| Screenshot artifact | `lattices capture window [wid]`; `lattices capture display [index]`; `capture.screenshotWindow` / `capture.screenshotDisplay` | Writes a run and PNG; display capture can also copy the PNG to the clipboard | No | Opens no picker or new Lattices surface. Display capture records the display as already composed, including visible Lattices overlays; macOS can show a permission prompt on first use | One-shot; the artifact persists in the run store, but no new Lattices UI remains | Yes when pixels are actually required; otherwise prefer state APIs |
-| Recording artifact | `lattices capture record ...`; `capture.recordWindow` / `capture.recordRegion` | Writes a run and MOV | No | No visible Lattices capture UI; an offscreen probe runs in the background | Until `--duration-ms` expires or `lattices capture stop <run-id>` completes | Use only when temporal pixels are required |
-| Place a window | `lattices place ...`; `window.place` / `actions.execute` | Mutating | **Yes** | No Lattices overview surface | One-shot; use the returned undo receipt / `actions.undo` when applicable | Verify afterward with `lattices map --json` or raw reads |
+| Live tab-stack chrome | `tabs.list`; `tabs.stack` / `layout` / `select` / `unstack` | List is read-only; the others mutate stack or window state | Create/layout can move windows; select focuses one | **Yes**, an enclosure and reserved rail independent of the HUD | Persists after Hyper+3 dismissal. Call `tabs.unstack` with its `id` to remove the stack without closing member windows | `tabs.list` is structured; never create a stack only to verify state |
+| Screenshot artifact         | `lats capture window [wid]`; `lats capture display [index]`; `capture.screenshotWindow` / `capture.screenshotDisplay` | Writes a run and PNG; display capture can also copy the PNG to the clipboard | No | Opens no picker or new Lattices surface. Display capture records the display as already composed, including visible Lattices overlays; macOS can show a permission prompt on first use | One-shot; the artifact persists in the run store, but no new Lattices UI remains | Yes when pixels are actually required; otherwise prefer state APIs |
+| Recording artifact         | `lats capture record ...`; `capture.recordWindow` / `capture.recordRegion` | Writes a run and MOV | No | No visible Lattices capture UI; an offscreen probe runs in the background | Until `--duration-ms` expires or `lats capture stop <run-id>` completes | Use only when temporal pixels are required |
+| Place a window         | `lats place ...`; `windows.place` / `actions.execute` | Mutating | **Yes** | No Lattices overview surface | One-shot; use the returned undo receipt / `history.undo` when applicable | Verify afterward with `lats map --json` or raw reads |
 
 The Scattered and Full HUD presets intentionally leave a faint, non-interactive
 ambient visual after dismissal. That is why Hyper+3 can appear to dismiss a
 miniature map without removing every pixel. Live tab-stack chrome is a separate
-persistent surface and must be removed with `tabStacks.delete`, not Hyper+3.
+persistent surface and must be removed with `tabs.unstack`, not Hyper+3.
 The current API cannot enumerate or force-dismiss Lattices-owned transient
 HUD/Studio panels, so there is no honest structured proof that every such panel
 has torn down. That lifecycle API is a follow-up, not something agents should
@@ -269,27 +269,27 @@ Every legend row carries the window's `wid`. That id feeds the movement
 commands directly, without any visible Lattices surface:
 
 ```bash
-lattices window move 4182 --display 1                    # keep normalized frame
-lattices window move 4182 --display 1 --placement right  # snap into a slot
-lattices window place 4182 top-left                      # slot on current display
-lattices window move 4182 --display 0 --dry-run --json   # plan without moving
+lats window move 4182 --display 1                        # keep normalized frame
+lats window move 4182 --display 1 --placement right      # snap into a slot
+lats window place 4182 top-left                          # slot on current display
+lats window move 4182 --display 0 --dry-run --json       # plan without moving
 ```
 
 Both commands require an explicit wid — a malformed id is an error, never a
 frontmost fallback — and return the daemon's execution receipt with before,
-target, and after frames. Verify afterward with `lattices map --json`.
+target, and after frames. Verify afterward with `lats map --json`.
 
 ## Agent workflow and cleanup guarantees
 
-1. Read `spaces.list`, `windows.list`, or `lattices map --json`.
-2. Use `window.resolve` or an `actions.execute` dry run when target identity or
+1. Read `spaces.list`, `windows.list`, or `lats map --json`.
+2. Use `windows.resolve` or an `actions.execute` dry run when target identity or
    placement matters.
 3. Mutate only through the explicit daemon action.
 4. Read structured state again and compare window ID, Space IDs, and frame.
 5. Capture pixels only when the result is inherently visual.
 
 Agents must not open Studio, the HUD/minimap, a capture/review UI, or another
-visible Lattices surface when structured state is sufficient. `lattices map`
+visible Lattices surface when structured state is sufficient. `lats map`
 itself is always safe for this workflow because it cannot create macOS UI.
 
 If an agent intentionally opens a visible Lattices surface, it must close that

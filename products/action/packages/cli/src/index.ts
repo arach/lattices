@@ -1,6 +1,6 @@
 import { compileScenario, type ScenarioDocument } from "@action/compiler";
 import type { GuidedSessionEvent, HudSnapshot } from "@action/protocol";
-import { GuidedCaptureSession, MacOSCommandEngine, MockCaptureEngine } from "@action/runtime";
+import { GuidedCaptureSession, MacOSCommandEngine, MockCaptureEngine, remoteEngineFromEnv } from "@action/runtime";
 import { resolve } from "node:path";
 
 export function describeCli(): string[] {
@@ -24,15 +24,18 @@ export interface GuidedCaptureDemoResult {
   scenario: ScenarioDocument;
 }
 
-export type DemoEngineMode = "mock" | "macos";
+/** `remote` drives the lattices host named by ACTION_REMOTE_HOST (LAT-013). */
+export type DemoEngineMode = "mock" | "macos" | "remote";
 
 function createSession(
   scenario: ScenarioDocument,
   engineMode: DemoEngineMode,
 ): GuidedCaptureSession {
-  const engine = engineMode === "macos"
-    ? new MacOSCommandEngine()
-    : new MockCaptureEngine();
+  const engine = engineMode === "remote"
+    ? remoteEngineFromEnv() ?? (() => { throw new Error("engine mode remote needs ACTION_REMOTE_HOST"); })()
+    : engineMode === "macos"
+      ? new MacOSCommandEngine()
+      : new MockCaptureEngine();
 
   return new GuidedCaptureSession(engine, {
     sessionId: `session_${scenario.id.replace(/[^a-z0-9]+/gi, "_")}`,

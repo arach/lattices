@@ -85,9 +85,12 @@ enum Capability: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The capabilities this build asks for.
+    static var available: [Capability] { allCases }
+
     /// All capabilities that are not yet granted.
     static var missing: [Capability] {
-        Capability.allCases.filter { !$0.isGranted }
+        Capability.available.filter { !$0.isGranted }
     }
 
     /// Capabilities that are missing AND have not been dismissed-for-now.

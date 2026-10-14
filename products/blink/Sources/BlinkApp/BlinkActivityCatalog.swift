@@ -17,6 +17,7 @@ enum BlinkActivityID: String, CaseIterable, Identifiable {
     case createFromCapture = "popover.create-from-capture"
     case dictateCapture = "popover.dictate"
 
+    case readSelection = "reader.read-selection"
     case toggleReadEdit = "note.toggle-read-edit"
     case toggleFocus = "note.toggle-focus"
     case saveNote = "note.save"
@@ -443,6 +444,16 @@ private extension BlinkActivityCatalog {
                 shortcut: fixed("Fast drag + release")
             ),
 
+            BlinkActivity(
+                id: .readSelection,
+                title: "Read Selection",
+                description: "Lift the selection in any app into a focused reading layer. ⌘S keeps it as a note.",
+                symbolName: "text.viewfinder",
+                group: .readAndWrite,
+                scope: .global,
+                keywords: ["reader", "terminal", "selection", "focus", "reflow"],
+                shortcut: configured(\.reader)
+            ),
             BlinkActivity(
                 id: .toggleReadEdit,
                 title: "Flip Read / Edit",

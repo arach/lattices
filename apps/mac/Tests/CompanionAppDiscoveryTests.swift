@@ -5,14 +5,17 @@ final class CompanionAppDiscoveryTests: XCTestCase {
     private var root: URL!
     private var userApps: URL!
     private var systemApps: URL!
+    private var helpers: URL!
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("lattices-companion-apps-\(UUID().uuidString)", isDirectory: true)
         userApps = root.appendingPathComponent("UserApplications", isDirectory: true)
         systemApps = root.appendingPathComponent("SystemApplications", isDirectory: true)
+        helpers = root.appendingPathComponent("Lattices.app/Contents/Helpers", isDirectory: true)
         try FileManager.default.createDirectory(at: userApps, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: systemApps, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
@@ -138,7 +141,11 @@ final class CompanionAppDiscoveryTests: XCTestCase {
         )
     }
 
-    func testSpeechIsNotDiscoveredByFilenameOrProcess() throws {
+    func testVoiceIsNotDiscoveredByFilenameOrProcess() throws {
+        _ = try makeAppBundle(
+            at: userApps.appendingPathComponent("Voice.app"),
+            bundleIdentifier: "dev.example.voice"
+        )
         _ = try makeAppBundle(
             at: userApps.appendingPathComponent("Speech.app"),
             bundleIdentifier: "dev.example.speech"
@@ -147,15 +154,81 @@ final class CompanionAppDiscoveryTests: XCTestCase {
             at: userApps.appendingPathComponent("SpeakEasy.app"),
             bundleIdentifier: "com.example.speakeasy"
         )
-        let speech = CompanionAppCatalog.product(id: .speech)
-        XCTAssertEqual(speech.bundleIdentifier, "dev.lattices.Speech")
-        XCTAssertEqual(makeDiscovery().installState(for: speech), .missing)
-        XCTAssertEqual(CompanionAppCatalog.action(for: speech, installState: .missing), .get)
+        let voice = CompanionAppCatalog.product(id: .speech)
+        XCTAssertEqual(voice.displayName, "Voice")
+        XCTAssertEqual(voice.bundleIdentifier, "dev.lattices.Speech")
+        XCTAssertEqual(makeDiscovery().installState(for: voice), .missing)
+        XCTAssertEqual(CompanionAppCatalog.action(for: voice, installState: .missing), .get)
     }
 
-    func testStandaloneSpeechIsDiscoveredByItsIdentity() throws {
+    /// Standalone releases shipped as Speech.app with the same frozen bundle ID.
+    func testStandaloneSpeechAppIsDiscoveredByItsIdentity() throws {
         let url = try makeAppBundle(at: userApps.appendingPathComponent("Speech.app"), bundleIdentifier: CompanionBundleIdentifiers.speech)
         XCTAssertEqual(makeDiscovery().installState(for: CompanionAppCatalog.product(id: .speech)), .installed(url: url))
+    }
+
+    func testEmbeddedVoiceWinsOverStandaloneCopies() throws {
+        let embedded = try makeAppBundle(
+            at: helpers.appendingPathComponent("Voice.app"),
+            bundleIdentifier: CompanionBundleIdentifiers.speech
+        )
+        let registered = try makeAppBundle(
+            at: root.appendingPathComponent("RegisteredSpeech.app"),
+            bundleIdentifier: CompanionBundleIdentifiers.speech
+        )
+        _ = try makeAppBundle(
+            at: userApps.appendingPathComponent("Speech.app"),
+            bundleIdentifier: CompanionBundleIdentifiers.speech
+        )
+        let locator = FakeLaunchServices()
+        locator.urls[CompanionBundleIdentifiers.speech] = registered
+        let discovery = makeDiscovery(launchServices: locator, helpersDirectory: helpers)
+        let voice = CompanionAppCatalog.product(id: .speech)
+
+        XCTAssertEqual(discovery.installState(for: voice), .installed(url: embedded))
+        let launcher = CompanionAppLauncher(
+            catalog: CompanionAppCatalog.firstParty,
+            discovery: discovery,
+            opener: FakeCompanionURLOpener()
+        )
+        XCTAssertEqual(try launcher.resolveOpenTarget(voice).get(), embedded)
+        XCTAssertEqual(
+            CompanionAppMenuModel.make(discovery: discovery).items.first { $0.productID == .speech }?.action,
+            .open
+        )
+
+        try FileManager.default.removeItem(at: embedded)
+        XCTAssertEqual(discovery.installState(for: voice), .installed(url: registered))
+    }
+
+    func testEmbeddedHelperIsValidatedByIdentity() throws {
+        _ = try makeAppBundle(
+            at: helpers.appendingPathComponent("Voice.app"),
+            bundleIdentifier: "com.example.not-voice"
+        )
+        let standalone = try makeAppBundle(
+            at: userApps.appendingPathComponent("Speech.app"),
+            bundleIdentifier: CompanionBundleIdentifiers.speech
+        )
+        let discovery = makeDiscovery(helpersDirectory: helpers)
+
+        XCTAssertNil(discovery.embeddedURL(bundleIdentifier: CompanionBundleIdentifiers.speech))
+        XCTAssertEqual(
+            discovery.installState(for: CompanionAppCatalog.product(id: .speech)),
+            .installed(url: standalone)
+        )
+    }
+
+    func testHelpersDirectoryExistsOnlyInsideAnAppBundle() {
+        XCTAssertEqual(
+            CompanionAppDiscovery.helpersDirectory(
+                inAppAt: URL(fileURLWithPath: "/Applications/Lattices.app", isDirectory: true)
+            )?.path,
+            "/Applications/Lattices.app/Contents/Helpers"
+        )
+        XCTAssertNil(CompanionAppDiscovery.helpersDirectory(
+            inAppAt: URL(fileURLWithPath: "/tmp/lattices/.build/release", isDirectory: true)
+        ))
     }
 
     func testMenuModelRefreshesFromCurrentDiscovery() throws {
@@ -243,7 +316,7 @@ final class CompanionAppDiscoveryTests: XCTestCase {
         XCTAssertTrue(opener.openedApplications.isEmpty)
     }
 
-    func testSpeechProductPageIsOptional() {
+    func testVoiceProductPageIsOptional() {
         let opener = FakeCompanionURLOpener()
         let launcher = CompanionAppLauncher(
             catalog: CompanionAppCatalog.firstParty,
@@ -295,13 +368,15 @@ final class CompanionAppDiscoveryTests: XCTestCase {
     }
 
     private func makeDiscovery(
-        launchServices: CompanionLaunchServicesLocating = FakeLaunchServices()
+        launchServices: CompanionLaunchServicesLocating = FakeLaunchServices(),
+        helpersDirectory: URL? = nil
     ) -> CompanionAppDiscovery {
         CompanionAppDiscovery(
             launchServices: launchServices,
             identityReader: PlistCompanionBundleIdentityReader(),
             fileSystem: FoundationCompanionAppFileSystem(),
-            applicationsDirectories: [userApps, systemApps]
+            applicationsDirectories: [userApps, systemApps],
+            helpersDirectory: helpersDirectory
         )
     }
 

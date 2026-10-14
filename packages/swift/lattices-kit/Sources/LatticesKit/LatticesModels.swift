@@ -24,7 +24,6 @@ public struct LatticesWindow: Codable, Identifiable, Equatable, Sendable {
     public var isOnScreen: Bool
     public var latticesSession: String?
     public var axVerified: Bool?
-    public var layerTag: String?
 
     public var id: Int { wid }
 }

@@ -49,7 +49,7 @@ struct FocusIntent: LatticeIntent {
 
         // Use unified search — single source of truth
         let result = try LatticesApi.shared.dispatch(
-            method: "lattices.search",
+            method: "search.query",
             params: .object([
                 "query": .string(app),
                 "sources": .array([.string("titles"), .string("apps"), .string("sessions"), .string("cwd"), .string("tmux")]),

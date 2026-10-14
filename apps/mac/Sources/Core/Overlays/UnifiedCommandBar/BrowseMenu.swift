@@ -12,7 +12,26 @@ enum BrowseMenu {
         out += layersSection()
         out += groupsSection()
         out += appSection()
+        out += machinesSection()
         return out
+    }
+
+    static func machinesSection(screens: [DisplayGather.Screen] = DisplayGather.screens(), hosts: [VisitTrust.Host] = VisitTrust.shared.list()) -> [OmniResult] {
+        var rows: [OmniResult] = []
+        func add(_ title: String, _ method: String, _ params: JSON? = nil) {
+            rows.append(OmniResult(kind: .action, title: title, subtitle: "", icon: "desktopcomputer", score: 10) { ClusterVerbs.run(method, params) })
+        }
+        for screen in screens {
+            let params: JSON = .object(["display": .int(screen.index)])
+            add("Bring everything to \(screen.name)", "bring", params)
+            add("Make \(screen.name) main", "main", params)
+            add("\(screen.name) elsewhere", "elsewhere", params)
+            add("\(screen.name) here", "here", params)
+        }
+        for host in hosts { add("Visit \(host.name)", "visit.start", .object(["host": .string(host.name)])) }
+        add("Home — end visit", "home")
+        add("Undo bring", "bring", .object(["undo": .bool(true)]))
+        return rows
     }
 
     // MARK: - Window (act on the frontmost window captured at open time)
@@ -86,27 +105,30 @@ enum BrowseMenu {
 
     private static func layersSection() -> [OmniResult] {
         let workspace = WorkspaceManager.shared
-        guard let layers = workspace.config?.layers else { return [] }
+        let layers = workspace.layers
         var out: [OmniResult] = []
+        let windowCounts = workspace.layerWindowCounts()
         for (index, layer) in layers.enumerated() {
             let i = index
-            let counts = workspace.layerRunningCount(index: i)
-            let isActive = i == workspace.activeLayerIndex
-            if counts.running > 0 {
+            let count = windowCounts.indices.contains(i) ? windowCounts[i] : 0
+            let isActive = i == workspace.activeLayerSelection
+            let facts: [String?] = [LayerOverview.chord(forIndex: i), LayerOverview.countNote(count), isActive ? "active" : nil]
+            let subtitle = facts.compactMap { $0 }.joined(separator: " · ")
+            if count > 0 {
                 out.append(OmniResult(
                     kind: .layer,
                     title: "Focus Layer: \(layer.label)",
-                    subtitle: "\(counts.running)/\(counts.total) running" + (isActive ? " · active" : ""),
+                    subtitle: subtitle,
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {
-                    workspace.tileLayer(index: i)
+                    workspace.focusLayer(index: i)
                 })
             } else {
                 out.append(OmniResult(
                     kind: .layer,
                     title: "Launch Layer: \(layer.label)",
-                    subtitle: "Start all \(layer.projects.count) project\(layer.projects.count == 1 ? "" : "s")",
+                    subtitle: subtitle,
                     icon: "square.stack.3d.up",
                     score: 0
                 ) {
@@ -114,6 +136,13 @@ enum BrowseMenu {
                 })
             }
         }
+        out.insert(OmniResult(
+            kind: .layer,
+            title: "Exit Layers",
+            subtitle: workspace.layerRecoveryMessage ?? "Show all windows and turn layer focus off",
+            icon: "rectangle.portrait.and.arrow.right",
+            score: 0
+        ) { workspace.exitLayers() }, at: 0)
         return out
     }
 
@@ -159,7 +188,7 @@ enum BrowseMenu {
             },
             OmniResult(kind: .action, title: "Studio",
                        subtitle: "Arrange windows & layers", icon: "rectangle.3.group", score: 0) {
-                ScreenMapWindowController.shared.showPage(.screenMap)
+                ScreenMapWindowController.shared.showPage(.overview)
             },
             OmniResult(kind: .action, title: "Activity Log",
                        subtitle: "View logs, events, and diagnostics", icon: "list.bullet.rectangle", score: 0) {
@@ -174,8 +203,9 @@ enum BrowseMenu {
                 SettingsWindowController.shared.show()
             },
             OmniResult(kind: .action, title: "Refresh Projects",
-                       subtitle: "Re-scan for .lattices.json configs", icon: "arrow.clockwise", score: 0) {
+                       subtitle: "Re-scan .lattices.json configs, reload workspace.json", icon: "arrow.clockwise", score: 0) {
                 ProjectScanner.shared.scan()
+                WorkspaceManager.shared.reloadConfig()
             },
             OmniResult(kind: .action, title: "Quit Lattices",
                        subtitle: "Exit the menu bar app", icon: "power", score: 0) {

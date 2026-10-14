@@ -1,9 +1,12 @@
 # action
 
-This repo has agent-oriented documentation generated with Dewey.
+Action's repository migration into Lattices is complete. Work in `arach/lattices` under `products/action/`; the old `arach/action` repository is historical. On Arach's Mac, `/Users/arach/dev/action` is a compatibility symlink to `/Users/arach/dev/lattices/products/action`, so both paths share one Git checkout and its uncommitted work.
+
+Action keeps its own `Action.app`, local agent, and recording lifecycle. This product has agent-oriented documentation generated with Dewey.
 
 Read first:
 
+- [Lattices workspace instructions](../../AGENTS.md)
 - [AGENTS.md](AGENTS.md)
 - [docs/overview.agent.md](docs/overview.agent.md)
 - [docs/native-runtime.agent.md](docs/native-runtime.agent.md)

@@ -192,6 +192,15 @@ final class AppFeedback {
         }
     }
 
+    /// Confirmation feedback without the prepared tap sound. Spatial Lens is
+    /// continuous and pointer-led, so an audible commit tick is unnecessarily
+    /// noisy while a subtle physical acknowledgement remains useful.
+    func commitHaptic() {
+        runOnMain {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+    }
+
     private func playTap() {
         DispatchQueue.main.async {
             self.tapSound?.stop()
@@ -444,39 +453,5 @@ private struct DiagnosticWindowRootView: View {
 
     var body: some View {
         HudLoggerPanel(title: "Activity Log", onClose: onClose)
-    }
-}
-
-// MARK: - SwiftUI Overlay
-
-struct ActivityPageView: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Palette.textMuted)
-
-                Text("Activity")
-                    .font(Typo.heading(13))
-                    .foregroundColor(Palette.text)
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-
-            HudLoggerView(store: .shared, title: "Activity", showHeader: true)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(PanelBackground())
-        .onAppear {
-            DiagnosticLog.shared.info("Activity page opened")
-        }
     }
 }

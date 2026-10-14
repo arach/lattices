@@ -716,6 +716,7 @@ export class MockCaptureEngine implements CaptureEngine {
       mode: query.point ? "coordinate" : "semantic",
       confidence: 0.96,
       label: query.semanticId ?? query.text ?? "Resolved Target",
+      ...(query.point ? { point: { x: query.point.x, y: query.point.y } } : {}),
       surfaceId: query.surfaceId,
     };
   }

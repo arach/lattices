@@ -9,30 +9,32 @@ struct ActionBrandTileShape: Shape {
     }
 }
 
-/// The capture-corner marks, placed inside a tile the way the app icon places
-/// them — hand it the tile's bounds and it works out its own inset.
-struct ActionBrandMarksShape: Shape {
+/// The A, placed inside a tile the way the app icon places it — hand it the
+/// tile's bounds and it works out its own inset.
+struct ActionBrandLetterShape: Shape {
     func path(in rect: CGRect) -> Path {
         let mark = ActionBrandMark.markRect(inTile: rect, yAxis: .down)
-        return Path(ActionBrandMark.marksPath(in: mark, yAxis: .down))
+        return Path(ActionBrandMark.letterPath(in: mark, yAxis: .down))
     }
 }
 
-/// The play triangle, in the same tile-relative placement.
-struct ActionBrandPlayShape: Shape {
+/// The cursor, in the same tile-relative placement.
+struct ActionBrandCursorShape: Shape {
     func path(in rect: CGRect) -> Path {
         let mark = ActionBrandMark.markRect(inTile: rect, yAxis: .down)
-        return Path(ActionBrandMark.playPath(in: mark, yAxis: .down))
+        return Path(ActionBrandMark.cursorPath(in: mark, yAxis: .down))
     }
 }
 
 /// Action's brand chip: the app icon, drawn live.
 ///
-/// Same paper field, graphite capture marks and coral play triangle the `.icns`
-/// carries, so the chip in a header and the icon in the Dock are one mark. It
-/// reads theme tokens rather than `ActionBrandMark`'s baked colours, so it
-/// follows a theme switch — which the icon on disk cannot, and that is the one
-/// place the two are allowed to drift.
+/// Same paper field, ink letter and cursor the `.icns` carries, so the chip in
+/// a header and the icon in the Dock are one mark. The tile and the letter read
+/// theme tokens rather than baked colours, so they follow a theme switch —
+/// which the icon on disk cannot, and that is the one place the two are
+/// allowed to drift. The cursor keeps the kit's colour on any paper, as the kit
+/// does: the theme's coral means something is live, and a chip in a header is
+/// not.
 struct ActionBrandTile: View {
     let size: CGFloat
 
@@ -40,10 +42,10 @@ struct ActionBrandTile: View {
         ZStack {
             ActionBrandTileShape()
                 .fill(StageHUDTheme.hudPaper)
-            ActionBrandMarksShape()
+            ActionBrandLetterShape()
                 .fill(StageHUDTheme.hudInk)
-            ActionBrandPlayShape()
-                .fill(StageHUDTheme.hudCoral)
+            ActionBrandCursorShape()
+                .fill(Color(cgColor: ActionBrandMark.cursor))
         }
         .frame(width: size, height: size)
         .overlay(

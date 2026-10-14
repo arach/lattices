@@ -7,7 +7,7 @@ ROOT_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)
 PACKAGE_DIR="$ROOT_DIR/native/engine"
 APP_TEMPLATE_DIR="$PACKAGE_DIR/App"
 AGENT_APP_TEMPLATE_DIR="$PACKAGE_DIR/AgentApp"
-DIST_DIR="$ROOT_DIR/native/dist"
+DIST_DIR="${ACTION_DIST_DIR:-$ROOT_DIR/native/dist}"
 APP_DIR="$DIST_DIR/Action.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -167,9 +167,9 @@ cp "$HOST_EXECUTABLE" "$APP_EXECUTABLE"
 cp "$AGENT_EXECUTABLE" "$APP_AGENT_EXECUTABLE"
 cp "$PLIST_TEMPLATE" "$CONTENTS_DIR/Info.plist"
 cp "$AGENT_PLIST_TEMPLATE" "$AGENT_HELPER_CONTENTS_DIR/Info.plist"
-# Prebuilt and committed: scripts/build-app-icon.sh renders it from the mark
-# geometry in CoreSources/ActionBrandMark.swift. Copied, never generated here,
-# so an ordinary build does not pay for it.
+# Prebuilt and committed: scripts/build-app-icon.sh renders it with the site's
+# brand exporter, from ActionMark in apps/site/src/components/ActionMark.tsx.
+# Copied, never generated here, so an ordinary build does not pay for it.
 if [[ -f "$ROOT_DIR/assets/brand/Action.icns" ]]; then
   cp "$ROOT_DIR/assets/brand/Action.icns" "$RESOURCES_DIR/Action.icns"
 else
@@ -189,6 +189,10 @@ if [[ -f "$ROOT_DIR/assets/pets/mira/pet.json" && -f "$ROOT_DIR/assets/pets/expl
 fi
 apply_bundle_version "$CONTENTS_DIR/Info.plist"
 apply_bundle_version "$AGENT_HELPER_CONTENTS_DIR/Info.plist"
+
+python3 "$SCRIPT_DIR/write-build-provenance.py" "$ROOT_DIR" "$RESOURCES_DIR" "$CONTENTS_DIR/Info.plist" "$BUILD_CONFIGURATION"
+mkdir -p "$AGENT_HELPER_CONTENTS_DIR/Resources"
+cp "$RESOURCES_DIR/build-provenance.json" "$AGENT_HELPER_CONTENTS_DIR/Resources/build-provenance.json"
 
 codesign_item "$APP_EXECUTABLE"
 codesign_item "$APP_AGENT_EXECUTABLE"

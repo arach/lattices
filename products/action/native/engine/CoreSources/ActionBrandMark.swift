@@ -1,21 +1,27 @@
 import CoreGraphics
 import Foundation
 
-/// Action's mark: a play triangle breaking out of four capture-corner marks.
+/// Action's mark: a sharp capital A whose right foot is taken by a cursor.
 ///
-/// The marks are the frame Action puts around a region; the triangle is the
-/// take. It crosses the right-hand marks rather than sitting politely inside
-/// them, and the marks are cut away where it passes so the crossing reads as
-/// deliberate instead of as a collision.
+/// The cursor's tip sits on the lower right corner of the counter and its tail
+/// runs out through the leg. The letter is cut back from both arms by an even
+/// gap, so the cursor reads as working inside the letter rather than lying on
+/// top of it.
 ///
-/// The geometry lives here, in Core, because three places draw it and they must
-/// not drift apart: the menu bar status item, the in-app brand tile, and the
-/// `.icns` the build stamps into `Action.app`. Everything is expressed in a
-/// 100 x 100 design box with **y pointing down**, then mapped onto whatever
-/// rect the caller hands in, so the mark is resolution-independent.
+/// This is a port. The source of truth is `ActionMark` in
+/// `apps/site/src/components/ActionMark.tsx` (STUDY 02), and the numbers below
+/// are copied from it. `bun run brand` in `apps/site` renders the brand kit and
+/// `Action.icns` from that component. The app draws the mark itself in two
+/// places, the menu bar status item and the brand chip, and both use this.
+///
+/// Paths are authored in the component's coordinates, with **y pointing down**,
+/// then mapped onto whatever rect the caller hands in, so the mark is
+/// resolution-independent.
 public enum ActionBrandMark {
-    /// The design box every coordinate below is expressed in. y points down.
-    public static let designBox = CGSize(width: 100, height: 100)
+    /// The square the brand kit crops from the component's 720 x 640
+    /// construction drawing. The path functions map this box onto the rect they
+    /// are given. y points down.
+    public static let designBox = CGRect(x: 15, y: 35, width: 590, height: 590)
 
     /// Which way y runs in the space the caller is drawing into.
     ///
@@ -29,128 +35,75 @@ public enum ActionBrandMark {
         case down
     }
 
-    /// Proportions of the frame and the triangle. Tuned by rendering at both
-    /// 512 and 18 points, because the knockout gap is the first thing to close
-    /// up when the mark is scaled down to the menu bar.
-    public struct Metrics: Sendable {
-        /// How far the corner marks sit in from the mark's box.
-        public var inset = 12.0
-        /// Stroke weight of the corner marks. Kept light on purpose: these are
-        /// crop marks, not a border, and the triangle is the only solid mass the
-        /// mark needs. Thinning the marks alone unbalances it, so the triangle
-        /// was pulled in to match.
-        public var weight = 3.75
-        /// Length of each arm. Long enough that the right-hand marks actually
-        /// stand where the triangle wants to go — with short arms the triangle
-        /// slips through the gap between the corners and never crosses anything.
-        public var arm = 34.0
+    /// Clearance between the letter and the cursor, in design units: the
+    /// construction drawing's "GAP 10 U". Drawn in one colour, the gap is all
+    /// that separates the two, and at menu bar size ten units is a third of a
+    /// point, so small single-colour drawings pass a wider one.
+    public static let standardGap = 10.0
 
-        /// The triangle. Its tip runs past the marks on the right.
-        public var playLeft = 33.0
-        public var playTop = 30.0
-        public var playBottom = 70.0
-        public var playTip = 93.0
-        public var playRadius = 3.0
-
-        /// Clearance cut out of the marks where the triangle crosses them.
-        /// Below about 4 the gap closes up at menu bar size and the crossing
-        /// looks like a mistake; much above the mark's own weight it eats the
-        /// right-hand arms.
-        public var knockout = 5.0
-
-        public init() {}
-    }
-
-    public static let metrics = Metrics()
-
-    /// The whole mark as one path — marks and triangle together. This is the
-    /// single-colour form the menu bar uses; the knockout keeps the triangle
-    /// legible against the marks even when everything is the same black.
+    /// The letter and the cursor as one path, for single-colour drawing.
     public static func markPath(
         in rect: CGRect,
         yAxis: YAxis = .up,
-        metrics m: Metrics = metrics
+        gap: Double = standardGap
     ) -> CGPath {
         let path = CGMutablePath()
-        path.addPath(marksPath(in: rect, yAxis: yAxis, metrics: m))
-        path.addPath(playPath(in: rect, yAxis: yAxis, metrics: m))
+        path.addPath(letterPath(in: rect, yAxis: yAxis, gap: gap))
+        path.addPath(cursorPath(in: rect, yAxis: yAxis))
         return path
     }
 
-    /// The four capture-corner marks, already cut away where the triangle
-    /// crosses them.
+    /// The A, with its counter and the clearance around the cursor cut out.
     ///
-    /// The cut is a real path subtraction rather than a drawing-time trick, so
-    /// the result is one plain path that fills identically in CoreGraphics, in
-    /// an `NSImage`, and in a SwiftUI `Shape`. A compositing trick like
-    /// `destinationOut` needs a transparency layer and would not survive being
-    /// handed to SwiftUI as a shape.
-    public static func marksPath(
+    /// The component cuts them with an even-odd fill and a mask. Here both are
+    /// real path subtractions, so the result is one plain path that fills
+    /// identically in CoreGraphics, in an `NSImage`, and in a SwiftUI `Shape`.
+    public static func letterPath(
         in rect: CGRect,
         yAxis: YAxis = .up,
-        metrics m: Metrics = metrics
+        gap: Double = standardGap
     ) -> CGPath {
-        let marks = CGMutablePath()
-        let lo = m.inset
-        let hi = 100 - m.inset
-        let r = m.weight / 2
-        for (cx, cy, sx, sy) in [(lo, lo, 1.0, 1.0), (hi, lo, -1.0, 1.0),
-                                 (lo, hi, 1.0, -1.0), (hi, hi, -1.0, -1.0)] {
-            marks.addPath(bar(cx, cy, sx * m.arm, sy * m.weight, r))
-            marks.addPath(bar(cx, cy, sx * m.weight, sy * m.arm, r))
-        }
-
-        let play = rawPlay(m)
-        let cut: CGPath
-        if m.knockout > 0 {
-            let halo = play.copy(
-                strokingWithWidth: CGFloat(m.knockout * 2),
-                lineCap: .round,
-                lineJoin: .round,
-                miterLimit: 10
-            )
-            cut = marks.subtracting(halo.union(play))
-        } else {
-            cut = marks
-        }
-        return place(cut, in: rect, yAxis: yAxis)
+        place(rawLetter(gap: gap), in: rect, yAxis: yAxis)
     }
 
-    /// The triangle on its own, so it can carry its own colour.
-    public static func playPath(
-        in rect: CGRect,
-        yAxis: YAxis = .up,
-        metrics m: Metrics = metrics
-    ) -> CGPath {
-        place(rawPlay(m), in: rect, yAxis: yAxis)
+    /// The cursor on its own, so it can carry its own colour.
+    public static func cursorPath(in rect: CGRect, yAxis: YAxis = .up) -> CGPath {
+        place(rawCursor(), in: rect, yAxis: yAxis)
     }
 
-    /// A rounded bar reaching out from a corner, in design space. Negative
-    /// extents run back toward the origin, which is how the four corners share
-    /// one description.
-    private static func bar(_ x: Double, _ y: Double, _ dx: Double, _ dy: Double, _ r: Double) -> CGPath {
-        let rect = CGRect(x: min(x, x + dx), y: min(y, y + dy), width: abs(dx), height: abs(dy))
-        return CGPath(roundedRect: rect, cornerWidth: CGFloat(r), cornerHeight: CGFloat(r), transform: nil)
-    }
+    /// The drawn glyph's bounds in design space: the A's apex and left foot,
+    /// and the cursor's tail, which overhangs the letter to the right and
+    /// below.
+    public static let glyphBounds: CGRect = {
+        let glyph = CGMutablePath()
+        glyph.addPath(rawLetter(gap: standardGap))
+        glyph.addPath(rawCursor())
+        return glyph.boundingBoxOfPath
+    }()
 
-    private static func rawPlay(_ m: Metrics) -> CGPath {
-        roundedPolygon(
-            [
-                CGPoint(x: m.playLeft, y: m.playTop),
-                CGPoint(x: m.playLeft, y: m.playBottom),
-                CGPoint(x: m.playTip, y: (m.playTop + m.playBottom) / 2),
-            ],
-            radius: m.playRadius
+    /// The rect to hand the path functions so that the glyph itself, not the
+    /// design box's margins, is centred in `target` with its longer side
+    /// filling it.
+    public static func designRect(fittingGlyphIn target: CGRect, yAxis: YAxis = .up) -> CGRect {
+        let scale = min(target.width, target.height) / max(glyphBounds.width, glyphBounds.height)
+        let side = designBox.width * scale
+        // In a y-up space the box is flipped, so the glyph's centre is measured
+        // from the box's bottom edge rather than its top.
+        let fromOrigin = yAxis == .down
+            ? glyphBounds.midY - designBox.minY
+            : designBox.maxY - glyphBounds.midY
+        return CGRect(
+            x: target.midX - (glyphBounds.midX - designBox.minX) * scale,
+            y: target.midY - fromOrigin * scale,
+            width: side,
+            height: side
         )
     }
 
-    private static func place(_ path: CGPath, in rect: CGRect, yAxis: YAxis) -> CGPath {
-        var transform = designTransform(into: rect, yAxis: yAxis)
-        return path.copy(using: &transform) ?? path
-    }
+    // MARK: - Tile
 
     /// The rounded tile the mark sits on, as the app icon and the in-app brand
-    /// chip both draw it: a rounded rect with macOS "continuous" corners.
+    /// chip both draw it: a rounded rect with continuous corners.
     public static func tilePath(in rect: CGRect, cornerRatio: Double = tileCornerRatio) -> CGPath {
         continuousRoundedRect(
             rect,
@@ -159,104 +112,160 @@ public enum ActionBrandMark {
         )
     }
 
-    // MARK: - Tile proportions
+    /// How far the corner reaches along each edge, as a fraction of the tile's
+    /// side. Larger than the circular equivalent because a superellipse corner
+    /// starts bending later, so it needs more run to land in the same place.
+    public static let tileCornerRatio = 0.345
+    /// Squareness of the corner; 2 is a circle. With the ratio above it lands
+    /// within a pixel of the mask macOS 26 draws around system icons, and every
+    /// Lattices product icon uses the same pair (`export-brand.tsx`).
+    public static let tileCornerExponent = 2.85
 
-    /// How much of each edge the corner eats, as a fraction of the tile's side.
-    /// Larger than the circular equivalent because a superellipse corner starts
-    /// bending later, so it needs more run to land in the same place.
-    public static let tileCornerRatio = 0.28
-    /// Squareness of the corner. 2 is a circle; 5 sits where the system mask does.
-    public static let tileCornerExponent = 5.0
+    /// The glyph's longer side as a share of the tile.
+    public static let iconGlyphShare = 0.66
+    /// How far the glyph is lifted, as a share of the tile's height. Its mass
+    /// sits low — a wide base with the cursor's tail beneath it — so centring
+    /// it on its bounds alone makes it look like it is sinking.
+    public static let iconGlyphLift = 0.012
 
-    /// Apple's icon grid: the tile is 824 of a 1024 canvas, leaving the margin
-    /// the system expects for shadow and for optical alignment in the Dock.
-    public static let iconBodyInsetRatio = 100.0 / 1024.0
-    /// The mark's share of the tile. No optical nudge: unlike a letterform the
-    /// frame is symmetric top to bottom, so geometric centring is correct.
-    public static let iconMarkScale = 0.74
-    public static let iconMarkOffsetY = 0.0
-
-    /// Where the mark sits inside a tile: centred, scaled to `iconMarkScale`,
-    /// nudged up because the A is bottom-heavy. Shared by the `.icns` renderer
-    /// and the in-app chip so the two compositions cannot drift.
+    /// Where the design box sits inside a tile: the glyph centred on its own
+    /// bounds, scaled to `iconGlyphShare` and lifted by `iconGlyphLift`, as the
+    /// app icon composes it. Every tile the app draws goes through here, so the
+    /// chip in a header and the icon in the Dock cannot drift.
     public static func markRect(inTile tile: CGRect, yAxis: YAxis = .up) -> CGRect {
-        let side = tile.width * CGFloat(iconMarkScale)
-        // The nudge is authored in design space, where y points down, so it
-        // adds in a y-down space and subtracts in a y-up one.
-        let dy = tile.height * CGFloat(iconMarkOffsetY) / CGFloat(designBox.height)
-        return CGRect(
+        let side = tile.width * CGFloat(iconGlyphShare)
+        let lift = tile.height * CGFloat(iconGlyphLift)
+        let glyph = CGRect(
             x: tile.midX - side / 2,
-            y: tile.midY - side / 2 + (yAxis == .down ? dy : -dy),
+            // Raising the glyph subtracts in a y-down space and adds in a y-up one.
+            y: tile.midY - side / 2 + (yAxis == .down ? -lift : lift),
             width: side,
             height: side
         )
+        return designRect(fittingGlyphIn: glyph, yAxis: yAxis)
     }
 
-    /// The tile's rect inside a square icon canvas.
-    public static func iconBodyRect(inCanvas canvas: CGRect) -> CGRect {
-        let inset = Double(canvas.width) * iconBodyInsetRatio
-        return canvas.insetBy(dx: CGFloat(inset), dy: CGFloat(inset))
-    }
+    // MARK: - Colours
 
-    // MARK: - Brand colours
+    /// The cursor's colour. The kit uses it on both its light and its dark
+    /// paper, so it is baked in here while the chip's tile and letter follow
+    /// the theme. sRGB, like the kit's hex values and the icon rendered from
+    /// them.
+    public static let cursor = CGColor(srgbRed: 0xC5 / 255, green: 0x8A / 255, blue: 0x70 / 255, alpha: 1)
 
-    /// The `action` built-in theme's HUD coral and ink, baked in.
-    ///
-    /// Source of truth is `ActionThemeBuiltin.swift`. They are duplicated here
-    /// because an `.icns` on disk cannot follow a theme the user switches at
-    /// runtime — the app icon has to commit to one palette. Anything drawn
-    /// *inside* the app should read `StageHUDTheme` instead of these.
+    /// The `action` built-in theme's HUD coral (`ActionThemeBuiltin.swift`),
+    /// which means "live" everywhere in the app. The status item turns this
+    /// colour while a drive holds the machine. Generic RGB, the space the
+    /// theme's colours are built in, so the two match.
     public static let coral = CGColor(red: 0.937, green: 0.416, blue: 0.278, alpha: 1)
-    public static let coralHot = CGColor(red: 1.0, green: 0.49, blue: 0.32, alpha: 1)
-    public static let ink = CGColor(red: 0.055, green: 0.071, blue: 0.074, alpha: 1)
-    /// The landing system's canvas and its graphite, same values as the theme's
-    /// `canvas` and `ink` in light appearance.
-    public static let paper = CGColor(red: 0xF3 / 255, green: 0xEB / 255, blue: 0xDD / 255, alpha: 1)
-    public static let graphite = CGColor(red: 0x20 / 255, green: 0x28 / 255, blue: 0x2B / 255, alpha: 1)
-    /// The landing system's `--action-paper-shadow`, used only to give the tile
-    /// a shallow ramp so it does not read as a flat sticker in the Dock.
-    public static let paperShadow = CGColor(red: 0xDC / 255, green: 0xCF / 255, blue: 0xB9 / 255, alpha: 1)
 
-    // MARK: - Geometry helpers
+    // MARK: - Geometry
 
-    /// Maps the 100 x 100 design box (y down) onto `rect` (y up, as CoreGraphics
-    /// and SwiftUI both hand it to us), fitting the shorter side and centring.
+    /// The cursor's tip: the counter's lower right corner, where the crossbar
+    /// meets the right leg.
+    private static let tip = CGPoint(x: 378.02667529115377, y: 404.9783920951129)
+
+    /// Carries the cursor's own frame, with the tip at the origin and the tail
+    /// along +x, onto the design box. The component's
+    /// `translate(378.03 404.98) rotate(35)`.
+    private static let cursorFrame = CGAffineTransform(translationX: tip.x, y: tip.y)
+        .rotated(by: 35 * .pi / 180)
+
+    /// The cursor's arms leave the tip 25° either side of its axis.
+    private static let spread = 25 * Double.pi / 180
+
+    private static func rawLetter(gap: Double) -> CGPath {
+        let outer = CGMutablePath()
+        outer.addLines(between: [
+            CGPoint(x: 265, y: 100),
+            CGPoint(x: 335, y: 100),
+            CGPoint(x: 530.0930354263446, y: 500),
+            CGPoint(x: 69.90696457365542, y: 500),
+        ])
+        outer.closeSubpath()
+
+        let counter = CGMutablePath()
+        counter.addLines(between: [
+            CGPoint(x: 300, y: 245),
+            CGPoint(x: 221.97332470884623, y: 404.9783920951129),
+            tip,
+        ])
+        counter.closeSubpath()
+
+        return outer.subtracting(counter).subtracting(clearance(gap: gap))
+    }
+
+    /// The wedge cut from the letter around the cursor: the cursor's arms,
+    /// each pushed out by `gap` and run on well past the letter. Edges parallel
+    /// to the arms at that distance meet `gap / sin(spread)` behind the tip.
+    private static func clearance(gap: Double) -> CGPath {
+        let apex = -gap / sin(spread)
+        let reach = 500.0
+        let half = (reach - apex) * tan(spread)
+        let wedge = CGMutablePath()
+        wedge.addLines(
+            between: [CGPoint(x: apex, y: 0), CGPoint(x: reach, y: -half), CGPoint(x: reach, y: half)],
+            transform: cursorFrame
+        )
+        wedge.closeSubpath()
+        return wedge
+    }
+
+    /// Straight arms from a softened tip, rounded ends, and a notched tail.
+    private static func rawCursor() -> CGPath {
+        let local = CGMutablePath()
+        local.move(to: .zero)
+        local.addCurve(
+            to: CGPoint(x: 8, y: -3.730461265239989),
+            control1: CGPoint(x: 0, y: -2),
+            control2: CGPoint(x: 3, y: -3)
+        )
+        local.addLine(to: CGPoint(x: 170, y: -79.27230188634977))
+        local.addQuadCurve(
+            to: CGPoint(x: 175, y: -73.93537846789975),
+            control: CGPoint(x: 180, y: -83.93537846789975)
+        )
+        local.addLine(to: CGPoint(x: 140, y: -26))
+        local.addQuadCurve(to: CGPoint(x: 140, y: 26), control: CGPoint(x: 124, y: 0))
+        local.addLine(to: CGPoint(x: 175, y: 73.93537846789975))
+        local.addQuadCurve(
+            to: CGPoint(x: 170, y: 79.27230188634977),
+            control: CGPoint(x: 180, y: 83.93537846789975)
+        )
+        local.addLine(to: CGPoint(x: 8, y: 3.730461265239989))
+        local.addCurve(to: .zero, control1: CGPoint(x: 3, y: 3), control2: CGPoint(x: 0, y: 2))
+        local.closeSubpath()
+
+        let cursor = CGMutablePath()
+        cursor.addPath(local, transform: cursorFrame)
+        return cursor
+    }
+
+    private static func place(_ path: CGPath, in rect: CGRect, yAxis: YAxis) -> CGPath {
+        var transform = designTransform(into: rect, yAxis: yAxis)
+        return path.copy(using: &transform) ?? path
+    }
+
+    /// Maps the design box (y down) onto `rect` in the caller's space, fitting
+    /// the shorter side and centring.
     private static func designTransform(into rect: CGRect, yAxis: YAxis) -> CGAffineTransform {
-        let scale = min(rect.width, rect.height) / CGFloat(designBox.width)
-        let dx = rect.minX + (rect.width - CGFloat(designBox.width) * scale) / 2
-        let dy = rect.minY + (rect.height - CGFloat(designBox.height) * scale) / 2
+        let scale = min(rect.width, rect.height) / designBox.width
+        let originX = rect.minX + (rect.width - designBox.width * scale) / 2
+        let originY = rect.minY + (rect.height - designBox.height * scale) / 2
         switch yAxis {
         case .down:
-            return CGAffineTransform(translationX: dx, y: dy).scaledBy(x: scale, y: scale)
+            return CGAffineTransform(
+                a: scale, b: 0, c: 0, d: scale,
+                tx: originX - designBox.minX * scale,
+                ty: originY - designBox.minY * scale
+            )
         case .up:
-            return CGAffineTransform(translationX: dx, y: dy + CGFloat(designBox.height) * scale)
-                .scaledBy(x: scale, y: -scale)
-        }
-    }
-
-    /// A closed polygon with every corner rounded to `radius`.
-    ///
-    /// Starts at the midpoint of the closing edge so that the first vertex gets
-    /// an arc too — `addArc(tangent1End:tangent2End:)` rounds the corner it is
-    /// aiming at, so beginning on a vertex would leave that one sharp.
-    private static func roundedPolygon(_ points: [CGPoint], radius: Double) -> CGPath {
-        let path = CGMutablePath()
-        guard radius > 0, points.count > 2 else {
-            path.addLines(between: points)
-            path.closeSubpath()
-            return path
-        }
-        let last = points[points.count - 1]
-        path.move(to: CGPoint(x: (last.x + points[0].x) / 2, y: (last.y + points[0].y) / 2))
-        for i in points.indices {
-            path.addArc(
-                tangent1End: points[i],
-                tangent2End: points[(i + 1) % points.count],
-                radius: CGFloat(radius)
+            return CGAffineTransform(
+                a: scale, b: 0, c: 0, d: -scale,
+                tx: originX - designBox.minX * scale,
+                ty: originY + designBox.maxY * scale
             )
         }
-        path.closeSubpath()
-        return path
     }
 
     /// A rounded rect whose corners are superellipse quadrants rather than

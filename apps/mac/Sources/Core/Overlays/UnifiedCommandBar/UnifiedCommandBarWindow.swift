@@ -51,8 +51,11 @@ final class UnifiedCommandBarWindow {
         if isVisible { dismiss() } else { show(mode: mode) }
     }
 
-    func show(mode: Mode = .search) {
+    /// `query` seeds the bar's text — lets other surfaces (e.g. the menu-bar
+    /// Mini-Home Bar pane) hand off typed input instead of just opening it.
+    func show(mode: Mode = .search, query: String? = nil) {
         if let p = panel, p.isVisible {
+            if let query, let state { state.query = query }
             p.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -67,6 +70,9 @@ final class UnifiedCommandBarWindow {
         let st = UnifiedCommandBarState()
         if mode == .command {
             st.query = "/"
+        }
+        if let query {
+            st.query = query
         }
         state = st
 

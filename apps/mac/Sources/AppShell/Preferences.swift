@@ -36,6 +36,31 @@ enum TilePointerHUDStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which feature owns the physical Ctrl+Option hold. Exactly one may claim
+/// the gesture — running both renders two pickers and commits two placements.
+enum CtrlOptionHoldMode: String, CaseIterable, Identifiable {
+    /// The gray radial/matrix aim picker; release tiles the frontmost window.
+    case tileHUD
+    /// The labeled contextual lens; release places the window under the pointer.
+    case spatialLens
+    case off
+
+    var id: String { rawValue }
+
+    /// Spatial Lens ships with the bundle tier; the free build offers the rest.
+    static var available: [CtrlOptionHoldMode] {
+        allCases.filter { $0 != .spatialLens || LatticesTier.isBundle }
+    }
+
+    var label: String {
+        switch self {
+        case .tileHUD: return "Tile HUD"
+        case .spatialLens: return "Spatial Lens"
+        case .off: return "Off"
+        }
+    }
+}
+
 /// Where the Ctrl+←/→ Space-switch confirmation pill lands on screen.
 enum SpaceSwitchBezelPosition: String, CaseIterable, Identifiable {
     /// Docks at the screen edge the desktop is moving toward.
@@ -62,11 +87,7 @@ class Preferences: ObservableObject {
     private enum CompanionDefaultsKey {
         static let bridgeEnabled = "companion.bridge.enabled"
         static let trackpadEnabled = "companion.trackpad.enabled"
-        static let cockpitLayout = "companion.cockpit.layout"
-        static let cockpitLayoutVersion = "companion.cockpit.layoutVersion"
     }
-
-    private static let currentCockpitLayoutVersion = 5
 
     private static let dismissedCapabilitiesKey = "permissions.dismissed"
 
@@ -87,23 +108,13 @@ class Preferences: ObservableObject {
     }
 
     @Published var companionBridgeEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(companionBridgeEnabled, forKey: CompanionDefaultsKey.bridgeEnabled)
-            if companionBridgeEnabled {
-                LatticesCompanionBridgeServer.shared.start()
-            } else {
-                LatticesCompanionBridgeServer.shared.stop()
-            }
-        }
+        didSet { UserDefaults.standard.set(companionBridgeEnabled, forKey: CompanionDefaultsKey.bridgeEnabled) }
     }
 
     @Published var companionTrackpadEnabled: Bool {
         didSet { UserDefaults.standard.set(companionTrackpadEnabled, forKey: CompanionDefaultsKey.trackpadEnabled) }
     }
 
-    @Published var companionCockpitLayout: LatticesCompanionCockpitLayout {
-        didSet { persistCompanionCockpitLayout() }
-    }
     @Published var mouseGesturesEnabled: Bool {
         didSet { UserDefaults.standard.set(mouseGesturesEnabled, forKey: "mouseGestures.enabled") }
     }
@@ -140,6 +151,13 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(cursorMarkerSize.rawValue, forKey: "cursorMarker.size") }
     }
 
+    @Published var ctrlOptionHoldMode: CtrlOptionHoldMode {
+        didSet { UserDefaults.standard.set(ctrlOptionHoldMode.rawValue, forKey: "ctrlOptionHold.mode") }
+    }
+
+    /// Spatial Lens owns the Ctrl+Option hold only in lens mode.
+    var spatialLensEnabled: Bool { ctrlOptionHoldMode == .spatialLens }
+
     @Published var keyboardRemapsEnabled: Bool {
         didSet { UserDefaults.standard.set(keyboardRemapsEnabled, forKey: "keyboardRemaps.enabled") }
     }
@@ -152,6 +170,17 @@ class Preferences: ObservableObject {
 
     @Published var spaceSwitchBezelPosition: SpaceSwitchBezelPosition {
         didSet { UserDefaults.standard.set(spaceSwitchBezelPosition.rawValue, forKey: "spaceSwitchKeys.bezelPosition") }
+    }
+
+    /// Optional pointer streaks alongside the desktop filmstrip.
+    @Published var spaceSwitchGlideEnabled: Bool {
+        didSet { UserDefaults.standard.set(spaceSwitchGlideEnabled, forKey: "spaceSwitchKeys.glide") }
+    }
+
+    /// How long letting go of ⌘⌥ on another layer waits for Return before
+    /// staying put (`LayerAim`). 0 switches at once; below 0 waits for a key.
+    @Published var layerSwitchConfirmSeconds: Double {
+        didSet { UserDefaults.standard.set(layerSwitchConfirmSeconds, forKey: "layers.confirmSeconds") }
     }
 
     // MARK: - Search & OCR
@@ -255,7 +284,6 @@ class Preferences: ObservableObject {
             self.companionTrackpadEnabled = false
         }
 
-        self.companionCockpitLayout = Self.loadCompanionCockpitLayout()
         if UserDefaults.standard.object(forKey: "mouseGestures.enabled") != nil {
             self.mouseGesturesEnabled = UserDefaults.standard.bool(forKey: "mouseGestures.enabled")
         } else {
@@ -321,6 +349,18 @@ class Preferences: ObservableObject {
             self.keyboardRemapsEnabled = true
         }
 
+        var holdMode: CtrlOptionHoldMode = .tileHUD
+        if let saved = UserDefaults.standard.string(forKey: "ctrlOptionHold.mode"),
+           let mode = CtrlOptionHoldMode(rawValue: saved) {
+            holdMode = mode
+        } else if UserDefaults.standard.object(forKey: "spatialLens.enabled") != nil,
+                  UserDefaults.standard.bool(forKey: "spatialLens.enabled") {
+            // An explicit Spatial Lens opt-in survives the single-owner migration.
+            holdMode = .spatialLens
+        }
+        // A saved Spatial Lens choice falls back to the Tile HUD in the free build.
+        self.ctrlOptionHoldMode = CtrlOptionHoldMode.available.contains(holdMode) ? holdMode : .tileHUD
+
         if UserDefaults.standard.object(forKey: "spaceSwitchKeys.enabled") != nil {
             self.spaceSwitchKeysEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.enabled")
         } else {
@@ -331,7 +371,18 @@ class Preferences: ObservableObject {
            let position = SpaceSwitchBezelPosition(rawValue: saved) {
             self.spaceSwitchBezelPosition = position
         } else {
-            self.spaceSwitchBezelPosition = .top
+            self.spaceSwitchBezelPosition = .center
+        }
+
+        if UserDefaults.standard.object(forKey: "spaceSwitchKeys.glide") != nil {
+            self.spaceSwitchGlideEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.glide")
+        } else {
+            self.spaceSwitchGlideEnabled = false
+        }
+        if UserDefaults.standard.object(forKey: "layers.confirmSeconds") != nil {
+            self.layerSwitchConfirmSeconds = UserDefaults.standard.double(forKey: "layers.confirmSeconds")
+        } else {
+            self.layerSwitchConfirmSeconds = 5
         }
         // Search & OCR. Default off until the user explicitly enables it from
         // the Permissions Assistant or Search settings. Honors any explicit
@@ -367,185 +418,6 @@ class Preferences: ObservableObject {
         self.dismissedCapabilities = Set(dismissed)
     }
 
-    func updateCompanionCockpitSlot(
-        pageID: String,
-        index: Int,
-        shortcutID: String
-    ) {
-        var normalized = LatticesCompanionCockpitCatalog.normalized(companionCockpitLayout)
-        guard let pageIndex = normalized.pages.firstIndex(where: { $0.id == pageID }),
-              normalized.pages[pageIndex].slotIDs.indices.contains(index) else {
-            return
-        }
-        normalized.pages[pageIndex].slotIDs[index] = shortcutID
-        companionCockpitLayout = normalized
-    }
-
-    func resetCompanionCockpitLayout() {
-        companionCockpitLayout = LatticesCompanionCockpitCatalog.defaultLayout
-    }
-
-    private static func loadCompanionCockpitLayout() -> LatticesCompanionCockpitLayout {
-        if let data = UserDefaults.standard.data(forKey: CompanionDefaultsKey.cockpitLayout),
-           let decoded = try? JSONDecoder().decode(LatticesCompanionCockpitLayout.self, from: data) {
-            let savedVersion = UserDefaults.standard.integer(
-                forKey: CompanionDefaultsKey.cockpitLayoutVersion
-            )
-            guard savedVersion < currentCockpitLayoutVersion else {
-                return LatticesCompanionCockpitCatalog.normalized(decoded)
-            }
-
-            let migrated = migrateCompanionCockpitLayout(decoded, fromVersion: savedVersion)
-            let normalized = LatticesCompanionCockpitCatalog.normalized(migrated)
-            if let encoded = try? JSONEncoder().encode(normalized) {
-                UserDefaults.standard.set(encoded, forKey: CompanionDefaultsKey.cockpitLayout)
-            }
-            UserDefaults.standard.set(
-                currentCockpitLayoutVersion,
-                forKey: CompanionDefaultsKey.cockpitLayoutVersion
-            )
-            return normalized
-        }
-
-        // One-time migration from the original web-builder draft. Early builds
-        // wrote the editor JSON but did not promote it to the live cockpit
-        // preference, so companions continued to receive the default deck.
-        let draftURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".lattices/companion-deck-draft.json")
-        if let draft = try? Data(contentsOf: draftURL),
-           let imported = CompanionDeckBuilderView.importedLayout(fromBuilderDraft: draft) {
-            let normalized = LatticesCompanionCockpitCatalog.normalized(imported)
-            if let encoded = try? JSONEncoder().encode(normalized) {
-                UserDefaults.standard.set(encoded, forKey: CompanionDefaultsKey.cockpitLayout)
-            }
-            UserDefaults.standard.set(
-                currentCockpitLayoutVersion,
-                forKey: CompanionDefaultsKey.cockpitLayoutVersion
-            )
-            return normalized
-        }
-
-        UserDefaults.standard.set(
-            currentCockpitLayoutVersion,
-            forKey: CompanionDefaultsKey.cockpitLayoutVersion
-        )
-        return LatticesCompanionCockpitCatalog.defaultLayout
-    }
-
-    /// Advances old deck layouts without replacing anything the user authored.
-    /// Only exact untouched starter layouts advance; every renamed, reordered,
-    /// added, removed, or repositioned page remains the user's layout.
-    static func migrateCompanionCockpitLayout(
-        _ layout: LatticesCompanionCockpitLayout,
-        fromVersion: Int
-    ) -> LatticesCompanionCockpitLayout {
-        var migrated = layout
-        if fromVersion < 2 {
-            migrated = migratePasteDeviceIntoCompanionCockpit(migrated)
-        }
-        if fromVersion < 3,
-           migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2 {
-            migrated = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3
-        }
-        if fromVersion < 4,
-           migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV3 {
-            migrated = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4
-        }
-        if fromVersion < 5,
-           migrated == LatticesCompanionCockpitCatalog.legacyDefaultLayoutV4 {
-            migrated = LatticesCompanionCockpitCatalog.defaultLayout
-        }
-        return migrated
-    }
-
-    /// Adds the phone-to-Mac gateway paste action to the v1 starter deck
-    /// without replacing the user's other placements.
-    private static func migratePasteDeviceIntoCompanionCockpit(
-        _ layout: LatticesCompanionCockpitLayout
-    ) -> LatticesCompanionCockpitLayout {
-        var migrated = layout
-        guard let index = migrated.pages.firstIndex(where: { $0.id == "dev" }) else {
-            return migrated
-        }
-
-        var page = migrated.pages[index]
-        let alreadyPresent = page.slotIDs.contains("paste-device")
-            || page.slots?.contains(where: { $0.shortcutID == "paste-device" }) == true
-        guard !alreadyPresent else { return migrated }
-
-        if var slots = page.slots {
-            let columns = max(2, page.columns)
-            var rows = min(4, max(1, page.rows ?? 1))
-
-            func intersects(_ candidate: LatticesCompanionCockpitLayout.Slot) -> Bool {
-                slots.contains { slot in
-                    candidate.col < slot.col + slot.colSpan
-                        && candidate.col + candidate.colSpan > slot.col
-                        && candidate.row < slot.row + slot.rowSpan
-                        && candidate.row + candidate.rowSpan > slot.row
-                }
-            }
-
-            var placement: LatticesCompanionCockpitLayout.Slot?
-            while placement == nil && rows <= 4 {
-                for span in [2, 1] where span <= columns {
-                    for row in 0..<rows {
-                        for col in 0...(columns - span) {
-                            let candidate = LatticesCompanionCockpitLayout.Slot(
-                                shortcutID: "paste-device",
-                                col: col,
-                                row: row,
-                                colSpan: span
-                            )
-                            if !intersects(candidate) {
-                                placement = candidate
-                                break
-                            }
-                        }
-                        if placement != nil { break }
-                    }
-                    if placement != nil { break }
-                }
-                if placement == nil && rows < 4 { rows += 1 } else { break }
-            }
-
-            if let placement {
-                slots.append(placement)
-                page.slots = slots
-                page.rows = rows
-            }
-        } else {
-            // The original flat starter occupied all 16 cells. Upgrade that
-            // exact legacy page to today's starter; leave custom flat decks alone.
-            let legacyStarter = [
-                "key-copy", "key-paste", "key-undo", "key-shift-tab",
-                "place-left", "place-right", "resize-wider", "resize-narrower",
-                "switch-window-prev", "switch-window-next", "switch-app-prev", "switch-app-next",
-                "layout-optimize", "mouse-find", "key-up", "key-down"
-            ]
-            if let starter = LatticesCompanionCockpitCatalog.legacyDefaultLayoutV2.pages.first(where: { $0.id == "dev" }) {
-                var exactLegacyPage = starter
-                exactLegacyPage.slotIDs = legacyStarter
-                if page == exactLegacyPage {
-                    page = starter
-                }
-            }
-        }
-
-        migrated.pages[index] = page
-        return migrated
-    }
-
-    private func persistCompanionCockpitLayout() {
-        let normalized = LatticesCompanionCockpitCatalog.normalized(companionCockpitLayout)
-        if normalized != companionCockpitLayout {
-            companionCockpitLayout = normalized
-            return
-        }
-
-        guard let data = try? JSONEncoder().encode(normalized) else { return }
-        UserDefaults.standard.set(data, forKey: CompanionDefaultsKey.cockpitLayout)
-    }
 
     static func normalizedCursorMarkerAngle(_ value: Int) -> Int {
         value <= -12 ? -16 : -8

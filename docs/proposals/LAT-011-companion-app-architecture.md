@@ -68,7 +68,7 @@ A source-only product export must include or dereference the shared source.
 
 ## Standalone Speech
 
-`products/speech` imports the unshipped queue, voice catalog, HUD and RPC source
+`products/voice` imports the unshipped queue, voice catalog, HUD and RPC source
 with file hashes and an adaptation ledger. Hudson retains caching, system/cloud
 speech and playback; Vox retains provider/catalog engines. Kokoro uses Vox directly
 in the Speech process, with no Lattices voice-runtime dependency. Speech positions

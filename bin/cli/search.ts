@@ -24,7 +24,7 @@ async function searchWithClient(client: DaemonClient, query: string, opts: Searc
   if (opts.before) params.before = opts.before;
   if (opts.recency !== undefined) params.recency = opts.recency;
   if (opts.mode) params.mode = opts.mode;
-  const hits = await daemonCall("lattices.search", params, 10000) as any[];
+  const hits = await daemonCall("search.query", params, 10000) as any[];
   return hits.map((w: any) => ({
     score: w.score || 0,
     window: w,
@@ -65,7 +65,7 @@ export async function searchCommand(
   rawArgs: string[] = []
 ): Promise<void> {
   if (!query) {
-    console.log("Usage: lattices search <query> [--quick | --terminal | --all | --deep | --sources=... | --after=... | --before=... | --json | --wid]");
+    console.log("Usage: lats search <query> [--quick | --terminal | --all | --deep | --sources=... | --after=... | --before=... | --json | --wid]");
     return;
   }
 
@@ -116,7 +116,7 @@ export async function searchCommand(
 
 export async function placeCommand(query?: string, tilePosition?: string): Promise<void> {
   if (!query) {
-    console.log("Usage: lattices place <query> [position]");
+    console.log("Usage: lats place <query> [position]");
     return;
   }
 
@@ -131,8 +131,8 @@ export async function placeCommand(query?: string, tilePosition?: string): Promi
 
     const pos = tilePosition || "bottom-right";
     const win = ranked[0].window;
-    await daemonCall("window.focus", { wid: win.wid });
-    await daemonCall("intents.execute", {
+    await daemonCall("windows.focus", { wid: win.wid });
+    await daemonCall("intents.run", {
       intent: "tile_window",
       slots: { position: pos, wid: win.wid }
     }, 3000);

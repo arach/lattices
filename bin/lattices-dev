@@ -55,10 +55,17 @@ sign_bundle() {
         ent_flags=(--entitlements "$ENTITLEMENTS")
     fi
 
+    # Inside out: embedded helpers first, under the same signer. No --deep on the
+    # outer bundle, which would re-sign the helpers with its identifier and entitlements.
+    sign_with() {
+        bun "$ROOT/bin/embedded-helpers.ts" sign "$BUNDLE" "$1" &&
+            codesign --force --options runtime --sign "$1" "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"
+    }
+
     identity="$(select_sign_identity)"
     if [ -n "$identity" ]; then
         dim "Signing with: $identity"
-        if ! codesign --force --options runtime --deep --sign "$identity" "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"; then
+        if ! sign_with "$identity"; then
             red "Signing with '$identity' failed. Falling back to ad-hoc."
             sign_status=1
         fi
@@ -68,7 +75,7 @@ sign_bundle() {
 
     if [ "$sign_status" -ne 0 ]; then
         dim "No usable signing identity found. Using ad-hoc signature."
-        codesign --force --options runtime --deep --sign - "${ent_flags[@]}" --identifier "$BUNDLE_ID" "$BUNDLE"
+        sign_with - || { red "Ad-hoc signing failed."; exit 1; }
     fi
 
     rm -f "$BUNDLE_BIN".cstemp
@@ -233,6 +240,19 @@ write_info_plist() {
             </array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.lattices.overview-window</string>
+            <key>UTTypeDescription</key>
+            <string>Lattices Overview Window</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -286,6 +306,13 @@ cmd_build() {
     if [ -d "$DECK_BUILDER_RESOURCES" ]; then
         cp -R "$DECK_BUILDER_RESOURCES" "$RESOURCES_DIR/DeckBuilder"
     fi
+    # Include SwiftPM resources (including the static Editor bundle) in the
+    # installed app, matching package and release builds.
+    for resource_bundle in "$APP_DIR"/.build/release/*.bundle; do
+        [ -d "$resource_bundle" ] || continue
+        cp -R "$resource_bundle" "$RESOURCES_DIR/"
+    done
+    bun "$ROOT/bin/embedded-helpers.ts" embed "$BUNDLE"
     write_info_plist
     # Re-sign so TCC permissions persist across rebuilds
     sign_bundle

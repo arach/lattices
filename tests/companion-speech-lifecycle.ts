@@ -8,7 +8,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 const app = process.env.SPEECH_REVIEW_APP;
-if (!app) throw new Error('Set SPEECH_REVIEW_APP to the task-owned staged Speech.app.');
+if (!app) throw new Error('Set SPEECH_REVIEW_APP to the task-owned staged Voice.app.');
 const dir = await mkdtemp(join(tmpdir(), 'speech-lifecycle-'));
 const capability = join(dir, 'capability');
 const root = resolve(import.meta.dir, '..');
@@ -17,13 +17,13 @@ execFileSync('/usr/bin/xcrun', ['swiftc', '-parse-as-library', '-swift-version',
   join(root, 'tests/fixtures/speech-proxy-process.swift'),
   join(root, 'apps/mac/Sources/Core/CompanionApps/SpeechCompanionConnection.swift'),
   join(root, 'apps/mac/Sources/Core/Daemon/DaemonProtocol.swift'), '-o', probe]);
-const host = spawn(join(app, 'Contents/MacOS/Speech'), ['--diagnose-host', capability], { stdio: ['ignore', 'pipe', 'pipe'] });
+const host = spawn(join(app, 'Contents/MacOS/Voice'), ['--diagnose-host', capability], { stdio: ['ignore', 'pipe', 'pipe'] });
 const hostExit = once(host, 'exit');
 let control: WebSocket | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 try {
   const lines = createInterface({ input: host.stdout });
-  const line = await Promise.race([once(lines, 'line').then(([line]) => String(line)), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Speech host startup timed out')), 10_000); })]);
+  const line = await Promise.race([once(lines, 'line').then(([line]) => String(line)), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Voice host startup timed out')), 10_000); })]);
   clearTimeout(timer); lines.close();
   const { port } = JSON.parse(line);
   const endpoint = `ws://127.0.0.1:${port}`;
@@ -43,7 +43,7 @@ try {
   if (await child.exited !== 0) throw new Error(`Proxy failed: ${await new Response(child.stderr).text()}`);
   const response = JSON.parse(responseText);
   const status = await request('status', 'speech.status');
-  if (host.exitCode !== null || status.current !== null || status.queued?.[0]?.id !== response.result?.id) throw new Error('Speech did not retain the job after proxy process exit.');
+  if (host.exitCode !== null || status.current !== null || status.queued?.[0]?.id !== response.result?.id) throw new Error('Voice did not retain the job after proxy process exit.');
   await request('stop', 'speech.stop');
   const stopped = await request('stopped', 'speech.status');
   if (stopped.queued.length || stopped.current) throw new Error('Probe queue cleanup failed.');

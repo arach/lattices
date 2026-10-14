@@ -41,6 +41,7 @@ enum AppTypeClassifier {
         "IntelliJ IDEA": .editor, "WebStorm": .editor, "PyCharm": .editor,
         "CLion": .editor, "GoLand": .editor, "RustRover": .editor,
         "Android Studio": .editor, "Fleet": .editor, "Neovide": .editor,
+        "Devin": .editor,
 
         // Browsers
         "Safari": .browser, "Google Chrome": .browser, "Firefox": .browser,

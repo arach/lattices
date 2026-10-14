@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationObservers: [NSObjectProtocol] = []
     private var systemSettingsWasFrontmost = false
     private var terminationSignalSources: [DispatchSourceSignal] = []
+    private var inputLease: AppInputLease?
 
     static func updateActivationPolicy() {
         AppActivationCoordinator.shared.refresh()
@@ -23,8 +24,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Refuse before creating controllers or changing any global input state.
+        // The peer check also covers older versions that predate the lease.
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if let peer = NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && AppInputLease.isPeer(
+                bundleIdentifier: $0.bundleIdentifier, pid: $0.processIdentifier, ownPID: ownPID
+            )
+        }) {
+            NSLog("Lattices input startup refused: peer pid=%d bundle=%@", peer.processIdentifier,
+                  peer.bundleURL?.path ?? "unknown")
+            exit(EXIT_FAILURE)
+        }
+        do {
+            let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            inputLease = try AppInputLease(path: directory.appendingPathComponent("app-input.lock").path)
+        } catch {
+            NSLog("Lattices input startup refused: %@", String(describing: error))
+            exit(EXIT_FAILURE)
+        }
+
         HudLoggerSinks.install(HudLogStore.shared)
         HudLoggerSinks.install(LatticesLogDiskSink.shared)
+        #if LATTICES_BUNDLE
+        LatticesBundle.register()
+        #endif
+        DiagnosticLog.shared.info("Lattices tier: \(LatticesTier.current.rawValue) [\(BundleModules.ids.joined(separator: ", "))]")
         traceBuildIdentity()
         HudLogger(category: "lattices").info("Lattices booted", metadata: ["state": "ready"])
 
@@ -45,10 +71,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
+        VisitController.shared.restore()
+        DesktopLong.shared.start()
+        BundleModules.start()
+        WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
+        DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
+        // A crash can leave layer-parked windows in the corner; put them back.
+        DispatchQueue.global(qos: .userInitiated).async {
+            LayerStage.shared.restoreParked(reason: "launch")
+        }
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -70,7 +105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // --screen-map flag: auto-open layout on launch
         if CommandLine.arguments.contains("--screen-map") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                ScreenMapWindowController.shared.showPage(.screenMap)
+                ScreenMapWindowController.shared.showPage(.overview)
             }
         }
 
@@ -112,6 +147,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// can be done for that case, which is the more reason to make the
     /// catchable one clean.
     private func installTerminationSignalHandlers() {
+        // A peer that hangs up must cost one failed write, not the app.
+        // SIGPIPE's default disposition kills us with no crash report and no
+        // applicationWillTerminate, only "(2, 13, 13)" in the RunningBoard
+        // log. Pipe writes must use `write(contentsOf:)`: the legacy
+        // `FileHandle.write(_:)` raises on EPIPE instead of throwing.
+        signal(SIGPIPE, SIG_IGN)
+
         for sig in [SIGTERM, SIGINT] {
             // Ignore the default disposition so the process survives long
             // enough for the dispatch source below to run.
@@ -119,6 +161,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global(qos: .userInitiated))
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
+                LayerStage.shared.restoreParked(reason: "signal \(sig)")
+                SpaceSwitchHotkeys.restoreForTermination()
                 exit(128 + sig)
             }
             source.resume()
@@ -127,11 +171,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()
         removeSystemInputBoundaryObservers()
         SecureEventInputMonitor.shared.stop()
         SpaceSwitchInterceptor.shared.stop()
         KeyboardRemapController.shared.stop()
+        BundleModules.stop()
         AppServicesBootstrap.stop()
     }
 
@@ -198,6 +244,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             self?.handleFrontmostApplicationChanged(app)
+        })
+        notificationObservers.append(center.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SpaceNumberMark.shared.refresh()
+            // System-initiated Space change (Dock app activation, trackpad
+            // swipe, Mission Control). Switches Lattices performs show their
+            // own bezel — skip those so it doesn't double up.
+            guard CFAbsoluteTimeGetCurrent() - WindowTiler.lastProgrammaticSwitchAt > 0.8 else { return }
+            WindowTiler.showSpaceSwitchBezelForCurrentSpace()
         })
     }
 
@@ -268,10 +326,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .lowercased()
 
         switch host {
+        case "editor":
+            // lattices://editor opens only the read-only Editor surface.
+            EditorWindowController.shared.show()
+            DiagnosticLog.shared.info("DeepLink: opened Editor")
         case "companion":
             handleCompanionDeepLink(action: action)
         case "daemon":
             handleDaemonDeepLink(action: action)
+        case "page":
+            // lattices://page/<name> opens a page of the main window.
+            if let action, let page = AppPage.named(action) {
+                ScreenMapWindowController.shared.showPage(page)
+            } else {
+                ScreenMapWindowController.shared.show()
+            }
         case "settings":
             // lattices://settings/<section> jumps straight to a sidebar tab.
             if let action, !action.isEmpty {

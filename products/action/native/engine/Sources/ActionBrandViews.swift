@@ -1,33 +1,10 @@
 import AppKit
 import SwiftUI
 
-struct ActionLatticeLogoMark: View {
-    var size: CGFloat = 28
-    var accent: Color = StageHUDTheme.reviewAccent
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                .fill(StageHUDTheme.reviewAccentMuted.opacity(0.75))
-
-            Image(systemName: "play.fill")
-                .font(.system(size: size * 0.38, weight: .semibold))
-                .foregroundStyle(accent)
-                .offset(x: size * 0.02)
-        }
-        .frame(width: size, height: size)
-        .overlay(
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                .stroke(StageHUDTheme.reviewAccent.opacity(0.2), lineWidth: 1)
-        )
-        .accessibilityHidden(true)
-    }
-}
-
 struct ActionBrandLockup: View {
     var body: some View {
         HStack(spacing: 9) {
-            ActionLatticeLogoMark(size: 26)
+            ActionBrandTile(size: 26)
 
             Text("Action")
                 .font(ActionType.uiSubhead)

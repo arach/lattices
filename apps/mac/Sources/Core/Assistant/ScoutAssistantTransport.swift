@@ -74,6 +74,12 @@ final class ScoutAssistantTransport {
 
     var isInstalled: Bool { executableURL != nil }
 
+    /// `scout runtimes --json` — the harness / model / effort catalog Scout
+    /// knows for this machine. Raw JSON; `AssistantRuntimeCatalog` maps it.
+    func runtimesJSON() async throws -> Data {
+        try await run(arguments: ["runtimes", "--json"], currentDirectory: nil, trackForCancellation: false)
+    }
+
     func checkAvailability(projectPath: String?) async -> Bool {
         do {
             _ = try await run(
@@ -306,6 +312,8 @@ final class ScoutAssistantTransport {
     static func wallClockSeconds(for arguments: [String]) -> TimeInterval {
         if arguments.contains("wait") { return 105 }
         if arguments.contains("whoami") { return 8 }
+        // Probes every harness's readiness; slow under load, and off the turn path.
+        if arguments.contains("runtimes") { return 60 }
         if arguments.contains("ask") { return 45 }
         return 30
     }

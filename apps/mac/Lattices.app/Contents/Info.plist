@@ -25,18 +25,33 @@
             </array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.lattices.overview-window</string>
+            <key>UTTypeDescription</key>
+            <string>Lattices Overview Window</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
-    <string>0.11.1</string>
+    <string>0.13.5</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.11.1</string>
+    <string>0.13.5</string>
     <key>LatticesBuildChannel</key>
     <string>dev</string>
     <key>LatticesBuildTrack</key>
     <string>latest</string>
     <key>LatticesBuildRevision</key>
-    <string>7f4b1a0</string>
+    <string>17635ab7c28a6b1fa2bf94c167b1e7fe81845e18</string>
     <key>LatticesBuildTimestamp</key>
-    <string>2026-09-03T03:45:16.150Z</string>
+    <string>2026-10-13T23:05:19.957Z</string>
+    <key>LatticesBuildSourceDigest</key>
+    <string>660ef4c0d2c0dbeab1b4fcfbfd442ee5c7144d79d5643da0e391c8c420fdbb1e</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSUIElement</key>

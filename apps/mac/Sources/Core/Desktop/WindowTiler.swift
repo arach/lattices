@@ -544,16 +544,32 @@ struct SpaceInfo: Identifiable {
 struct DisplaySpaces {
     let displayIndex: Int
     let displayId: String
+    /// Desktops only, numbered the way Mission Control labels them.
     let spaces: [SpaceInfo]
     let currentSpaceId: Int
+    /// Every Space Ctrl+←/→ walks through, in Mission Control order:
+    /// desktops plus fullscreen app Spaces. `currentSpaceId` can be a
+    /// fullscreen Space, so navigation must use this list, not `spaces`.
+    var orderedSpaceIds: [Int] = []
+
+    /// Pure relative target resolution for previous/next space (no SkyLight call).
+    /// `direction` is typically −1 (previous) or +1 (next). Does not wrap.
+    func relativeSpace(direction: Int) -> SpaceInfo? {
+        guard let currentIdx = spaces.firstIndex(where: { $0.isCurrent }) else { return nil }
+        let targetIdx = currentIdx + direction
+        guard spaces.indices.contains(targetIdx) else { return nil }
+        return spaces[targetIdx]
+    }
 }
 
 private enum CGS {
     // Use Int32 for CGS connection IDs (C `int`), UInt64 for space IDs
     typealias MainConnectionIDFunc = @convention(c) () -> Int32
     typealias GetActiveSpaceFunc = @convention(c) (Int32) -> UInt64
-    typealias CopyManagedDisplaySpacesFunc = @convention(c) (Int32) -> CFArray
-    typealias CopySpacesForWindowsFunc = @convention(c) (Int32, Int32, CFArray) -> CFArray
+    // The Copy functions return +1. Swift can't see that through a raw C
+    // function pointer, so they return Unmanaged and callers take the retain.
+    typealias CopyManagedDisplaySpacesFunc = @convention(c) (Int32) -> Unmanaged<CFArray>?
+    typealias CopySpacesForWindowsFunc = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
     typealias SetCurrentSpaceFunc = @convention(c) (Int32, CFString, UInt64) -> Void
 
     private static let handle = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
@@ -581,6 +597,13 @@ private enum CGS {
     static let setCurrentSpace: SetCurrentSpaceFunc? = {
         guard let h = handle, let sym = dlsym(h, "SLSManagedDisplaySetCurrentSpace") else { return nil }
         return unsafeBitCast(sym, to: SetCurrentSpaceFunc.self)
+    }()
+
+    typealias GetWindowBoundsFunc = @convention(c) (Int32, UInt32, UnsafeMutablePointer<CGRect>) -> Int32
+
+    static let getWindowBounds: GetWindowBoundsFunc? = {
+        guard let h = handle, let sym = dlsym(h, "SLSGetWindowBounds") ?? dlsym(h, "CGSGetWindowBounds") else { return nil }
+        return unsafeBitCast(sym, to: GetWindowBoundsFunc.self)
     }()
 
     // Screen-update freeze used to hide the Dock-swipe transition.
@@ -787,11 +810,15 @@ enum WindowTiler {
 
     /// Get spaces organized by display
     static func getDisplaySpaces() -> [DisplaySpaces] {
+        autoreleasepool { readDisplaySpaces() }
+    }
+
+    private static func readDisplaySpaces() -> [DisplaySpaces] {
         guard let mainConn = CGS.mainConnectionID,
               let copyManaged = CGS.copyManagedDisplaySpaces else { return [] }
 
         let cid = mainConn()
-        guard let managed = copyManaged(cid) as? [[String: Any]] else { return [] }
+        guard let managed = copyManaged(cid)?.takeRetainedValue() as? [[String: Any]] else { return [] }
 
         var result: [DisplaySpaces] = []
         for (displayIdx, display) in managed.enumerated() {
@@ -801,13 +828,18 @@ enum WindowTiler {
             let currentId = currentDict?["id64"] as? Int ?? currentDict?["ManagedSpaceID"] as? Int ?? 0
 
             var spaces: [SpaceInfo] = []
-            for (spaceIdx, space) in rawSpaces.enumerated() {
+            var ordered: [Int] = []
+            for space in rawSpaces {
                 let sid = space["id64"] as? Int ?? space["ManagedSpaceID"] as? Int ?? 0
+                // 0 = desktop, 4 = fullscreen app. Other types (system) are
+                // not part of the Ctrl+arrow sequence.
                 let type = space["type"] as? Int ?? 0
+                guard type == 0 || type == 4 else { continue }
+                ordered.append(sid)
                 if type == 0 {
                     spaces.append(SpaceInfo(
                         id: sid,
-                        index: spaceIdx + 1,
+                        index: spaces.count + 1,
                         display: displayIdx,
                         isCurrent: sid == currentId
                     ))
@@ -818,7 +850,8 @@ enum WindowTiler {
                 displayIndex: displayIdx,
                 displayId: displayId,
                 spaces: spaces,
-                currentSpaceId: currentId
+                currentSpaceId: currentId,
+                orderedSpaceIds: ordered
             ))
         }
         return result
@@ -837,49 +870,80 @@ enum WindowTiler {
         return spaces[targetIndex]
     }
 
-    private struct AdjacentSpaceContext {
-        let point: CGPoint
-        let display: DisplaySpaces
-        let activeSpaceId: Int
-        let currentSpaceId: Int
-        let target: SpaceInfo?
+    /// Target of a `offset`-step move through `ordered` (Mission Control
+    /// order, fullscreen Spaces included), clamped to the ends. Nil when the
+    /// current Space isn't in the list or the move can't go anywhere.
+    static func adjacentSpaceId(in ordered: [Int], currentSpaceId: Int, offset: Int) -> Int? {
+        guard let currentIndex = ordered.firstIndex(of: currentSpaceId) else { return nil }
+        let targetIndex = min(max(currentIndex + offset, 0), ordered.count - 1)
+        guard targetIndex != currentIndex else { return nil }
+        return ordered[targetIndex]
     }
 
-    private static func adjacentSpaceContext(offset: Int, from cgPoint: CGPoint? = nil) -> AdjacentSpaceContext? {
+    /// Everything decided before a relative Space switch runs, so callers can
+    /// show the bezel for the target before the switch lands.
+    struct SpaceSwitchPlan {
+        let offset: Int
+        let display: DisplaySpaces
+        /// CG display under the requesting point — where the bezel belongs.
+        /// With "Displays have separate Spaces" off, every screen shares one
+        /// SkyLight entry, so the entry alone can't say which screen it was.
+        let screenDisplayID: CGDirectDisplayID?
+        let activeSpaceId: Int
+        let currentSpaceId: Int
+        /// Nil at the edge.
+        let targetSpaceId: Int?
+
+        var isEdge: Bool { targetSpaceId == nil }
+        /// Desktop info for the target; nil for a fullscreen app Space.
+        var target: SpaceInfo? { display.spaces.first(where: { $0.id == targetSpaceId }) }
+        var currentIndex: Int? { display.spaces.first(where: { $0.id == currentSpaceId })?.index }
+        var totalSpaces: Int { display.spaces.count }
+        var displayIndex: Int { display.displayIndex }
+    }
+
+    struct SpaceSwitchOutcome {
+        let plan: SpaceSwitchPlan?
+        let switched: Bool
+
+        var isEdge: Bool { plan?.isEdge ?? false }
+        var target: SpaceInfo? { plan?.target }
+        var currentIndex: Int? { plan?.currentIndex }
+        var totalSpaces: Int { plan?.totalSpaces ?? 0 }
+        var displayIndex: Int { plan?.displayIndex ?? 0 }
+    }
+
+    static func planAdjacentSpaceSwitch(offset: Int, from cgPoint: CGPoint? = nil) -> SpaceSwitchPlan? {
         let point = cgPoint ?? currentMouseCGPoint()
-        guard let display = displaySpaces(containing: point) else { return nil }
+        let displayID = cgDisplayID(at: point)
+        guard let display = displaySpaces(forDisplayID: displayID, in: getDisplaySpaces()) else {
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: no Space list for display at \(formatCGPoint(point))")
+            return nil
+        }
         let activeSpaceId = getCurrentSpace()
-        let currentSpaceId = resolvedCurrentSpaceId(for: display, activeSpaceId: activeSpaceId)
-        let target = adjacentSpace(in: display.spaces, currentSpaceId: currentSpaceId, offset: offset)
-        return AdjacentSpaceContext(
-            point: point,
+        let currentSpaceId = display.orderedSpaceIds.contains(activeSpaceId) ? activeSpaceId : display.currentSpaceId
+        let plan = SpaceSwitchPlan(
+            offset: offset,
             display: display,
+            screenDisplayID: displayID,
             activeSpaceId: activeSpaceId,
             currentSpaceId: currentSpaceId,
-            target: target
+            targetSpaceId: adjacentSpaceId(in: display.orderedSpaceIds, currentSpaceId: currentSpaceId, offset: offset)
         )
+        DiagnosticLog.shared.info(
+            "switchToAdjacentSpace: offset=\(offset) point=\(formatCGPoint(point)) displayId=\(display.displayId) active=\(activeSpaceId) displayCurrent=\(display.currentSpaceId) resolved=\(currentSpaceId) target=\(plan.targetSpaceId.map(String.init) ?? "none") spaces=\(display.orderedSpaceIds)"
+        )
+        return plan
     }
 
     static func adjacentSpaceTarget(offset: Int, from cgPoint: CGPoint? = nil) -> SpaceInfo? {
-        adjacentSpaceContext(offset: offset, from: cgPoint)?.target
+        planAdjacentSpaceSwitch(offset: offset, from: cgPoint)?.target
     }
 
     /// Marker written onto synthetic Ctrl+←/→ events posted by
     /// `switchToAdjacentSpaceViaSystemShortcut` so `SpaceSwitchInterceptor`
     /// doesn't swallow its own fallback. ("LSPC")
     static let spaceShortcutSyntheticMarker: Int64 = 0x4C535043
-
-    struct SpaceSwitchOutcome {
-        let offset: Int
-        let switched: Bool
-        /// The space we aimed for (nil when already at the edge).
-        let target: SpaceInfo?
-        /// Index of the space the display was on when the switch was requested.
-        let currentIndex: Int?
-        let totalSpaces: Int
-        /// `NSScreen.screens` index of the display that owns the spaces.
-        let displayIndex: Int
-    }
 
     @discardableResult
     static func switchToAdjacentSpace(offset: Int, from cgPoint: CGPoint? = nil) -> Bool {
@@ -888,121 +952,328 @@ enum WindowTiler {
 
     @discardableResult
     static func switchToAdjacentSpaceWithOutcome(offset: Int, from cgPoint: CGPoint? = nil) -> SpaceSwitchOutcome {
-        guard let context = adjacentSpaceContext(offset: offset, from: cgPoint) else {
-            DiagnosticLog.shared.warn("switchToAdjacentSpace: no adjacent space for offset \(offset) from \(formatCGPoint(cgPoint ?? currentMouseCGPoint()))")
-            return SpaceSwitchOutcome(offset: offset, switched: false, target: nil, currentIndex: nil, totalSpaces: 0, displayIndex: 0)
+        guard let plan = planAdjacentSpaceSwitch(offset: offset, from: cgPoint) else {
+            return SpaceSwitchOutcome(plan: nil, switched: false)
         }
-
-        let spaces = context.display.spaces.map(\.id)
-        let targetText = context.target.map { String($0.id) } ?? "none"
-        DiagnosticLog.shared.info(
-            "switchToAdjacentSpace: offset=\(offset) point=\(formatCGPoint(context.point)) displayId=\(context.display.displayId) active=\(context.activeSpaceId) displayCurrent=\(context.display.currentSpaceId) resolved=\(context.currentSpaceId) target=\(targetText) spaces=\(spaces)"
-        )
-
-        let outcome = { (switched: Bool) in
-            SpaceSwitchOutcome(
-                offset: offset,
-                switched: switched,
-                target: context.target,
-                currentIndex: context.display.spaces.first(where: { $0.id == context.currentSpaceId })?.index,
-                totalSpaces: context.display.spaces.count,
-                displayIndex: context.display.displayIndex
-            )
-        }
-
-        if let target = context.target {
-            // Preferred path: a synthetic Dock swipe under a screen-update
-            // freeze. It runs the real switch path — kCGSSpaceDidChange fires,
-            // Dock's space model and Mission Control stay consistent — while
-            // the freeze hides the transition. SkyLight is the fallback; it
-            // switches instantly but leaves Dock's space bookkeeping stale.
-            if switchToAdjacentSpaceViaGesture(
-                direction: offset,
-                displayId: context.display.displayId,
-                targetSpaceId: target.id
-            ) {
-                DiagnosticLog.shared.info("switchToAdjacentSpace: gesture switch reached target \(target.id)")
-                return outcome(true)
-            }
-
-            let switched = switchToSpace(spaceId: target.id)
-            DiagnosticLog.shared.info("switchToAdjacentSpace: SkyLight \(switched ? "reached" : "missed") target \(target.id)")
-            if switched {
-                return outcome(true)
-            }
-        }
-
-        if getDisplaySpaces().count == 1 {
-            if let finalSpaceId = switchToAdjacentSpaceViaSystemShortcut(
-                offset: offset,
-                displayId: context.display.displayId,
-                initialSpaceId: context.currentSpaceId
-            ) {
-                if let target = context.target, finalSpaceId != target.id {
-                    DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut changed \(context.currentSpaceId) → \(finalSpaceId) (expected \(target.id))")
-                } else {
-                    DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut changed \(context.currentSpaceId) → \(finalSpaceId)")
-                }
-                return outcome(true)
-            }
-
-            guard context.target != nil else {
-                DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId) and there is no adjacent space")
-                return outcome(false)
-            }
-
-            DiagnosticLog.shared.warn("switchToAdjacentSpace: system shortcut stayed on \(context.currentSpaceId), falling back to SkyLight target \(context.target?.id ?? 0)")
-        }
-
-        return outcome(false)
+        return SpaceSwitchOutcome(plan: plan, switched: performSpaceSwitch(plan))
     }
 
-    /// Switch to an adjacent Space through the real Dock-swipe path while
-    /// screen updates are frozen, so the transition renders as an instant cut
-    /// but the system's space bookkeeping (Dock model, Mission Control,
-    /// `kCGSSpaceDidChange` observers) stays consistent — unlike
-    /// `SLSManagedDisplaySetCurrentSpace`, which skips all of it.
-    /// Returns true when the display lands on `targetSpaceId`.
-    private static func switchToAdjacentSpaceViaGesture(direction: Int, displayId: String, targetSpaceId: Int) -> Bool {
-        guard let mainConn = CGS.mainConnectionID,
-              let disable = CGS.disableUpdate,
-              let enable = CGS.reenableUpdate else { return false }
-        let cid = mainConn()
+    /// Run a planned relative switch. Only real transitions are used — Dock
+    /// swipes, or the native Mission Control shortcut when it is still
+    /// registered. SLSManagedDisplaySetCurrentSpace is deliberately not a
+    /// fallback here: it moves the bookkeeping without un-compositing the
+    /// outgoing Space, so a "successful" switch leaves windows piled up.
+    ///
+    /// `onCut` runs on the calling thread the moment the first swipe has
+    /// landed and screen updates resume — before the landing is confirmed.
+    static func performSpaceSwitch(_ plan: SpaceSwitchPlan, onCut: (() -> Void)? = nil) -> Bool {
+        guard let targetId = plan.targetSpaceId else { return false }
+        let ordered = plan.display.orderedSpaceIds
+        let delta = (ordered.firstIndex(of: targetId) ?? 0) - (ordered.firstIndex(of: plan.currentSpaceId) ?? 0)
 
-        let initial = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+        // The system observer will see the space change — mark it as ours up
+        // front so it doesn't pop a second bezel.
+        noteProgrammaticSwitch()
 
-        _ = disable(cid)
-        defer { _ = enable(cid) }
-
-        for phase: Int64 in [1, 2, 4] {   // began, changed, ended
-            postDockSwipe(phase: phase, direction: direction)
+        // Dock swipes act on the display under the live cursor.
+        let cursorDisplay = displaySpaces(forDisplayID: cgDisplayID(at: currentMouseCGPoint()), in: getDisplaySpaces())
+        if cursorDisplay?.displayId == plan.display.displayId {
+            if switchViaDockSwipes(delta: delta, displayId: plan.display.displayId, targetSpaceId: targetId, onCut: onCut) {
+                DiagnosticLog.shared.info("switchToAdjacentSpace: reached target \(targetId)")
+                return true
+            }
+        } else {
+            DiagnosticLog.shared.warn("switchToAdjacentSpace: cursor left display \(plan.display.displayId) before the switch ran")
         }
 
-        let deadline = Date().addingTimeInterval(0.5)
-        while Date() < deadline {
-            usleep(8_000)
-            let current = getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
-            if current == targetSpaceId { return true }
-            if current != 0 && current != initial { break }   // landed on the wrong space — stop waiting
+        // The native shortcut only exists while instant switching isn't
+        // holding it unregistered, and only moves one Space per press.
+        let current = getDisplaySpaces().first(where: { $0.displayId == plan.display.displayId })?.currentSpaceId
+        if abs(delta) == 1, current == plan.currentSpaceId, !SpaceSwitchHotkeys.isHoldingSystemHotkeys,
+           let landed = switchToAdjacentSpaceViaSystemShortcut(
+               offset: delta,
+               displayId: plan.display.displayId,
+               initialSpaceId: plan.currentSpaceId
+           ) {
+            DiagnosticLog.shared.info("switchToAdjacentSpace: system shortcut changed \(plan.currentSpaceId) → \(landed) (expected \(targetId))")
+            return landed == targetId
         }
+
+        DiagnosticLog.shared.warn("switchToAdjacentSpace: missed target \(targetId) from \(plan.currentSpaceId)")
         return false
     }
 
+    /// Show the Space Switch bezel for a planned relative switch. Call with
+    /// `switched: true` before the switch lands (the target is already known)
+    /// and again with the real result only if it missed. Landing on a
+    /// fullscreen app Space shows nothing — the app itself is the indicator.
+    static func presentSpaceSwitchBezel(for plan: SpaceSwitchPlan, switched: Bool, holding: Bool = false) {
+        guard !plan.isEdge else { return }
+        if switched && plan.target == nil {
+            DispatchQueue.main.async { SpaceSwitchBezel.shared.dismiss() }
+            return
+        }
+        DispatchQueue.main.async {
+            if !switched {
+                showSpaceSwitchBezelForCurrentSpace()
+                return
+            }
+            SpaceLandscape.shared.dismiss()
+            SpaceSwitchBezel.shared.show(
+                direction: plan.offset < 0 ? -1 : 1,
+                targetIndex: switched ? plan.target?.index : nil,
+                currentIndex: plan.currentIndex,
+                display: plan.display,
+                holding: holding,
+                on: screen(for: plan)
+            )
+        }
+    }
+
+    /// Main thread. The screen a plan was made on, matched by display ID
+    /// rather than by assuming NSScreen and SkyLight share an order.
+    static func screen(for plan: SpaceSwitchPlan) -> NSScreen? {
+        if let id = plan.screenDisplayID,
+           let screen = NSScreen.screens.first(where: {
+               ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id
+           }) {
+            return screen
+        }
+        return DisplayGeometryMapper.screen(for: plan.display, in: NSScreen.screens) ?? NSScreen.main
+    }
+
+    /// Switch a display by `delta` Spaces (signed) with one synthetic Dock
+    /// swipe per Space. Preferred over SLSManagedDisplaySetCurrentSpace:
+    /// the swipe drives the real WindowServer transition, so the outgoing
+    /// Space's windows are actually un-composited instead of piling up on
+    /// screen. Returns true when the display lands on `targetSpaceId`.
+    private static func switchViaDockSwipes(delta: Int, displayId: String, targetSpaceId: Int, onCut: (() -> Void)? = nil) -> Bool {
+        guard delta != 0 else { return false }
+
+        let cid = CGS.mainConnectionID?()
+        let disable = CGS.disableUpdate
+        let enable = CGS.reenableUpdate
+        let canFreeze = cid != nil && disable != nil && enable != nil
+        var cut = onCut
+
+        // Direction is recomputed per step from the ordered Space list rather
+        // than fixed from `delta`: if a swipe overshoots the target, the next
+        // step swipes back toward it instead of drifting further away.
+        for attempt in 0..<spaceSwitchAttemptLimit(distance: delta) {
+            let stepStarted = ProcessInfo.processInfo.systemUptime
+            var observed = 0
+            var freezeMs = 0
+            var reads = 0
+            defer {
+                DiagnosticLog.shared.info("SpaceSwitchStep: attempt=\(attempt + 1) target=\(targetSpaceId) observed=\(observed) freezeMs=\(freezeMs) reads=\(reads) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - stepStarted) * 1000))")
+            }
+            // Each physical step belongs to this switch, including trips
+            // longer than the observer's 0.8-second suppression window.
+            noteProgrammaticSwitch()
+            // Fullscreen app Spaces are steps too — a swipe lands on them.
+            let info = getDisplaySpaces().first(where: { $0.displayId == displayId })
+            let ordered = info?.orderedSpaceIds ?? []
+            let before = info?.currentSpaceId ?? 0
+            guard let currentIndex = ordered.firstIndex(of: before),
+                  let targetIndex = ordered.firstIndex(of: targetSpaceId),
+                  currentIndex != targetIndex else { break }
+
+            // A real next-Space swipe carries negative progress/velocity —
+            // the fingers travel left while the content follows rightward.
+            let direction = targetIndex > currentIndex ? -1 : 1
+            // ~10ms between phases — posted back-to-back the Dock coalesces
+            // the gesture and overshoots the target Space.
+            let freezeStarted = ProcessInfo.processInfo.systemUptime
+            if canFreeze { _ = disable!(cid!) }
+            for phase: Int64 in [1, 2, 4] {   // began, changed, ended
+                postDockSwipe(phase: phase, direction: direction)
+                usleep(10_000)
+            }
+            // Keep updates frozen past the gesture so the Dock's slide never
+            // renders — the screen cuts straight to the landed Space. The
+            // transition commits in ~60ms; anything longer and the tail of
+            // the slide just becomes visible again. Do NOT poll inside the
+            // freeze: the space change is invisible to getDisplaySpaces until
+            // updates resume, which was the old 500ms hitch.
+            if canFreeze {
+                usleep(90_000)
+                _ = enable!(cid!)
+            }
+            freezeMs = Int((ProcessInfo.processInfo.systemUptime - freezeStarted) * 1000)
+            cut?()
+            cut = nil
+
+            // A swipe can commit after 250ms, especially during a held
+            // chord. Abandoning here loses the rest of a merged destination
+            // and replans the next chord against an in-flight desktop.
+            // Wait for an observed landing; fast commits return immediately.
+            observed = waitForSpaceChange(from: before) {
+                reads += 1
+                return getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0
+            }
+            if observed == targetSpaceId { return true }
+            if observed == 0 || observed == before { break }
+        }
+        return (getDisplaySpaces().first(where: { $0.displayId == displayId })?.currentSpaceId ?? 0) == targetSpaceId
+    }
+
+    /// Poll completion using a monotonic deadline. Zero means the display
+    /// could not be read; it is never a landed desktop. The injectable clock
+    /// lets regression tests replay late commits without moving real Spaces.
+    static func waitForSpaceChange(
+        from initial: Int,
+        read: () -> Int,
+        now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        pause: () -> Void = { usleep(10_000) }
+    ) -> Int {
+        let deadline = now() + 1.0
+        while true {
+            let current = read()
+            if current != 0 && current != initial { return current }
+            if now() >= deadline { return current }
+            pause()
+        }
+    }
+
+    /// One attempt per requested desktop, with two corrections for a Dock
+    /// overshoot. A fixed cap truncated merged keyboard bursts on long strips.
+    static func spaceSwitchAttemptLimit(distance: Int) -> Int {
+        abs(distance) + 2
+    }
+
+    /// macOS 27 validates synthetic Dock swipes against a raw IOHID queue
+    /// payload (field 4205) that no CGEvent setter reaches — the augmented
+    /// encoding below is required there; older releases take plain fields.
+    private static let augmentsDockSwipes = ProcessInfo.processInfo.isOperatingSystemAtLeast(
+        OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0))
+
     /// One phase of a synthetic Dock swipe (the trackpad "swipe between
-    /// spaces" gesture). `FLT_TRUE_MIN`-scale progress commits the switch
-    /// immediately with no visible travel; all three phases are required for
-    /// WindowServer to complete it.
+    /// spaces" gesture). Fixed-point-epsilon progress commits the switch
+    /// immediately with no visible travel; the fling velocity rides on the
+    /// ended phase only — ~1000 lands exactly one Space, ~2000 overshoots.
     private static func postDockSwipe(phase: Int64, direction: Int) {
         guard let ev = CGEvent(source: nil) else { return }
         let dir = Double(direction)
         ev.setIntegerValueField(CGEventField(rawValue: 55)!, value: 30)   // kCGSEventDockControl
         ev.setIntegerValueField(CGEventField(rawValue: 110)!, value: 23)  // IOHIDEventTypeDockSwipe
         ev.setIntegerValueField(CGEventField(rawValue: 132)!, value: phase)
-        ev.setDoubleValueField(CGEventField(rawValue: 124)!, value: Double(Float.leastNonzeroMagnitude) * dir)
         ev.setIntegerValueField(CGEventField(rawValue: 123)!, value: 1)   // horizontal motion
-        ev.setDoubleValueField(CGEventField(rawValue: 129)!, value: 2000 * dir)
-        ev.setDoubleValueField(CGEventField(rawValue: 130)!, value: 2000 * dir)
-        ev.post(tap: .cgSessionEventTap)
+        guard augmentsDockSwipes else {
+            ev.setDoubleValueField(CGEventField(rawValue: 124)!, value: Double(Float.leastNonzeroMagnitude) * dir)
+            if phase == 4 {
+                ev.setDoubleValueField(CGEventField(rawValue: 129)!, value: 1000 * dir)
+            }
+            ev.post(tap: .cgSessionEventTap)
+            return
+        }
+        let timestamp = mach_absolute_time()
+        ev.setDoubleValueField(CGEventField(rawValue: 124)!, value: 0.000016 * dir)
+        ev.setIntegerValueField(CGEventField(rawValue: 134)!, value: phase)  // phase alias
+        ev.setDoubleValueField(CGEventField(rawValue: 138)!, value: 3.0)     // three-finger marker
+        ev.setDoubleValueField(CGEventField(rawValue: 169)!, value: Double(timestamp))  // ties event to payload
+        ev.setDoubleValueField(CGEventField(rawValue: 125)!, value: 0.1)
+        if phase == 4 {
+            ev.setDoubleValueField(CGEventField(rawValue: 129)!, value: 1000 * dir)
+        }
+        dockSwipeWithHIDPayload(ev, timestamp: timestamp).post(tap: .cgSessionEventTap)
+    }
+
+    /// Splice the raw IOHID queue payload (field 4205) into a Dock swipe
+    /// event. On macOS 27 the Dock validates the gesture against this
+    /// record — no CGEvent setter reaches it, so the record is appended to
+    /// the serialized event and the bytes reparsed. Without it the Dock
+    /// processes the swipe, then snaps the Space back.
+    private static func dockSwipeWithHIDPayload(_ ev: CGEvent, timestamp: UInt64) -> CGEvent {
+        guard let serialized = ev.data else { return ev }
+        var bytes = serialized as Data
+        // Wire format: i32be version (2), then per-field records of
+        // u16be elementSize + u16be (tag<<14 | field) + value bytes.
+        // Field 4205 sorts past every real field, so appending is enough.
+        guard bytes.count >= 4,
+              bytes[0] == 0, bytes[1] == 0, bytes[2] == 0, bytes[3] == 2
+        else { return ev }
+        let payload = iohidQueueElement(for: ev, timestamp: timestamp)
+        appendBE16(&bytes, UInt16(payload.count))
+        appendBE16(&bytes, 4205)
+        bytes.append(payload)
+        return CGEvent(withDataAllocator: nil, data: bytes as CFData) ?? ev
+    }
+
+    /// The IOHIDSystemQueueElement blob the Dock checks on macOS 27: a
+    /// FluidTouchGesture record mirroring the event's public fields plus a
+    /// Velocity record when the gesture carries a fling (the ended phase).
+    /// All fields are native little-endian — it's a verbatim HID struct.
+    private static func iohidQueueElement(for ev: CGEvent, timestamp: UInt64) -> Data {
+        let phase = ev.getIntegerValueField(CGEventField(rawValue: 132)!)
+        let motion = ev.getIntegerValueField(CGEventField(rawValue: 123)!)
+        let progress = ev.getDoubleValueField(CGEventField(rawValue: 124)!)
+        let posX = ev.getDoubleValueField(CGEventField(rawValue: 125)!)
+        let posY = ev.getDoubleValueField(CGEventField(rawValue: 126)!)
+        let velX = ev.getDoubleValueField(CGEventField(rawValue: 129)!)
+        let velY = ev.getDoubleValueField(CGEventField(rawValue: 130)!)
+        let swipeMask = ev.getIntegerValueField(CGEventField(rawValue: 115)!)
+
+        let includeVelocity = velX != 0 || velY != 0 || phase == 4
+        var d = Data()
+        // IOHIDSystemQueueElement header (28 bytes)
+        appendLE64(&d, timestamp)
+        appendLE64(&d, 0)                              // sender_id
+        appendLE32(&d, 0)                              // options
+        appendLE32(&d, 0)                              // attribute_length
+        appendLE32(&d, includeVelocity ? 2 : 1)        // event_count
+
+        // IOHIDFluidTouchGestureData (40 bytes)
+        appendLE32(&d, 40)                             // size
+        appendLE32(&d, 23)                             // kIOHIDEventTypeFluidTouchGesture
+        appendLE32(&d, UInt32(truncatingIfNeeded: phase) << 24)  // options: phase in high byte
+        appendLE32(&d, 0)                              // depth + reserved
+        appendLE32(&d, UInt32(bitPattern: fixed1616(posX)))
+        appendLE32(&d, UInt32(bitPattern: fixed1616(posY)))
+        appendLE32(&d, 0)                              // position_z
+        appendLE32(&d, UInt32(truncatingIfNeeded: swipeMask))
+        appendLE16(&d, UInt16(truncatingIfNeeded: motion))
+        appendLE16(&d, 3)                              // kIOHIDGestureFlavorDockPrimary
+        appendLE32(&d, UInt32(bitPattern: fixed1616(progress)))
+
+        if includeVelocity {
+            // IOHIDVelocityEventData (28 bytes)
+            appendLE32(&d, 28)                         // size
+            appendLE32(&d, 9)                          // kIOHIDEventTypeVelocity
+            appendLE32(&d, 0)                          // options
+            appendLE32(&d, 1)                          // depth + reserved
+            appendLE32(&d, UInt32(bitPattern: fixed1616(velX)))
+            appendLE32(&d, UInt32(bitPattern: fixed1616(velY)))
+            appendLE32(&d, 0)                          // velocity_z
+        }
+        return d
+    }
+
+    /// Signed 16.16 fixed point; sub-quantum values round to ±1 so the
+    /// epsilon progress survives the IOHID payload.
+    private static func fixed1616(_ v: Double) -> Int32 {
+        let f = Int32(v * 65536.0)
+        if f == 0 && v != 0 { return v > 0 ? 1 : -1 }
+        return f
+    }
+
+    private static func appendBE16(_ d: inout Data, _ v: UInt16) {
+        d.append(UInt8(v >> 8))
+        d.append(UInt8(v & 0xFF))
+    }
+
+    private static func appendLE16(_ d: inout Data, _ v: UInt16) {
+        var x = v
+        withUnsafeBytes(of: &x) { d.append(contentsOf: $0) }
+    }
+
+    private static func appendLE32(_ d: inout Data, _ v: UInt32) {
+        var x = v
+        withUnsafeBytes(of: &x) { d.append(contentsOf: $0) }
+    }
+
+    private static func appendLE64(_ d: inout Data, _ v: UInt64) {
+        var x = v
+        withUnsafeBytes(of: &x) { d.append(contentsOf: $0) }
     }
 
     /// Find a window by its title tag and return its CGWindowID and owner PID
@@ -1016,14 +1287,25 @@ enum WindowTiler {
               let copySpaces = CGS.copySpacesForWindows else { return [] }
         let cid = mainConn()
         let arr = [NSNumber(value: wid)] as CFArray
-        guard let result = copySpaces(cid, 0x7, arr) as? [NSNumber] else { return [] }
+        guard let result = copySpaces(cid, 0x7, arr)?.takeRetainedValue() as? [NSNumber] else { return [] }
         return result.map { $0.intValue }
+    }
+
+    /// A window's frame as the WindowServer keeps it, CG coordinates.
+    /// CGWindowList collapses a hidden app's windows to 1×1 on macOS 27;
+    /// this still has the real frame.
+    static func trueBounds(of wid: UInt32) -> CGRect? {
+        guard let mainConn = CGS.mainConnectionID,
+              let getBounds = CGS.getWindowBounds else { return nil }
+        var rect = CGRect.zero
+        guard getBounds(mainConn(), wid, &rect) == 0, !rect.isEmpty else { return nil }
+        return rect
     }
 
     /// Switch a display to a specific Space.
     /// Returns true once the requested Space becomes current.
     @discardableResult
-    static func switchToSpace(spaceId: Int, verify: Bool = true) -> Bool {
+    static func switchToSpace(spaceId: Int, verify: Bool = true, allowDockSwipe: Bool = true) -> Bool {
         guard let mainConn = CGS.mainConnectionID,
               let setSpace = CGS.setCurrentSpace else { return false }
 
@@ -1032,7 +1314,7 @@ enum WindowTiler {
         // Find which display this space belongs to
         let allDisplays = getDisplaySpaces()
         for display in allDisplays {
-            if display.spaces.contains(where: { $0.id == spaceId }) {
+            if display.orderedSpaceIds.contains(spaceId) {
                 let initialSpace = display.currentSpaceId
                 if initialSpace == spaceId {
                     DiagnosticLog.shared.info("switchToSpace: display \(display.displayIndex) already on target \(spaceId)")
@@ -1042,14 +1324,50 @@ enum WindowTiler {
                 DiagnosticLog.shared.info(
                     "switchToSpace: requesting \(spaceId) on display \(display.displayIndex) id=\(display.displayId) from \(initialSpace)"
                 )
+                // Mark before the attempt: the system's space-change observer
+                // must not add a second bezel while this switch runs.
+                noteProgrammaticSwitch()
+
+                // Preferred path: real Dock swipes (one per Space) so the Dock
+                // model, Mission Control, and kCGSSpaceDidChange stay
+                // consistent — the raw setCurrentSpace below skips all of
+                // that and drifts the Dock one space per call. The swipe acts
+                // on the display under the cursor, so only use it when the
+                // target display is the one the pointer is on.
+                let ordered = display.orderedSpaceIds
+                let cursorDisplayId = displaySpaces(
+                    forDisplayID: cgDisplayID(at: currentMouseCGPoint()),
+                    in: allDisplays
+                )?.displayId
+                if allowDockSwipe,
+                   cursorDisplayId == display.displayId,
+                   let currentIndex = ordered.firstIndex(of: initialSpace),
+                   let targetIndex = ordered.firstIndex(of: spaceId),
+                   targetIndex != currentIndex,
+                   switchViaDockSwipes(
+                       delta: targetIndex - currentIndex,
+                       displayId: display.displayId,
+                       targetSpaceId: spaceId
+                   ) {
+                    DiagnosticLog.shared.info("switchToSpace: real path reached target \(spaceId) on display \(display.displayIndex)")
+                    return true
+                }
+
                 setSpace(cid, display.displayId as CFString, UInt64(spaceId))
                 guard verify else { return true }
+
+                func currentSpaceId() -> Int {
+                    getDisplaySpaces().first(where: { $0.displayId == display.displayId })?.currentSpaceId ?? 0
+                }
+                if currentSpaceId() == spaceId {
+                    DiagnosticLog.shared.info("switchToSpace: display \(display.displayIndex) confirmed target \(spaceId)")
+                    return true
+                }
 
                 let deadline = Date().addingTimeInterval(0.45)
                 while Date() < deadline {
                     usleep(30_000)
-                    let current = getDisplaySpaces().first(where: { $0.displayId == display.displayId })?.currentSpaceId ?? 0
-                    if current == spaceId {
+                    if currentSpaceId() == spaceId {
                         DiagnosticLog.shared.info("switchToSpace: display \(display.displayIndex) confirmed target \(spaceId)")
                         return true
                     }
@@ -1064,6 +1382,71 @@ enum WindowTiler {
 
         DiagnosticLog.shared.warn("switchToSpace: couldn't resolve display for space \(spaceId)")
         return false
+    }
+
+    /// Timestamp of the last switch Lattices itself performed. The system
+    /// space-change observer uses this to suppress a duplicate bezel right
+    /// after a programmatic switch (which shows its own).
+    /// Written from the switch queue and gesture threads, read on main.
+    static var lastProgrammaticSwitchAt: CFAbsoluteTime {
+        programmaticSwitchLock.lock()
+        defer { programmaticSwitchLock.unlock() }
+        return _lastProgrammaticSwitchAt
+    }
+    private static var _lastProgrammaticSwitchAt: CFAbsoluteTime = 0
+    private static let programmaticSwitchLock = NSLock()
+
+    static func noteProgrammaticSwitch() {
+        programmaticSwitchLock.lock()
+        _lastProgrammaticSwitchAt = CFAbsoluteTimeGetCurrent()
+        programmaticSwitchLock.unlock()
+    }
+
+    /// Show the bezel for the Space the display is on right now — used when
+    /// the system switched Spaces on its own (Dock app activation, trackpad
+    /// swipe, Mission Control) so every space change gets the indicator.
+    static func showSpaceSwitchBezelForCurrentSpace() {
+        let all = getDisplaySpaces()
+        // Every display has a current Space; the one that just changed is the
+        // one holding the active Space.
+        let activeSpaceId = getCurrentSpace()
+        guard let display = all.first(where: { $0.orderedSpaceIds.contains(activeSpaceId) }) ?? all.first,
+              // Entering a fullscreen app needs no bezel.
+              let currentIndex = display.spaces.first(where: { $0.id == display.currentSpaceId })?.index
+        else { return }
+        let total = display.spaces.count
+        DiagnosticLog.shared.info("SpaceSwitchBezel: system space change → bezel for index \(currentIndex) of \(total)")
+        DispatchQueue.main.async {
+            SpaceNumberMark.shared.refresh()
+            SpaceSwitchBezel.shared.show(
+                direction: 0,
+                targetIndex: currentIndex,
+                currentIndex: currentIndex,
+                display: display,
+                on: DisplayGeometryMapper.screen(for: display, in: NSScreen.screens) ?? NSScreen.main
+            )
+        }
+    }
+
+    /// Show the Space Switch bezel for a switch Lattices performed outside the
+    /// Ctrl+arrow / gesture paths (navigation jumps, placement fallbacks) so
+    /// every space change gets the same visual confirmation.
+    static func showSpaceSwitchBezel(forSpaceId spaceId: Int) {
+        let all = getDisplaySpaces()
+        guard let display = all.first(where: { $0.spaces.contains(where: { $0.id == spaceId }) }) else { return }
+        let targetIndex = display.spaces.first(where: { $0.id == spaceId })?.index
+        let currentIndex = display.spaces.first(where: { $0.id == display.currentSpaceId })?.index
+        let direction = (targetIndex ?? 0) - (currentIndex ?? 0)
+        DispatchQueue.main.async {
+            SpaceNumberMark.shared.refresh()
+            SpaceSwitchBezel.shared.show(
+                direction: direction,
+                targetIndex: targetIndex,
+                currentIndex: currentIndex,
+                display: display,
+                on: DisplayGeometryMapper.screen(for: display, in: NSScreen.screens) ?? NSScreen.main
+            )
+        }
     }
 
     // MARK: - Move Window Between Spaces
@@ -1116,7 +1499,7 @@ enum WindowTiler {
 
     /// Attempt CGS-based window move. Returns nil if APIs are unavailable.
     /// Move a window between spaces via CGS private APIs. Internal — used by present() and moveWindowToSpace().
-    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int) -> MoveResult? {
+    internal static func moveViaCGS(wid: UInt32, fromSpaces: [Int], toSpace: Int, switchOnDenial: Bool = true) -> MoveResult? {
         let diag = DiagnosticLog.shared
         guard let mainConn = CGS.mainConnectionID,
               let addToSpaces = CGS.addWindowsToSpaces,
@@ -1141,7 +1524,12 @@ enum WindowTiler {
             return .success(method: "CGS", wid: wid)
         }
 
-        // CGS was silently denied — switch the view instead
+        // CGS was silently denied. Callers that can carry the window
+        // (WindowSpaceCarry) ask for the refusal; the rest switch the view.
+        guard switchOnDenial else {
+            diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction)")
+            return .failed(reason: "denied")
+        }
         diag.warn("moveViaCGS: silently denied (macOS 14.5+ restriction) — switching view")
         switchToSpace(spaceId: toSpace)
         return .success(method: "switch-view", wid: wid)
@@ -1196,6 +1584,7 @@ enum WindowTiler {
         if let windowSpace = windowSpaces.first, windowSpace != currentSpace {
             diag.info("Switching from space \(currentSpace) → \(windowSpace)")
             switchToSpace(spaceId: windowSpace)
+            showSpaceSwitchBezel(forSpaceId: windowSpace)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 raiseWindow(pid: pid, tag: tag, terminal: terminal)
                 highlightWindow(session: session)
@@ -1562,6 +1951,7 @@ enum WindowTiler {
         if let windowSpace = windowSpaces.first, windowSpace != currentSpace {
             diag.info("Switching from space \(currentSpace) → \(windowSpace)")
             switchToSpace(spaceId: windowSpace)
+            showSpaceSwitchBezel(forSpaceId: windowSpace)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 raiseWindowById(wid: wid, pid: pid)
                 highlightWindowById(wid: wid)
@@ -1852,7 +2242,10 @@ enum WindowTiler {
                     continue
                 }
 
+                let capture = EditorMutationJournal.begin(wid: wm.wid, ax: axWin)
+                if EditorMutationJournal.current != nil && capture == nil { continue }
                 applyFrameToAXWindow(axWin, wid: wm.wid, target: wm.target)
+                EditorMutationJournal.end(capture)
                 moved += 1
             }
         }
@@ -2210,7 +2603,10 @@ enum WindowTiler {
         if let cid { _ = _SLSDisableUpdate?(cid) }
 
         for move in moves {
+            let capture = EditorMutationJournal.begin(wid: move.wid, ax: move.axWindow)
+            if EditorMutationJournal.current != nil && capture == nil { continue }
             setFrameTriplet(move.axWindow, to: move.frame)
+            EditorMutationJournal.end(capture)
             AXUIElementPerformAction(move.axWindow, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(move.axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
             processed += 1
@@ -2340,23 +2736,33 @@ enum WindowTiler {
 
     /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
     /// If `region` is provided (fractional x, y, w, h), the grid is constrained to that sub-area.
+    /// The whole batch lands on one screen: `screen` when given, else the
+    /// first window's. Callers with windows on several monitors call once
+    /// per monitor with its screen.
     static func batchRaiseAndDistribute(
         windows: [(wid: UInt32, pid: Int32)],
         region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil,
         reactivateLattices: Bool = true,
-        shape shapeOverride: [Int]? = nil
+        shape shapeOverride: [Int]? = nil,
+        screen explicitScreen: NSScreen? = nil
     ) {
         guard !windows.isEmpty else { return }
         let diag = DiagnosticLog.shared
 
-        // Find screen from first window
-        guard let firstFrame = cgWindowFrame(wid: windows[0].wid) else {
-            diag.warn("batchRaiseAndDistribute: no frame for first window wid=\(windows[0].wid)")
-            return
+        let screen: NSScreen
+        if let explicitScreen {
+            screen = explicitScreen
+        } else {
+            // The first window's screen. Its CG frame is top-left origin, so
+            // convert before testing it against AppKit's screen frames.
+            guard let firstFrame = cgWindowFrame(wid: windows[0].wid) else {
+                diag.warn("batchRaiseAndDistribute: no frame for first window wid=\(windows[0].wid)")
+                return
+            }
+            screen = screenForWindowFrame(WindowFrame(
+                x: firstFrame.minX, y: firstFrame.minY, w: firstFrame.width, h: firstFrame.height
+            ))
         }
-        let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(NSPoint(x: firstFrame.midX, y: firstFrame.midY))
-        }) ?? NSScreen.main ?? NSScreen.screens[0]
 
         let visible = screen.visibleFrame
         let screenFrame = screen.frame
@@ -2672,10 +3078,10 @@ enum WindowTiler {
         }) ?? NSScreen.main ?? primaryScreen
     }
 
+    /// Cursor in CG (top-left) coordinates. CGEvent is safe off the main
+    /// thread, unlike NSEvent.mouseLocation / NSScreen.
     private static func currentMouseCGPoint() -> CGPoint {
-        let mouseLocation = NSEvent.mouseLocation
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        return CGPoint(x: mouseLocation.x, y: primaryHeight - mouseLocation.y)
+        CGEvent(source: nil)?.location ?? .zero
     }
 
     private static func switchToAdjacentSpaceViaSystemShortcut(offset: Int, displayId: String, initialSpaceId: Int) -> Int? {
@@ -2707,28 +3113,27 @@ enum WindowTiler {
         }
         return nil
     }
-    private static func displaySpaces(containing cgPoint: CGPoint) -> DisplaySpaces? {
-        guard let screenIndex = screenIndex(for: cgPoint) else { return nil }
-        return getDisplaySpaces().first(where: { $0.displayIndex == screenIndex })
+    private static func cgDisplayID(at cgPoint: CGPoint) -> CGDirectDisplayID? {
+        var id: CGDirectDisplayID = 0
+        var count: UInt32 = 0
+        guard CGGetDisplaysWithPoint(cgPoint, 1, &id, &count) == .success, count > 0 else { return nil }
+        return id
     }
 
-    private static func resolvedCurrentSpaceId(for display: DisplaySpaces, activeSpaceId: Int) -> Int {
-        if display.spaces.contains(where: { $0.id == activeSpaceId }) {
-            return activeSpaceId
-        }
-        return display.currentSpaceId
+    /// The SkyLight Space list for a CG display, matched by UUID — SkyLight's
+    /// order is not NSScreen's. With "Displays have separate Spaces" off
+    /// there is a single shared list, which owns every screen.
+    static func displaySpaces(forDisplayID displayID: CGDirectDisplayID?, in all: [DisplaySpaces]) -> DisplaySpaces? {
+        if all.count == 1 { return all[0] }
+        let id = displayID ?? CGMainDisplayID()
+        guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }
+        let uuidString = CFUUIDCreateString(nil, uuid) as String
+        return all.first(where: { $0.displayId.caseInsensitiveCompare(uuidString) == .orderedSame })
     }
 
     private static func formatCGPoint(_ point: CGPoint) -> String {
         "\(Int(point.x)),\(Int(point.y))"
     }
-    private static func screenIndex(for cgPoint: CGPoint) -> Int? {
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let nsPoint = NSPoint(x: cgPoint.x, y: primaryHeight - cgPoint.y)
-        return NSScreen.screens.firstIndex(where: { $0.frame.contains(nsPoint) })
-            ?? (NSScreen.main != nil ? 0 : nil)
-    }
-
     // MARK: - Private
 
     private static func visibleDistributableWindows() -> [WindowEntry] {

@@ -1,4 +1,5 @@
 {
   "app": "Lattices",
+  "tier": "bundle",
   "features": ["voice"]
 }

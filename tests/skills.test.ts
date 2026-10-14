@@ -11,7 +11,7 @@ const actionBrowserSkill = join(
   "products/action/plugins/action-browser/skills/action-browser/SKILL.md",
 );
 
-const catalog = ["action", "blink", "lattices", "speech"] as const;
+const catalog = ["action", "blink", "lattices", "voice"] as const;
 
 function frontmatter(source: string): string {
   const match = source.match(/^---\n([\s\S]*?)\n---\n/);
@@ -40,8 +40,8 @@ test("skills/ is the family catalog", () => {
 
 test("lattices skill teaches current workspace commands", () => {
   const source = readFileSync(join(skillsRoot, "lattices", "SKILL.md"), "utf8");
-  expect(source).toContain("lattices daemon status");
-  expect(source).toContain("window.place");
+  expect(source).toContain("lats daemon status");
+  expect(source).toContain("windows.place");
 });
 
 test("action skill teaches the native drive loop", () => {
@@ -51,11 +51,12 @@ test("action skill teaches the native drive loop", () => {
   expect(source).toContain("action-browser@action");
 });
 
-test("speech skill teaches voice simulate and intents", () => {
-  const source = readFileSync(join(skillsRoot, "speech", "SKILL.md"), "utf8");
-  expect(source).toContain("lattices voice simulate");
-  expect(source).toContain("lattices voice intents");
-  expect(source).toContain("window.place");
+test("voice skill teaches say, simulate and intents", () => {
+  const source = readFileSync(join(skillsRoot, "voice", "SKILL.md"), "utf8");
+  expect(source).toContain("lats voice say");
+  expect(source).toContain("lats voice simulate");
+  expect(source).toContain("lats voice intents");
+  expect(source).toContain("windows.place");
 });
 
 test("blink skill teaches the shipped notes CLI", () => {
@@ -70,10 +71,10 @@ test("Action Browser skill stays plugin-local", () => {
   expect(meta).toContain("internal: true");
 });
 
-test("Action plugin marketplace stays standalone", () => {
+test("Lattices marketplace keeps the Action Browser skill plugin", () => {
   const marketplace = JSON.parse(readFileSync(marketplacePath, "utf8"));
   const pluginNames = marketplace.plugins.map((plugin: { name: string }) => plugin.name);
 
-  expect(marketplace.name).toBe("action");
+  expect(marketplace.name).toBe("lattices");
   expect(pluginNames).toEqual(["action-browser"]);
 });
