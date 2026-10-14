@@ -71,7 +71,7 @@ final class SpaceSwitchBezel {
             let bounds = CGRect(x: screen.frame.minX, y: primaryHeight - screen.frame.maxY,
                                 width: screen.frame.width, height: screen.frame.height)
             let cards = SpaceFilmstripLayout.cards(spaces: display.spaces,
-                windows: DesktopModel.shared.allWindows(), bounds: bounds)
+                windows: Array(DesktopModel.shared.windows.values), bounds: bounds)
             filmstrip.configure(cards: cards, size: size, scale: screen.backingScaleFactor)
             let departure = display.spaces.firstIndex(where: { $0.index == currentIndex }) ?? target
             filmstrip.select(departure, animated: false)

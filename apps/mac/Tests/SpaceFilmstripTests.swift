@@ -68,6 +68,43 @@ final class SpaceFilmstripTests: XCTestCase {
         XCTAssertEqual(cards[0].windows[0].app, "Editor")
     }
 
+    func testUnsortedInventoryKeepsFrontmostSixAfterDisplayClipping() {
+        let spaces = [SpaceInfo(id: 42, index: 1, display: 0, isCurrent: true)]
+        let visible = (1...10).reversed().map { window(UInt32($0), z: $0) }
+        let offDisplay = (11...20).map {
+            window(UInt32($0), z: 0, frame: WindowFrame(x: 2000, y: 0, w: 500, h: 500))
+        }
+        let cards = SpaceFilmstripLayout.cards(spaces: spaces, windows: offDisplay + visible,
+            bounds: CGRect(x: 0, y: 0, width: 1000, height: 1000))
+        XCTAssertEqual(cards[0].windows.map(\.app), (1...6).reversed().map { "App \($0)" })
+    }
+
+    func testSharedWindowsAppearOncePerDesktopAndTiesKeepInventoryOrder() {
+        let spaces = [SpaceInfo(id: 43, index: 2, display: 0, isCurrent: false),
+                      SpaceInfo(id: 42, index: 1, display: 0, isCurrent: true),
+                      SpaceInfo(id: 44, index: 3, display: 0, isCurrent: false)]
+        let shared = WindowEntry(wid: 100, app: "Shared", pid: -1, title: "",
+            frame: WindowFrame(x: 0, y: 0, w: 500, h: 500), spaceIds: [42, 43, 42, 999],
+            isOnScreen: false, latticesSession: nil)
+        let cards = SpaceFilmstripLayout.cards(spaces: spaces,
+            windows: [shared] + (1...8).map { window(UInt32($0)) },
+            bounds: CGRect(x: 0, y: 0, width: 1000, height: 1000))
+        XCTAssertEqual(cards.map(\.id), [43, 42, 44])
+        XCTAssertEqual(cards.map(\.number), [2, 1, 3])
+        XCTAssertEqual(cards[0].windows.map(\.app), ["Shared"])
+        XCTAssertEqual(cards[1].windows.map(\.app), ["App 5", "App 4", "App 3", "App 2", "App 1", "Shared"])
+        XCTAssertTrue(cards[2].windows.isEmpty)
+    }
+
+    func testInvalidDisplayBoundsKeepEmptyDesktopCards() {
+        let spaces = [SpaceInfo(id: 42, index: 1, display: 0, isCurrent: true)]
+        for bounds in [CGRect.zero, CGRect(x: 0, y: 0, width: 1000, height: 0)] {
+            let cards = SpaceFilmstripLayout.cards(spaces: spaces, windows: [window(1)], bounds: bounds)
+            XCTAssertEqual(cards.map(\.id), [42])
+            XCTAssertTrue(cards[0].windows.isEmpty)
+        }
+    }
+
     // MARK: Motion
 
     private func strip(count: Int = 18) -> SpaceFilmstripView {
