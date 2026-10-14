@@ -1236,6 +1236,8 @@
 }
 
 @media (max-width: 520px) {
+  .site-header-inner { flex-wrap: wrap; gap: 8px; }
+  .site-links { margin-left: auto; flex-wrap: wrap; }
   .site-header-inner,
   .post-nav-inner {
     padding-inline: 16px;

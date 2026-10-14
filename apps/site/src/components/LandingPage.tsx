@@ -6,7 +6,49 @@ import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.13.3/Lattices.dmg";
+const latticesAppVersion = "0.14.0";
+const latticesCliVersion = "0.14.0";
+const latticesDownloadURL = `https://github.com/arach/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`;
+const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
+
+export function LatticesLogo({ size = 20 }: { size?: number }) {
+  // 3×3 grid with L-shape pattern (left column + bottom row bright, rest dim)
+  const cells = [
+    true, false, false,
+    true, false, false,
+    true, true, true,
+  ];
+  const pad = 2;
+  const gap = 1.2;
+  const cell = (size - 2 * pad - 2 * gap) / 3;
+  return (
+    <svg
+      aria-hidden="true"
+      className="lattices-logo"
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      fill="none"
+    >
+      {cells.map((bright, i) => {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+        return (
+          <rect
+            key={i}
+            x={pad + col * (cell + gap)}
+            y={pad + row * (cell + gap)}
+            width={cell}
+            height={cell}
+            rx={1}
+            className="lattices-logo-cell"
+            style={{ fill: bright ? "var(--logo-ink)" : "var(--logo-dim)" }}
+          />
+        );
+      })}
+    </svg>
+  );
+}
 
 declare global {
   interface Window {
@@ -379,7 +421,7 @@ const handsShortcuts: Array<{ keys: string[]; action: string }> = [
 function HandsOnSection() {
   return (
     <section className="home-sec fade-in" id="hands">
-      <SectionHead kicker="Keyboard and mouse" title="Shortcuts and mouse gestures, not just the palette.">
+      <SectionHead title="Shortcuts and mouse gestures, not just the palette.">
         <p className="sec-lede">
           Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
           draw a direction or a shape, release. The app replays that path in
@@ -418,10 +460,10 @@ function HandsOnSection() {
   );
 }
 
-function SectionHead({ kicker, title, children }: { kicker: string; title: string; children?: ReactNode }) {
+function SectionHead({ kicker, title, children }: { kicker?: string; title: string; children?: ReactNode }) {
   return (
     <header className="sec-head">
-      <p className="sec-kicker">{kicker}</p>
+      {kicker && <p className="sec-kicker">{kicker}</p>}
       <h2 className="sec-title">{title}</h2>
       {children}
     </header>
@@ -446,6 +488,23 @@ const tickerMethods = [
 ];
 
 export default function App() {
+  const brewCommand = "brew tap arach/tap\nbrew trust arach/tap\nbrew install --cask arach/tap/lattices";
+  const [brewCopy, setBrewCopy] = useState("Copy");
+  async function copyBrew() {
+    try {
+      await navigator.clipboard.writeText(brewCommand);
+      setBrewCopy("Copied");
+      window.setTimeout(() => setBrewCopy("Copy"), 2000);
+    } catch { setBrewCopy("Select to copy"); }
+  }
+  const [installCopy, setInstallCopy] = useState("Copy");
+  async function copyInstall() {
+    try {
+      await navigator.clipboard.writeText("bun install -g @arach/lattices");
+      setInstallCopy("Copied");
+      window.setTimeout(() => setInstallCopy("Copy"), 2000);
+    } catch { setInstallCopy("Select to copy"); }
+  }
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
   const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
@@ -471,6 +530,7 @@ export default function App() {
           </a>
           <div className="nav-links">
             <ProductsMenu />
+            <a href="/learn" className="nav-link">Learn</a>
             <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
@@ -498,7 +558,7 @@ export default function App() {
       <main>
         <section className="hero fade-in">
           <div className="hero-inner">
-            <p className="hero-eyebrow">The programmable workspace for macOS</p>
+
             <h1>Your workspace in your hands.</h1>
             <p className="hero-sub">
               Organize windows, run your tools, and automate your workflow.
@@ -548,7 +608,6 @@ export default function App() {
         <section className="section shared-state-section" id="shared-state">
          <div className="shared-state-inner">
           <div className="shared-state-copy fade-in">
-            <div className="cua-kicker">One state, two operators</div>
             <h2>Same desktop, whether you drive or your agent does.</h2>
             <p>
               Agents can write code and run tests, but arranging the Mac around
@@ -584,7 +643,7 @@ export default function App() {
         {/* Computer use (CUA) */}
         <section className="home-sec" id="cua">
           <div className="fade-in">
-            <SectionHead kicker="Action · a Lattices product" title="Computer use you can control">
+            <SectionHead title="Computer use you can control">
               <p className="sec-lede">
                 Action is the focused computer-use product in the Lattices family.
                 Observe the screen, stage each action for review, execute on-device,
@@ -613,9 +672,6 @@ export default function App() {
 
             <div className="cua-stage-panel">
               <div className="cua-stage-copy">
-                <p className="cua-stage-eyebrow">
-                  {activeCuaStep.number} / {activeCuaStep.title}
-                </p>
                 <h3>{activeCuaStep.heading}</h3>
                 <p>{activeCuaStep.caption}</p>
               </div>
@@ -657,12 +713,11 @@ export default function App() {
           <section className="home-sec next-section fade-in fade-in-delay-2">
             <div className="next-card">
               <div className="next-copy">
-                <div className="next-kicker">Opening for TestFlight</div>
                 <h2>Lats.dev for iPad</h2>
                 <p>
-                  A new app and domain for controlling your Mac workspace from
-                  beside the keyboard: trackpad gestures, window actions, live state,
-                  and shortcuts tuned for iPad. Early testing starts next.
+                  Opening for TestFlight. A new app and domain for controlling
+                  your Mac workspace from beside the keyboard: trackpad gestures,
+                  window actions, live state, and shortcuts tuned for iPad.
                 </p>
               </div>
               <div className="next-preview" aria-hidden="true">
@@ -689,8 +744,8 @@ export default function App() {
         <section className="home-sec" id="app">
           <div className="app-grid">
             <div className="app-copy">
-              <div className="app-kicker-row">
-                <span>Native macOS app</span>
+              <div className="app-title-row">
+                <h2 className="app-title">The whole workspace, visible.</h2>
                 <a
                   href={latticesDownloadURL}
                   className="app-download-icon"
@@ -701,7 +756,6 @@ export default function App() {
                   <DownloadIcon />
                 </a>
               </div>
-              <h2 className="app-title">A calmer computing experience.</h2>
               <p className="app-desc">
                 Keep the windows for coding, research, or deep work together.
                 Switch workspace layers when it’s time to change focus.
@@ -734,7 +788,7 @@ export default function App() {
 
         {/* Product spine */}
         <section className="home-sec fade-in fade-in-delay-2" id="features">
-          <SectionHead kicker="The product spine" title="Three jobs, one surface." />
+          <SectionHead title="See your workspace. Put it to work." />
           <div className="home-spine">
             <article>
               <span className="home-spine-num">01</span>
@@ -871,57 +925,63 @@ export default function App() {
         <section className="home-sec" id="local-first">
           <div className="local-trust fade-in">
             <div>
-              <p className="sec-kicker">Local core, open source</p>
-              <h2>The core runs on your Mac.</h2>
+              <h2>Your workspace, under your control.</h2>
             </div>
             <p>
-              Lattices runs as a local service and exposes a typed API over
-              localhost. Workspace control and action traces stay on-device.
+              Arrange windows, switch projects, and see what your agents do.
+              Workspace control and action history stay on your Mac.
               Optional vision-model features may send screen context to the
-              provider you configure. The source is open, and agent actions are
-              recorded and verifiable.
+              provider you choose. Lattices is open source, so you can inspect
+              how it works.
             </p>
           </div>
         </section>
 
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
-            <div className="cua-kicker">Three ways in. One workspace.</div>
-            <h2>Start where you work.</h2>
+            <h2>Make yourself at home.</h2>
+            <p>Get Lattices for your Mac. Everything else is optional.</p>
           </div>
-          <div className="install-chooser-grid">
-            <article>
-              <span className="install-chooser-label">App</span>
-              <h3>Native macOS app</h3>
-              <p>Manage projects, windows, and layers with a click.</p>
-              <a
-                href={latticesDownloadURL}
-                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}
-              >
-                Download for macOS <span aria-hidden="true">↗</span>
+          <div className="install-main">
+            <div className="install-download">
+              <div className="install-app-mark"><LatticesLogo size={48} /></div>
+              <h3>Lattices for Mac</h3>
+              <p>Your windows, projects, and tools. A little more together.</p>
+              <a className="install-primary" href={latticesDownloadURL}
+                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}>
+                <DownloadIcon /> Download for Mac
               </a>
-              <small>Apple Silicon · .dmg</small>
-            </article>
-            <article>
-              <span className="install-chooser-label">CLI</span>
-              <h3>Command line</h3>
-              <p>Launch, search, place, and script the same workspace.</p>
-              <a href="/docs/quickstart">
-                Get the CLI <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npm i -g @arach/lattices</code></small>
-            </article>
-            <article>
-              <span className="install-chooser-label">SDK</span>
-              <h3>Typed agent SDK</h3>
-              <p>Build agents and scripts against the whole desktop.</p>
-              <a href="/docs/api">
-                Read the API <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npm i @lattices/sdk</code></small>
-            </article>
+              <small>{latticesDownloadMeta}</small>
+              <p className="install-directions">Open the download. Drag Lattices into Applications.</p>
+            </div>
+            <div className="install-brew">
+              <div className="install-brew-title"><h3>Prefer Homebrew?</h3></div>
+              <p>The same Mac app, installed from your terminal.</p>
+              <div className="install-command install-copy-command">
+                <code style={{ whiteSpace: "pre-wrap" }}>{brewCommand}</code>
+                <button type="button" onClick={copyBrew} aria-label="Copy Homebrew install commands">{brewCopy}</button>
+              </div>
+              <small>Apple Silicon · macOS 26 or later</small>
+              <span className="sr-only" role="status">{brewCopy === "Copied" ? "Homebrew commands copied" : ""}</span>
+            </div>
+            <div className="install-npm">
+              <h3>Install with Bun</h3>
+              <p>The command line for your workspace.</p>
+              <div className="install-command install-copy-command">
+                <code>bun install -g @arach/lattices</code>
+                <button type="button" onClick={copyInstall} aria-label="Copy Bun install command">{installCopy}</button>
+              </div>
+              <small>CLI {latticesCliVersion} · <a href="/docs/quickstart">Setup guide</a></small>
+              <span className="sr-only" role="status">{installCopy === "Copied" ? "Command copied" : ""}</span>
+            </div>
           </div>
-          <p className="install-chooser-footnote">Same service, same live state — pick the surface that fits.</p>
+          <details className="install-developer">
+            <summary>Developer setup <span>Agent skills &amp; API</span></summary>
+            <div className="install-developer-options">
+              <div><h3>Agent skills</h3><code>npx skills add arach/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
+              <div><h3>Typed API</h3><code>npm i @lattices/sdk</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
+            </div>
+          </details>
         </section>
 
         {/* CTA */}
@@ -939,7 +999,7 @@ export default function App() {
               </span>
               <span className="cta-download-copy">
                 <span>Download for macOS</span>
-                <span className="cta-download-meta">Apple Silicon · .dmg</span>
+                <span className="cta-download-meta">{latticesDownloadMeta}</span>
               </span>
               <span className="cta-download-go" aria-hidden="true">
                 <DownloadIcon />
@@ -961,7 +1021,7 @@ export default function App() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/lattices')}
+              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/@arach/lattices')}
             >
               CLI package
             </a>
@@ -1007,7 +1067,7 @@ export default function App() {
               GitHub
             </a>
             <a
-                href="https://www.npmjs.com/package/@arach/lattices"
+              href="https://www.npmjs.com/package/@arach/lattices"
               target="_blank"
               rel="noopener noreferrer"
             >

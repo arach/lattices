@@ -22,6 +22,8 @@ import { stripMdxImports } from '../src/lib/markdown.ts'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
+import LearnPage from '../src/components/LearnPage.tsx'
+import { learningRoutes } from '../src/lib/learning.ts'
 import ProductsPage from '../src/components/ProductsPage.tsx'
 import FamilyPage from '../src/components/FamilyPage.tsx'
 import { routeBrand } from '../src/lib/brand.ts'
@@ -121,6 +123,9 @@ for (const post of posts) {
 }
 
 await copyDocsAssets()
+for (const route of learningRoutes) {
+  await writeRoute(route.path, `${route.title} — Lattices`, route.description, renderToString(createElement(LearnPage, { path: route.path })))
+}
 await writeAgentArtifacts({ siteDir, repoRoot, distDir })
 
 // Emit a tiny manifest the React SPA can read on hydration for last-updated
@@ -171,6 +176,7 @@ async function writeSitemap() {
     { loc: `${SITE_URL}/family`, priority: '0.9' },
     { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
     { loc: `${SITE_URL}/blog`, priority: '0.8' },
+    ...learningRoutes.map((route) => ({ loc: `${SITE_URL}${route.path}`, priority: '0.7' })),
     ...docs.map((doc) => ({
       loc: `${SITE_URL}/docs/${doc.slug}`,
       lastmod: docUpdated[doc.slug] || doc.data.date || undefined,
