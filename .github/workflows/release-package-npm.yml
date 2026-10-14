@@ -33,6 +33,8 @@ jobs:
       LATTICES_HUDSON_SOURCE: git
       HUDSON_VOX_SOURCE: git
       HUDSONKIT_WITH_VOICE: "1"
+      # Public packages use the same free tier as the signed release feed.
+      LATTICES_TIER: free
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
