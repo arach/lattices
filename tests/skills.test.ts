@@ -48,7 +48,7 @@ test("action skill teaches the native drive loop", () => {
   const source = readFileSync(join(skillsRoot, "action", "SKILL.md"), "utf8");
   expect(source).toContain("`drive_begin`");
   expect(source).toContain("`observe_snapshot`");
-  expect(source).toContain("action-browser@action");
+  expect(source).toContain("`browser_*`");
 });
 
 test("voice skill teaches say, simulate and intents", () => {
