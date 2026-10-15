@@ -27,6 +27,8 @@
 
 ## Meet the family
 
+Four apps, one repository. Open a product below for its README, installation steps, and source. Speech lives in `products/voice`, where the app is called **Voice**.
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -37,27 +39,27 @@
   <p><a href="https://lattices.dev/docs/quickstart">Set up your workspace →</a></p>
 </td>
 <td width="50%" valign="top">
-  <a href="https://lattices.dev/action"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/action.png" width="48" height="48" alt="Action icon"></a>
-  <h3><a href="https://lattices.dev/action">Action</a></h3>
+  <a href="https://github.com/lattices-dev/lattices/tree/main/products/action"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/action.png" width="48" height="48" alt="Action icon"></a>
+  <h3><a href="https://github.com/lattices-dev/lattices/tree/main/products/action">Action</a></h3>
   <p><strong>Let your agents use your Mac.</strong></p>
   <p>Observe apps, operate browser surfaces, and record what happens along the way.</p>
-  <p><a href="https://lattices.dev/action">Explore computer use →</a></p>
+  <p><a href="https://lattices.dev/action">Explore computer use →</a> · <a href="https://github.com/lattices-dev/lattices/tree/main/products/action">README &amp; source</a></p>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-  <a href="https://lattices.dev/blink"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/blink.png" width="48" height="48" alt="Blink icon"></a>
-  <h3><a href="https://lattices.dev/blink">Blink</a></h3>
+  <a href="https://github.com/lattices-dev/lattices/tree/main/products/blink"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/blink.png" width="48" height="48" alt="Blink icon"></a>
+  <h3><a href="https://github.com/lattices-dev/lattices/tree/main/products/blink">Blink</a></h3>
   <p><strong>Keep a thought where you need it.</strong></p>
   <p>Write and arrange notes in floating windows. Leave context beside the work it belongs to.</p>
-  <p><a href="https://lattices.dev/blink">Make room for your notes →</a></p>
+  <p><a href="https://lattices.dev/blink">Make room for your notes →</a> · <a href="https://github.com/lattices-dev/lattices/tree/main/products/blink">README &amp; source</a></p>
 </td>
 <td width="50%" valign="top">
-  <a href="https://lattices.dev/speech"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/speech.png" width="48" height="48" alt="Speech icon"></a>
-  <h3><a href="https://lattices.dev/speech">Speech</a></h3>
+  <a href="https://github.com/lattices-dev/lattices/tree/main/products/voice"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/speech.png" width="48" height="48" alt="Speech icon"></a>
+  <h3><a href="https://github.com/lattices-dev/lattices/tree/main/products/voice">Speech</a></h3>
   <p><strong>Give your agents a voice.</strong></p>
   <p>Listen to queued readouts, follow the words in a playback HUD, and control the pace.</p>
-  <p><a href="https://lattices.dev/speech">Hear what comes next →</a></p>
+  <p><a href="https://lattices.dev/speech">Hear what comes next →</a> · <a href="https://github.com/lattices-dev/lattices/tree/main/products/voice">README &amp; source</a></p>
 </td>
 </tr>
 </table>

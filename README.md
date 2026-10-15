@@ -26,6 +26,8 @@ Arrange your windows, move between projects, and give your agents the same deskt
 
 Lattices is a native macOS app with a command bar, window tiling, workspace layers, screen search, and persistent terminal sessions. Use hotkeys and mouse gestures yourself, or let an agent inspect and arrange the same workspace through `lats` and the local API.
 
+**Explore the companion apps:** [Action](products/action/README.md) · [Blink](products/blink/README.md) · [Speech / Voice](products/voice/README.md)
+
 ## Start with your desktop
 
 1. [Download Lattices for Mac](https://github.com/lattices-dev/lattices/releases/latest), open the DMG, and drag Lattices to Applications.
@@ -124,14 +126,16 @@ The app hosts the API at `ws://127.0.0.1:9399`. It is local-only and has no auth
 
 ## The Lattices family
 
+Each product has its own app, README, and source directory. Start here:
+
 | Product | What it adds |
 | --- | --- |
 | **[Lattices](https://lattices.dev)** | A programmable workspace: windows, projects, screen search, and terminals. |
-| **[Action](https://lattices.dev/action)** | Computer use for agents: observe apps, operate browser surfaces, and record what happened. |
-| **[Blink](https://lattices.dev/blink)** | Spatial notes: editable notes that live in floating windows on your desktop. |
-| **[Speech](https://lattices.dev/speech)** | Spoken agent output with queued playback and a readalong HUD. |
+| **[Action](products/action/README.md)** | Computer use for agents: observe apps, operate browser surfaces, and record what happened. |
+| **[Blink](products/blink/README.md)** | Spatial notes: editable notes that live in floating windows on your desktop. |
+| **[Speech / Voice](products/voice/README.md)** | Spoken agent output with queued playback and a readalong HUD. |
 
-Action and Blink are separate apps with their own installation and runtime lifecycles. Their source lives in this repository. [Explore the family](https://lattices.dev/family).
+Action, Blink, and Voice have independent installation and runtime lifecycles. Their source lives together under [`products/`](products/). [Explore the family](https://lattices.dev/family).
 
 ## Build and contribute
 
