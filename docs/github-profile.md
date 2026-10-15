@@ -8,7 +8,7 @@
 
 # Lattices
 
-**Native macOS tools for developers and agents.**
+**Workspaces for agents (and you)**
 
 Build a workspace you can arrange, search, and control. Lattices brings your windows, terminal sessions, notes, and agents onto the same desktop.
 
