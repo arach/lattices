@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/lattices-dev/lattices/main/assets/hero.svg" width="100%" alt="Lattices: a programmable workspace for your Mac" />
+  <img src="https://raw.githubusercontent.com/lattices-dev/lattices/main/assets/hero.svg" width="100%" alt="Lattices: programmable workspaces for you and your agents" />
 </p>
 
 <h1 align="center">Lattices</h1>
 
-<p align="center"><strong>A programmable workspace for your Mac.</strong><br />
+<p align="center"><strong>Programmable workspaces for you and your agents.</strong><br />
 Arrange your windows, move between projects, and give your agents the same desktop controls you use.</p>
 
 <p align="center">

@@ -559,7 +559,7 @@ export default function App() {
         <section className="hero fade-in">
           <div className="hero-inner">
 
-            <h1>Your workspace in your hands.</h1>
+            <h1>Programmable workspaces for you and your agents.</h1>
             <p className="hero-sub">
               Organize windows, run your tools, and automate your workflow.
               Control your Mac by shortcut, mouse gesture, or code.
