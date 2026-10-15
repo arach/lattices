@@ -76,6 +76,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Cache verified speech binary dependency
+        if: ${{ inputs.build_app || !inputs.publish }}
+        run: bash tools/release/cache-speech-artifact.sh
+
       - name: Package dry run
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
         run: npm publish --dry-run --access public
