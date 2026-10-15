@@ -9,6 +9,7 @@ enum InteractionMode: String {
 enum MouseGestureHUDStyle: String, CaseIterable, Identifiable {
     case technical
     case sober
+    case ink
 
     var id: String { rawValue }
 
@@ -18,6 +19,8 @@ enum MouseGestureHUDStyle: String, CaseIterable, Identifiable {
             return "Technical"
         case .sober:
             return "Sober"
+        case .ink:
+            return "Ink"
         }
     }
 }

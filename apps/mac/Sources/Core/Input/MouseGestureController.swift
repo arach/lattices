@@ -69,7 +69,7 @@ private struct MouseGestureOverlayTheme {
         switch style {
         case .technical:
             return .technical
-        case .sober:
+        case .sober, .ink:
             return .sober
         }
     }
@@ -117,6 +117,8 @@ final class MouseGestureController: ObservableObject {
         var handoffCandidate = false
         var handoffEligible = false
         var initialFlags: CGEventFlags = []
+        var inkMenu: MouseGestureInkMenu?
+        var inkRecognizedCount = 0
 
         init(buttonNumber: Int64, startPoint: CGPoint, overlay: MouseGestureOverlay) {
             self.buttonNumber = buttonNumber
@@ -708,6 +710,16 @@ final class MouseGestureController: ObservableObject {
         newSession.handoffEligible = newSession.handoffCandidate
         newSession.initialFlags = snapshot.flags
         newSession.visual = MouseShortcutStore.shared.visualHint(for: button)
+        if Preferences.shared.mouseGestureHUDStyle == .ink {
+            let menu = MouseGestureInkMenu.build(
+                rules: MouseShortcutStore.shared.enabledRules,
+                button: button,
+                device: nil,
+                threshold: MouseShortcutStore.shared.tuning.dragThreshold
+            )
+            newSession.inkMenu = menu
+            overlay.inkMenu = menu
+        }
         session = newSession
         scheduleStaleSessionCleanup(for: newSession)
         DiagnosticLog.shared.info("MouseGesture: began at \(format(snapshot.location)) button=\(snapshot.buttonNumber)")
@@ -760,6 +772,7 @@ final class MouseGestureController: ObservableObject {
         )
         let tuning = MouseShortcutStore.shared.tuning
         let direction = Self.resolveDirection(delta: delta, threshold: tuning.dragThreshold, axisBias: tuning.axisBias)
+        updateInkCandidate(for: session)
 
         if direction != session.lockedDirection {
             session.lockedDirection = direction
@@ -812,6 +825,21 @@ final class MouseGestureController: ObservableObject {
                 pathPoints: session.pathPoints,
                 progress: 0
             )
+        }
+    }
+
+    /// Ink names the shape while it is drawn: confirmed once the recognizer
+    /// would fire it, a guess from the first strokes before that.
+    private func updateInkCandidate(for session: GestureSession) {
+        guard let menu = session.inkMenu, !menu.shapes.isEmpty,
+              session.pathPoints.count - session.inkRecognizedCount >= 2 else { return }
+        session.inkRecognizedCount = session.pathPoints.count
+        let shape = shapeRecognizer.recognize(points: session.pathPoints).shape
+        if let shape, menu.shapes[shape] != nil {
+            session.overlay.inkCandidate = MouseGestureInkCandidate(shape: shape, confirmed: true)
+        } else {
+            let guess = MouseGestureInkPredictor.predict(points: session.pathPoints.map(\.cgPoint), menu: menu)
+            session.overlay.inkCandidate = guess.map { MouseGestureInkCandidate(shape: $0, confirmed: false) }
         }
     }
 
@@ -933,6 +961,7 @@ final class MouseGestureController: ObservableObject {
                             visual: shapeMatch.rule.visual ?? session.visual,
                             visualPhase: .completed,
                             shape: shape,
+                            segments: shapeResult.segments,
                             pathPoints: session.pathPoints,
                             accessory: outcome.accessory,
                             caption: outcome.caption
@@ -1420,7 +1449,22 @@ private final class MouseGestureOverlay {
         window.hasShadow = false
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        window.contentView = overlayView
+        if hudStyle == .ink {
+            // Ink's lattice is a layer under the stroke, composited on the GPU.
+            let bounds = NSRect(origin: .zero, size: screen.frame.size)
+            let container = NSView(frame: bounds)
+            let host = NSView(frame: bounds)
+            host.wantsLayer = true
+            let lattice = CALayer()
+            lattice.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull(), "opacity": NSNull()]
+            host.layer?.addSublayer(lattice)
+            container.addSubview(host)
+            container.addSubview(overlayView)
+            overlayView.latticeLayer = lattice
+            window.contentView = container
+        } else {
+            window.contentView = overlayView
+        }
         // Ordered in on first draw, not here: every gesture-button press
         // makes an overlay, and a plain click never draws.
     }
@@ -1461,7 +1505,21 @@ private final class MouseGestureOverlay {
         } else {
             overlayView.state = .idle
         }
-        overlayView.needsDisplay = true
+        overlayView.requestDisplay()
+    }
+
+    var inkMenu: MouseGestureInkMenu? {
+        get { overlayView.inkMenu }
+        set { overlayView.inkMenu = newValue }
+    }
+
+    var inkCandidate: MouseGestureInkCandidate? {
+        get { overlayView.inkCandidate }
+        set {
+            guard overlayView.inkCandidate != newValue else { return }
+            overlayView.inkCandidate = newValue
+            overlayView.requestDisplay()
+        }
     }
 
     func commit(
@@ -1473,11 +1531,13 @@ private final class MouseGestureOverlay {
         visual: MouseShortcutVisualDefinition?,
         visualPhase: MouseGestureVisualPhase,
         shape: GestureShapeLabel?,
+        segments: [DirectionSegment] = [],
         pathPoints: [GesturePathPoint],
         accessory: MouseGestureAccessory?,
         caption: MouseGestureSystemCaption?
     ) {
         fadeTimer?.invalidate()
+        overlayView.inkSegments = segments
         window.alphaValue = 1
         if !window.isVisible { window.orderFrontRegardless() }
         overlayView.state = .committed(
@@ -1494,7 +1554,7 @@ private final class MouseGestureOverlay {
             caption: caption,
             accessoryAnimationDuration: accessoryAnimationDuration
         )
-        overlayView.needsDisplay = true
+        overlayView.requestDisplay()
 
         let postReplayHoldDuration = accessory == nil ? committedHoldDuration : accessoryCommittedHoldDuration
         let totalVisibleDuration = overlayView.replayLeadInDuration + postReplayHoldDuration
@@ -1586,10 +1646,22 @@ private final class MouseGestureOverlayView: NSView {
 
     var state: State = .idle {
         didSet {
+            if hudStyle == .ink {
+                updateInkAnimation(from: oldValue)
+                return
+            }
             updateArrowAnimation(from: oldValue, to: state)
             updateAccessoryAnimation()
         }
     }
+    var inkMenu: MouseGestureInkMenu?
+    var inkCandidate: MouseGestureInkCandidate?
+    var inkSegments: [DirectionSegment] = []
+    var latticeLayer: CALayer?
+    private var inkLink: CADisplayLink?
+    private var inkCommittedAt: CFTimeInterval?
+    /// The last area ink painted, so the next redraw can clear it.
+    private var inkPainted: CGRect = .null
     private var accessoryAnimationTimer: Timer?
     private var accessoryAnimationStartedAt: Date?
     private var accessoryAnimationDuration: TimeInterval = 0
@@ -1615,6 +1687,9 @@ private final class MouseGestureOverlayView: NSView {
     }
 
     var replayLeadInDuration: TimeInterval {
+        if hudStyle == .ink {
+            return MouseGestureInkRenderer.commitDrawDuration + 0.2
+        }
         if case .committed(_, _, _, _, _, let visual, _, let shape, let path, _, _, _) = state,
            shape != nil,
            path.count > 1,
@@ -1639,12 +1714,71 @@ private final class MouseGestureOverlayView: NSView {
             arrowAnimationTimer = nil
             accessoryAnimationTimer?.invalidate()
             accessoryAnimationTimer = nil
+            inkLink?.invalidate()
+            inkLink = nil
         }
+    }
+
+    /// Ink redraws only around the gesture, never the whole screen.
+    func requestDisplay() {
+        guard hudStyle == .ink else {
+            needsDisplay = true
+            return
+        }
+        let area: CGRect
+        switch state {
+        case .idle:
+            area = .null
+        case .tracking(let origin, _, _, _, _, _, _, _, let path, _),
+             .committed(let origin, _, _, _, _, _, _, _, let path, _, _, _):
+            area = MouseGestureInkRenderer.extent(origin: origin, path: path, menu: inkMenu).integral
+        }
+        let dirty = area.union(inkPainted)
+        inkPainted = area
+        if !dirty.isNull { setNeedsDisplay(dirty) }
+        updateLattice()
+    }
+
+    private var inkProgress: CGFloat {
+        let elapsed = inkCommittedAt.map { CACurrentMediaTime() - $0 } ?? .infinity
+        return CGFloat(min(1, elapsed / MouseGestureInkRenderer.commitDrawDuration))
+    }
+
+    private func updateLattice() {
+        guard let latticeLayer else { return }
+        let origin: CGPoint, path: [CGPoint], opacity: CGFloat
+        switch state {
+        case .idle:
+            latticeLayer.contents = nil
+            return
+        case .tracking(let o, _, _, _, _, _, _, _, let p, _):
+            (origin, path, opacity) = (o, p, 1)
+        case .committed(let o, _, _, _, _, _, _, _, let p, _, _, _):
+            (origin, path, opacity) = (o, p, MouseGestureInkRenderer.latticeOpacity(committed: inkProgress))
+        }
+        let scale = window?.backingScaleFactor ?? 2
+        let space = window?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        guard opacity > 0.01,
+              let lattice = MouseGestureInkRenderer.lattice(origin: origin, path: path, scale: scale, space: space) else {
+            latticeLayer.contents = nil
+            return
+        }
+        if (latticeLayer.contents as CFTypeRef?) !== lattice.image {
+            latticeLayer.contents = lattice.image
+            latticeLayer.contentsScale = scale
+            latticeLayer.frame = lattice.rect
+        }
+        latticeLayer.opacity = Float(opacity)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.clear(bounds)
+
+        if hudStyle == .ink {
+            drawInk(in: ctx)
+            return
+        }
 
         switch state {
         case .idle:
@@ -1741,6 +1875,62 @@ private final class MouseGestureOverlayView: NSView {
             if let caption {
                 drawSystemCaption(caption, success: success, in: ctx)
             }
+        }
+    }
+
+    private func drawInk(in ctx: CGContext) {
+        switch state {
+        case .idle:
+            break
+        case .tracking(let origin, let direction, _, _, _, _, _, _, let path, _):
+            MouseGestureInkRenderer.drawTracking(
+                in: ctx,
+                bounds: bounds,
+                origin: origin,
+                path: path,
+                menu: inkMenu ?? MouseGestureInkMenu(),
+                armed: direction,
+                candidate: inkCandidate
+            )
+        case .committed(let origin, let direction, let label, let success, _, _, _, let shape, let path, _, _, _):
+            MouseGestureInkRenderer.drawCommitted(
+                in: ctx,
+                bounds: bounds,
+                origin: origin,
+                path: path,
+                menu: inkMenu,
+                direction: direction,
+                label: label,
+                success: success,
+                shape: shape,
+                segments: inkSegments,
+                progress: inkProgress
+            )
+        }
+    }
+
+    private func updateInkAnimation(from oldState: State) {
+        guard isCommitted(state: state) else {
+            inkLink?.invalidate()
+            inkLink = nil
+            inkCommittedAt = nil
+            return
+        }
+        guard !isCommitted(state: oldState) else { return }
+        inkCommittedAt = CACurrentMediaTime()
+        inkLink?.invalidate()
+        let link = displayLink(target: self, selector: #selector(inkFrame(_:)))
+        link.add(to: .main, forMode: .common)
+        inkLink = link
+    }
+
+    @objc private func inkFrame(_ link: CADisplayLink) {
+        requestDisplay()
+        guard let startedAt = inkCommittedAt,
+              CACurrentMediaTime() - startedAt < MouseGestureInkRenderer.commitDrawDuration else {
+            link.invalidate()
+            inkLink = nil
+            return
         }
     }
 
