@@ -186,7 +186,7 @@ typed SDK facade, which validates params with dependency-free schemas and calls
 the same daemon methods directly.
 
 ```ts
-import { cua } from '@lattices/sdk'
+import { cua } from '@lattices/lattices/cua'
 
 await cua.magicCursor({
   app: 'Scout',
@@ -213,9 +213,8 @@ await cua.click({
 })
 ```
 
-`@lattices/lattices/cua` exposes the same CUA module for CLI-adjacent scripts, but
-new app and agent code should use `@lattices/sdk` or `@lattices/sdk/cua` so the
-import names the product surface instead of the CLI package.
+`@lattices/lattices/cua` exposes this typed CUA module. Existing imports from
+`@arach/lattices/cua` and `@lattices/cli/cua` remain supported.
 
 ### Error handling
 

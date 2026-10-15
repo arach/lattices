@@ -279,7 +279,7 @@ const configExamples: Record<PaneLayout, string> = {
 }`,
 };
 
-const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/sdk'</span>
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/lattices'</span>
 
 <span class="hl-cmt">// Find a window by title, app, session, or cwd</span>
 <span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'lattices.search'</span>, {
@@ -979,7 +979,7 @@ export default function App() {
             <summary>Developer setup <span>Agent skills &amp; API</span></summary>
             <div className="install-developer-options">
               <div><h3>Agent skills</h3><code>npx skills add lattices-dev/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
-              <div><h3>Typed API</h3><code>npm i @lattices/sdk</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
+              <div><h3>Typed API</h3><code>npm i @lattices/lattices</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
             </div>
           </details>
         </section>
