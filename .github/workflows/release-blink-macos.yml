@@ -290,7 +290,7 @@ jobs:
 
               npm install -g @arach/blink
 
-          See the [Blink CLI reference](https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md).
+          See the [Blink CLI reference](https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md).
           EOF
 
           release_args=(--latest=false --title "Blink $VERSION" --notes-file "$notes_path")

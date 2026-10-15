@@ -19,9 +19,10 @@ import { join, resolve } from "node:path";
 import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { actionAgentCall, isActionAgentRunning } from "./action-agent-client";
+import { distribution } from "./distribution";
 
 const __dirname = import.meta.dir;
-const REPO = "arach/lattices";
+const REPO = distribution.repository;
 const ACTION_TAG_PREFIX = "action-v";
 const ACTION_DMG_ASSET = "Action.dmg";
 const ACTION_APP_NAME = "Action.app";
