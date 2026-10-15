@@ -6,9 +6,9 @@ import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu } from "./SiteChrome";
 
-const latticesAppVersion = "0.14.0";
-const latticesCliVersion = "0.14.0";
-const latticesDownloadURL = `https://github.com/arach/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`;
+const latticesAppVersion = "0.14.1";
+const latticesCliVersion = "0.14.1";
+const latticesDownloadURL = `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`;
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 
 export function LatticesLogo({ size = 20 }: { size?: number }) {
@@ -500,7 +500,7 @@ export default function App() {
   const [installCopy, setInstallCopy] = useState("Copy");
   async function copyInstall() {
     try {
-      await navigator.clipboard.writeText("bun install -g @arach/lattices");
+      await navigator.clipboard.writeText("bun install -g @lattices/lattices");
       setInstallCopy("Copied");
       window.setTimeout(() => setInstallCopy("Copy"), 2000);
     } catch { setInstallCopy("Select to copy"); }
@@ -538,7 +538,7 @@ export default function App() {
               Docs
             </a>
             <a
-              href="https://github.com/arach/lattices"
+              href="https://github.com/lattices-dev/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-github"
@@ -968,7 +968,7 @@ export default function App() {
               <h3>Install with Bun</h3>
               <p>The command line for your workspace.</p>
               <div className="install-command install-copy-command">
-                <code>bun install -g @arach/lattices</code>
+                <code>bun install -g @lattices/lattices</code>
                 <button type="button" onClick={copyInstall} aria-label="Copy Bun install command">{installCopy}</button>
               </div>
               <small>CLI {latticesCliVersion} · <a href="/docs/quickstart">Setup guide</a></small>
@@ -978,7 +978,7 @@ export default function App() {
           <details className="install-developer">
             <summary>Developer setup <span>Agent skills &amp; API</span></summary>
             <div className="install-developer-options">
-              <div><h3>Agent skills</h3><code>npx skills add arach/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
+              <div><h3>Agent skills</h3><code>npx skills add lattices-dev/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
               <div><h3>Typed API</h3><code>npm i @lattices/sdk</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
             </div>
           </details>
@@ -1008,20 +1008,20 @@ export default function App() {
           </div>
           <div className="cta-actions">
             <a
-              href="https://github.com/arach/lattices"
+              href="https://github.com/lattices-dev/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              onClick={() => trackCta('view_github', 'https://github.com/arach/lattices')}
+              onClick={() => trackCta('view_github', 'https://github.com/lattices-dev/lattices')}
             >
               View on GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/@arach/lattices"
+              href="https://www.npmjs.com/package/@lattices/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/@arach/lattices')}
+              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/@lattices/lattices')}
             >
               CLI package
             </a>
@@ -1060,14 +1060,14 @@ export default function App() {
             <a href="/speech">Speech</a>
             <a href="/rss.xml">RSS</a>
             <a
-              href="https://github.com/arach/lattices"
+              href="https://github.com/lattices-dev/lattices"
               target="_blank"
               rel="noopener noreferrer"
             >
               GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/@arach/lattices"
+              href="https://www.npmjs.com/package/@lattices/lattices"
               target="_blank"
               rel="noopener noreferrer"
             >
