@@ -45,7 +45,7 @@ The app requires macOS 26 or later. tmux is optional: window management, layers,
 
 ## Install the command line tools
 
-Use Node 18+ or [Bun](https://bun.sh):
+Install [Bun](https://bun.sh) to run the CLI. You can install the package with npm (Node 18+) or Bun:
 
 ```sh
 npm install -g @lattices/lattices

@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/lattices-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/lattices-light.svg">
+    <img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/lattices-light.svg" alt="Lattices" width="88" height="88">
+  </picture>
+</p>
+
 # Lattices
 
 **Native macOS tools for developers and agents.**
@@ -15,7 +23,7 @@ Build a workspace you can arrange, search, and control. Lattices brings your win
 
 [Download for Mac](https://github.com/lattices-dev/lattices/releases/latest) · [Setup guide](https://lattices.dev/docs/quickstart)
 
-For the command line tools and bundled app:
+For the command line tools and bundled app, install [Bun](https://bun.sh), then:
 
 ```sh
 npm install -g @lattices/lattices
