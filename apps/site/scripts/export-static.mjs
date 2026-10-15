@@ -36,8 +36,8 @@ const actionMediaPath = '/action/media/'
 const SITE_URL = 'https://lattices.dev'
 const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
 const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
-const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/lattices/releases/download/blink-v2.1.0/Blink.dmg'
+const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/blink-v2.1.0/Blink.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -406,7 +406,7 @@ async function writeNotFound() {
           <li><a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes</li>
           <li><a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts</li>
           <li><a href="/blog">Blog</a> — release notes and engineering write-ups</li>
-          <li><a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">GitHub</a> — open an issue if the link should work</li>
+          <li><a href="https://github.com/lattices-dev/lattices" target="_blank" rel="noopener noreferrer">GitHub</a> — open an issue if the link should work</li>
         </ul>
       </div>
     </main>

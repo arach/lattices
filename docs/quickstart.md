@@ -9,7 +9,7 @@ Four steps to a running workspace.
 ## 1. Install lattices
 
 ```bash
-git clone https://github.com/arach/lattices
+git clone https://github.com/lattices-dev/lattices
 cd lattices && bun link
 ```
 
@@ -20,10 +20,10 @@ Verify: `lats help` should print usage info.
 ### One-command setup
 
 For a new Mac, the setup script installs Homebrew when needed, tmux, Bun,
-and the CLI. Review the [installer source](https://github.com/arach/lattices/blob/main/scripts/install.sh) before running:
+and the CLI. Review the [installer source](https://github.com/lattices-dev/lattices/blob/main/scripts/install.sh) before running:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
 ```
 
 The CLI and Mac app use release **0.14.0**. Install the Mac app with Homebrew:
@@ -35,8 +35,8 @@ brew install --cask arach/tap/lattices
 ```
 
 The cask requires Apple Silicon and macOS 26 or later. It installs the app;
-the optional CLI is available with `bun install -g @arach/lattices`.
-You can also download the [disk image](https://github.com/arach/lattices/releases/download/v0.14.0/Lattices.dmg).
+the optional CLI is available with `bun install -g @lattices/lattices`.
+You can also download the [disk image](https://github.com/lattices-dev/lattices/releases/download/v0.14.0/Lattices.dmg).
 
 ## 2. Launch the menu bar app
 

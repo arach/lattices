@@ -28,7 +28,7 @@ lats daemon status
 3. Call a method from Node.js:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
@@ -144,7 +144,7 @@ matching internally.
 Send an RPC call and await the response.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Read-only
 const status = await daemonCall('daemon.status')
@@ -170,7 +170,7 @@ await daemonCall('projects.scan', null, 10000)
 Check if the server is reachable.
 
 ```js
-import { isDaemonRunning } from '@lattices/cli'
+import { isDaemonRunning } from '@lattices/lattices'
 
 if (await isDaemonRunning()) {
   console.log('daemon is up')
@@ -213,7 +213,7 @@ await cua.click({
 })
 ```
 
-`@lattices/cli/cua` exposes the same CUA module for CLI-adjacent scripts, but
+`@lattices/lattices/cua` exposes the same CUA module for CLI-adjacent scripts, but
 new app and agent code should use `@lattices/sdk` or `@lattices/sdk/cua` so the
 import names the product surface instead of the CLI package.
 
@@ -222,7 +222,7 @@ import names the product surface instead of the CLI package.
 `daemonCall` throws on errors — always wrap calls in try/catch:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 try {
   await daemonCall('sessions.launch', { path: '/nonexistent' })
@@ -2597,7 +2597,7 @@ is available at ws://127.0.0.1:9399.
 
 ### Import
 \```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 \```
 ```
 
@@ -2606,7 +2606,7 @@ import { daemonCall } from '@lattices/cli'
 An orchestrator agent can set up the full workspace for sub-agents:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Discover what's available
 const projects = await daemonCall('projects.list')
@@ -2660,7 +2660,7 @@ ws.on('open', () => {
 Always verify the daemon is running before making calls:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@lattices/cli'
+import { isDaemonRunning, daemonCall } from '@lattices/lattices'
 
 if (!(await isDaemonRunning())) {
   console.error('lats daemon is not running — start it with: lats app')

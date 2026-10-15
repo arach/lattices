@@ -13,7 +13,7 @@ import { ProductsMenu } from "./SiteChrome";
 import { ThemeToggle } from "./ThemeToggle";
 
 const downloadUrl = "/action/download";
-const sourceUrl = "https://github.com/arach/lattices/tree/main/products/action";
+const sourceUrl = "https://github.com/lattices-dev/lattices/tree/main/products/action";
 
 export default function ActionPage() {
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "loading" | "requested">("idle");

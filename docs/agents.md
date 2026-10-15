@@ -16,8 +16,8 @@ first, then choose the transport that fits the environment.
 
 ## Install the skills
 
-`arach/lattices` is the [skills.sh](https://skills.sh) catalog for the product
-family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/main/skills).
+`lattices-dev/lattices` is the [skills.sh](https://skills.sh) catalog for the product
+family. Skills live under [`skills/`](https://github.com/lattices-dev/lattices/tree/main/skills).
 
 | Skill | Product |
 | --- | --- |
@@ -27,12 +27,12 @@ family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/mai
 | `blink` | Spatial notes through the `blink` CLI |
 
 ```bash
-npx skills add arach/lattices --list
-npx skills add arach/lattices --all --global --yes
-npx skills add arach/lattices --skill lattices --global --yes
-npx skills add arach/lattices --skill action --global --yes
-npx skills add arach/lattices --skill speech --global --yes
-npx skills add arach/lattices --skill blink --global --yes
+npx skills add lattices-dev/lattices --list
+npx skills add lattices-dev/lattices --all --global --yes
+npx skills add lattices-dev/lattices --skill lattices --global --yes
+npx skills add lattices-dev/lattices --skill action --global --yes
+npx skills add lattices-dev/lattices --skill speech --global --yes
+npx skills add lattices-dev/lattices --skill blink --global --yes
 ```
 
 Action Browser also remains a standalone plugin. Install it with
@@ -62,8 +62,8 @@ MCP or native feature parity.
 The CLI offers layer lifecycle, snapshot, PiP, and recording. Browser flags,
 input, navigation, and JavaScript require MCP. Raw Action WebSocket and the
 Lattices daemon do not provide that orchestration. Follow the
-[Action skill](https://github.com/arach/lattices/blob/main/skills/action/SKILL.md)
-and [layer reference](https://github.com/arach/lattices/blob/main/products/action/docs/agent-layer.md)
+[Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md)
+and [layer reference](https://github.com/lattices-dev/lattices/blob/main/products/action/docs/agent-layer.md)
 for leases, operator takeover, cleanup, and acceptance requirements.
 
 ## Canonical mutations
@@ -227,7 +227,7 @@ Use **docs URLs** when an agent needs:
 Node.js:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
 await daemonCall('windows.resolve', {
