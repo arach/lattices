@@ -76,6 +76,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Cache verified speech binary dependency
+        if: ${{ inputs.build_app || !inputs.publish }}
+        run: bash tools/release/cache-speech-artifact.sh
+
       - name: Package dry run
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
         run: npm publish --dry-run --access public
@@ -130,12 +134,14 @@ jobs:
             ditto "$app" apps/mac/Lattices.app
             test -x apps/mac/Lattices.app/Contents/MacOS/Lattices
           fi
-          # Primary package (@arach/lattices) — updates the public npm page.
-          npm publish --ignore-scripts --provenance --access public
-          # Back-compat alias for existing @lattices/cli installs/imports.
-          npm pkg set name=@lattices/cli
-          npm publish --ignore-scripts --provenance --access public
-          npm pkg set name=@arach/lattices
+          # Publish the same payload under all supported names. Never replace
+          # legacy packages with wrappers: installs, imports and startup paths stay valid.
+          trap 'npm pkg set name=@lattices/lattices; hdiutil detach "${mount_dir:-/nonexistent}" >/dev/null 2>&1 || true' EXIT
+          for package in @lattices/lattices @arach/lattices @lattices/cli; do
+            npm pkg set "name=$package"
+            npm publish --ignore-scripts --provenance --access public
+          done
+          npm pkg set name=@lattices/lattices
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GH_TOKEN: ${{ github.token }}

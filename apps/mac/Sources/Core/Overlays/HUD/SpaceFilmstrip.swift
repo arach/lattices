@@ -29,26 +29,41 @@ enum SpaceFilmstripLayout {
     }
 
     static func cards(spaces: [SpaceInfo], windows: [WindowEntry], bounds: CGRect) -> [SpaceFilmstripCard] {
+        guard !spaces.isEmpty, bounds.width > 0, bounds.height > 0 else {
+            return spaces.map { SpaceFilmstripCard(id: $0.id, number: $0.index, windows: []) }
+        }
+
+        // Sort the inventory once, then retain at most six visible windows
+        // per desktop. Never rescan or sort it separately for each desktop.
+        let requested = Set(spaces.map(\.id))
+        let ownPID = getpid()
+        var members: [Int: [SpaceFilmstripWindow]] = [:]
         let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
-        return spaces.map { space in
-            // Keep the six frontmost content windows, then paint back to front.
-            // Inactive desktops often have no CG title and cannot be
-            // verified through AX. Geometry previews don't need either;
-            // requiring them would label real desktops as empty.
-            let members = windows.filter {
-                $0.spaceIds.contains(space.id) && !$0.appHidden && !$0.collapsed
-                    && $0.pid != getpid() && $0.frame.w >= 120 && $0.frame.h >= 120
-            }.sorted { $0.zIndex < $1.zIndex }
-            let placed = members.compactMap { window -> SpaceFilmstripWindow? in
-                guard bounds.width > 0, bounds.height > 0 else { return nil }
-                let frame = window.frame
-                let rect = CGRect(x: (frame.x - bounds.minX) / bounds.width,
-                                  y: (frame.y - bounds.minY) / bounds.height,
-                                  width: frame.w / bounds.width, height: frame.h / bounds.height).intersection(unit)
-                guard !rect.isNull, rect.width > 0.01, rect.height > 0.01 else { return nil }
-                return SpaceFilmstripWindow(rect: rect, app: window.app)
+        for window in windows.sorted(by: { $0.zIndex < $1.zIndex }) {
+            // Inactive desktops need neither a CG title nor AX verification.
+            guard !window.appHidden, !window.collapsed, window.pid != ownPID,
+                  window.frame.w >= 120, window.frame.h >= 120 else { continue }
+            var preview: SpaceFilmstripWindow?
+            for (index, id) in window.spaceIds.enumerated() where requested.contains(id) {
+                guard (members[id]?.count ?? 0) < 6,
+                      !window.spaceIds[..<index].contains(id) else { continue }
+                if preview == nil {
+                    let frame = window.frame
+                    let rect = CGRect(x: (frame.x - bounds.minX) / bounds.width,
+                                      y: (frame.y - bounds.minY) / bounds.height,
+                                      width: frame.w / bounds.width, height: frame.h / bounds.height).intersection(unit)
+                    // Clip before counting: off-display windows cannot crowd
+                    // a visible window out of the six preview slots.
+                    guard !rect.isNull, rect.width > 0.01, rect.height > 0.01 else { break }
+                    preview = SpaceFilmstripWindow(rect: rect, app: window.app)
+                }
+                guard let preview else { continue }
+                members[id, default: []].append(preview)
             }
-            return SpaceFilmstripCard(id: space.id, number: space.index, windows: Array(placed.prefix(6).reversed()))
+        }
+        return spaces.map { space in
+            SpaceFilmstripCard(id: space.id, number: space.index,
+                windows: Array((members[space.id] ?? []).reversed()))
         }
     }
 }

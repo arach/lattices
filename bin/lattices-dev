@@ -432,7 +432,6 @@ cmd_link() {
     fi
     cd "$ROOT"
     bun link
-    bun link @lattices/cli
     if command -v lattices >/dev/null 2>&1; then
         green "Linked. \`lattices\` -> $(command -v lattices)"
     else
@@ -446,7 +445,9 @@ cmd_unlink() {
         red "bun not found."
         exit 1
     fi
-    bun remove -g @lattices/cli >/dev/null 2>&1 || true
+    for package in @lattices/lattices @arach/lattices @lattices/cli; do
+        bun remove -g "$package" >/dev/null 2>&1 || true
+    done
     green "Unlinked."
 }
 
