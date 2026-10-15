@@ -105,7 +105,7 @@ export default function SiteApp() {
             <a href="/blog">Blog</a> — release notes and engineering write-ups
           </li>
           <li>
-            <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/lattices-dev/lattices" target="_blank" rel="noopener noreferrer">
               GitHub
             </a>{' '}
             — open an issue if the link should work

@@ -435,7 +435,7 @@ Cmd+Option+5, or a slot without a layer, shows the layer you're on too.
 Agents and scripts can switch layers via the agent API:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // List available layers
 const { layers, active } = await daemonCall('layers.list')

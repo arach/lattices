@@ -93,7 +93,7 @@ export default function FamilyPage() {
         <nav aria-label="Footer">
           <a href="/docs/overview">Docs</a>
           <a href="/blog">Blog</a>
-          <a href="https://github.com/arach/lattices">GitHub</a>
+          <a href="https://github.com/lattices-dev/lattices">GitHub</a>
         </nav>
       </footer>
     </div>

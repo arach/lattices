@@ -32,7 +32,7 @@ and remove it with `lats app login disable`.
 lats update           # Update the CLI and app together
 ```
 
-`lats update` reinstalls `@arach/lattices` with the package manager
+`lats update` reinstalls `@lattices/lattices` with the package manager
 that owns your global install (npm, bun, or pnpm). It re-registers
 launch-at-login so the LaunchAgent points at the new install, and it
 relaunches the app if it was running. Pass `--force` to reinstall when
@@ -475,7 +475,7 @@ Agents can query OCR data through four API methods:
 | `ocr.scan`     | Trigger an immediate scan (bypasses timer)     |
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Find windows showing error messages
 const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
@@ -518,7 +518,7 @@ lats daemon status
 Or programmatically:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@lattices/cli'
+import { isDaemonRunning, daemonCall } from '@lattices/lattices'
 
 if (await isDaemonRunning()) {
   const status = await daemonCall('daemon.status')

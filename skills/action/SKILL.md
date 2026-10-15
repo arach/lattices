@@ -54,7 +54,7 @@ Before opening a private layer:
 2. Call MCP `capabilities` and inspect the active `tools/list`. Require
    `layer_open`, `layer_snapshot`, `layer_click`, `layer_type`, `layer_js`,
    and `layer_close` for the private-browser workflow.
-3. Read the [agent-layer deployment and acceptance reference](https://github.com/arach/lattices/blob/main/products/action/docs/agent-layer.md)
+3. Read the [agent-layer deployment and acceptance reference](https://github.com/lattices-dev/lattices/blob/main/products/action/docs/agent-layer.md)
    (source: `products/action/docs/agent-layer.md`). Verify the matched runtime
    and `acceptance.privateLayer.state: accepted` for this host and display
    configuration. Missing, stale, invalid, or unverified evidence means stop.

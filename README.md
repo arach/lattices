@@ -1,100 +1,85 @@
 <p align="center">
-  <img src="assets/hero.svg" width="100%" alt="lattices — macOS developer workspace manager" />
+  <img src="https://raw.githubusercontent.com/lattices-dev/lattices/main/assets/hero.svg" width="100%" alt="Lattices: workspaces for agents (and you)" />
 </p>
 
-<h1 align="center">lattices</h1>
+<h1 align="center">Lattices</h1>
+
+<p align="center"><strong>Workspaces for agents (and you)</strong><br />
+Arrange your windows, move between projects, and give your agents the same desktop controls you use.</p>
 
 <p align="center">
-  <strong>macOS developer workspace manager.</strong><br />
-  Tile windows, keep tmux sessions, search the screen, and drive the desktop from a local daemon.
-</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/@arach/lattices"><img alt="npm" src="https://img.shields.io/npm/v/@arach/lattices.svg" /></a>
-  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-informational.svg" /></a>
-  <a href="https://github.com/arach/lattices/releases/latest"><img alt="macOS" src="https://img.shields.io/badge/platform-macOS-black.svg" /></a>
-  <a href="https://www.npmjs.com/package/@arach/lattices"><img alt="node" src="https://img.shields.io/node/v/@arach/lattices.svg" /></a>
+  <a href="https://lattices.dev">Website</a> ·
+  <a href="https://lattices.dev/docs/quickstart">Get started</a> ·
+  <a href="https://lattices.dev/docs/api">Agent API</a> ·
+  <a href="https://github.com/lattices-dev/lattices/releases/latest">Download for Mac</a>
 </p>
 
 <p align="center">
-  <a href="https://lattices.dev">lattices.dev</a>
-  · <a href="https://lattices.dev/family">what it can do</a>
-  · <a href="https://lattices.dev/docs/overview">docs</a>
-  · <a href="https://github.com/arach/lattices/releases/latest">releases</a>
-  · <a href="https://lattices.dev/docs/api">agent API</a>
+  <a href="https://www.npmjs.com/package/@lattices/lattices"><img alt="npm version" src="https://img.shields.io/npm/v/@lattices/lattices.svg" /></a>
+  <a href="https://github.com/lattices-dev/lattices/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-informational.svg" /></a>
+  <img alt="macOS 26 or later" src="https://img.shields.io/badge/macOS-26%2B-black.svg" />
 </p>
 
 <p align="center">
-  <img src="assets/readme-demo.gif" width="100%" alt="lattices — agent session, gesture preview, and synced workspace state" />
+  <img src="https://raw.githubusercontent.com/lattices-dev/lattices/main/assets/readme-demo.gif" width="100%" alt="Lattices arranging windows with gesture previews and shared workspace state" />
 </p>
 
-Native Swift menu bar app (`apps/mac`) plus a TypeScript CLI (`bin/lattices.ts`). The app hosts a localhost WebSocket daemon. Agents, scripts, and the CLI use the same surface.
+Lattices is a native macOS app with a command bar, window tiling, workspace layers, screen search, and persistent terminal sessions. Use hotkeys and mouse gestures yourself, or let an agent inspect and arrange the same workspace through `lats` and the local API.
 
-```
-■ □ □     tile      search     spaces
-■ □ □     sessions  daemon     OCR
-■ ■ ■     layers    voice      agents
-```
+## Start with your desktop
 
-<table>
-<tr>
-<td><strong>Tile</strong><br>Halves, quarters, thirds, and <code>CxR</code> grids from hotkeys, CLI, or the palette.</td>
-<td><strong>Search</strong><br>Titles, apps, session tags, terminal cwd, and indexed OCR.</td>
-<td><strong>Spaces</strong><br>Ctrl+← / Ctrl+→ switches Spaces as an instant cut.</td>
-</tr>
-<tr>
-<td><strong>Sessions</strong><br><code>.lattices.json</code> panes, optional tmux, ensure/prefill on reattach.</td>
-<td><strong>Daemon</strong><br><code>ws://127.0.0.1:9399</code>, localhost only, no auth.</td>
-<td><strong>OCR</strong><br>Vision + FTS5. Quick scan every 60s, deep scan every 2h.</td>
-</tr>
-<tr>
-<td><strong>Layers</strong><br>Cmd+Option+1/2/3 focuses and tiles a workspace context.</td>
-<td><strong>Voice</strong><br>Hyper+D; hold Option to speak (Vox, in-process on <code>:9398</code>).</td>
-<td><strong>Agents</strong><br>CLI, <code>daemonCall</code>, and installable skills.</td>
-</tr>
-</table>
+1. [Download Lattices for Mac](https://github.com/lattices-dev/lattices/releases/latest), open the DMG, and drag Lattices to Applications.
+2. Launch Lattices and grant Accessibility access when prompted. Enable Screen Recording for screen capture and OCR.
+3. Press **Control+Option+Left** to tile the frontmost window to the left half of your screen. Press **Command+Shift+M** to open the command palette.
 
-Without tmux you still get the app, tiling, layers, OCR, search, and the daemon. tmux adds persistent sessions.
+The app requires macOS 26 or later. tmux is optional: window management, layers, search, and the agent API work without it.
 
-## Install
+| Your workspace | What Lattices does |
+| --- | --- |
+| Windows | Tile halves, thirds, quarters, and grids with hotkeys, gestures, the command bar, or the API. |
+| Projects | Group windows into workspace layers and return to a working context. |
+| Spaces | Move between macOS desktops with instant switching and a desktop preview. |
+| Search | Find windows by title, app, terminal directory, session, and indexed screen text. |
+| Terminals | Define panes in `.lattices.json` and reattach to persistent tmux sessions. |
+| Agents | Expose the same workspace through a local API and installable skills. |
 
-macOS. Node 18+ or [Bun](https://bun.sh). The published package is `@arach/lattices` (also `@lattices/cli`).
+## Install the command line tools
+
+Install [Bun](https://bun.sh) to run the CLI. You can install the package with npm (Node 18+) or Bun:
 
 ```sh
-npm install -g @arach/lattices
-lats app                # build or download the menu bar companion
-```
-
-The package installs two names for the same command: `lats` and `lattices`. The docs use `lats`.
-
-From a checkout:
-
-```sh
-git clone https://github.com/arach/lattices
-cd lattices && bun link
+npm install -g @lattices/lattices
 lats app
+lats
 ```
 
-One-shot installer (Homebrew, tmux, Bun, CLI):
+`lats app` launches the bundled menu bar app. Bare `lats` shows workspace status. Both `lats` and `lattices` run the same CLI.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+lats search api --deep
+lats tile right
+lats map
 ```
 
-`lats app install` registers a user LaunchAgent so the companion starts at login.
+The [setup guide](https://lattices.dev/docs/quickstart) covers Homebrew, login startup, permissions, and the one-command installer.
 
-Grant **Accessibility** and **Screen Recording** under System Settings → Privacy & Security. Instant Space switching, window targeting, OCR, and mouse gestures need them.
+### Existing installations
 
-## First session
+`@arach/lattices` and `@lattices/cli` remain supported compatibility packages. They receive the same CLI, exports, and bundled app as `@lattices/lattices`. Update using the package name you already installed. From version 0.14.1, `lats app upgrade` also preserves that package name.
+
+The repository moved from `arach/lattices` to `lattices-dev/lattices`. Existing Git remotes and release links redirect to the new location. Your configuration, sessions, and app identity stay the same. See the [migration guide](https://lattices.dev/docs/namespace-migration).
+
+## Keep a terminal session alive
+
+Install tmux (`brew install tmux`), then:
 
 ```sh
 cd ~/your-project
-lats init               # writes .lattices.json
-lats app                # daemon + palette
-lats start              # create or attach (tmux); alias: lats tmux
+lats init
+lats start
 ```
 
-Bare `lats` is a status screen. It does not attach.
+`lats init` creates `.lattices.json`. `lats start` creates or reattaches the project's tmux session; `lats tmux` is an alias. Close your terminal and run `lats start` again to return to the session.
 
 ```json
 {
@@ -106,168 +91,74 @@ Bare `lats` is a status screen. It does not attach.
 }
 ```
 
-No config: two panes, shell on the left, auto-detected `dev` / `start` / `serve` / `watch` on the right (bun > pnpm > yarn > npm).
+## Give your agents workspace access
+
+Install the family skills:
 
 ```sh
-lats search api --deep
-lats place frontend left
-lats tile right
-lats map
+npx skills add lattices-dev/lattices --all --global --yes
 ```
 
-`--deep` and `--all` both search the index and live terminal tabs (cwd, titles, tmux, running commands).
-
-## Keyboard
-
-Hyper is Control+Option+Shift+Command. Caps Lock hold → Hyper, tap → Escape (on by default; Settings → General → Keyboard remaps).
-
-| Shortcut | Action |
-| --- | --- |
-| **Ctrl+← / Ctrl+→** | Instant Space switch (Mission Control slide hotkeys stay off while this is on) |
-| **Ctrl+Option+arrows** | Tile the frontmost window to a half |
-| **Ctrl+Option+1 / 2 / 3** | Tile thirds |
-| **Ctrl+Option+G** | 4×4 grid placement |
-| **Ctrl+Option+V** | Fill an open 3×2 cell |
-| **Ctrl+Option+mouse** | Aim HUD; release to tile, stay centered to cancel |
-| **Cmd+Shift+M** | Command palette |
-| **Ctrl+Option+Space** | Command bar |
-| **Cmd+Option+1 / 2 / 3** | Switch workspace layer |
-| **Hyper+L** | Studio / screen map |
-| **Hyper+D** | Voice |
-| **Hyper+G** | In-place window tools |
-| **Hyper+5** | Omni search |
-| **Ctrl+Cmd+M** | Hands-off mode |
-
-Inside a tmux session: prefix is Ctrl+B. `d` detach, arrows move panes, `z` zoom, `[` scroll.
-
-Only bare Ctrl+arrows are claimed for Spaces. Ctrl+Option+arrows still tile.
-
-## Mouse
-
-Hold a button, draw, release. Defaults live in `~/.lattices/mouse-shortcuts.json` (Settings → Shortcuts → Mouse Gestures).
-
-| Gesture | Default |
-| --- | --- |
-| Middle-drag **left** / **right** | Previous / next Space |
-| Middle-drag **down** | Screen map |
-| Middle-drag **up** | Voice (Hyper+D) |
-| Back-button **circle** | macOS area screenshot (Cmd+Shift+4) |
-
-Browsers keep native middle-click and side-button behavior. Rules are data: `mouse.shortcuts.upsert` over the daemon, no Swift change required. See [`docs/mouse-gestures.md`](docs/mouse-gestures.md).
-
-## Architecture
-
-```
-  agents / scripts / CLI
-            │
-            │  ws://127.0.0.1:9399     voice :9398
-            ▼
-┌───────────────────────┐     ┌─────────────┐
-│  Menu bar app         │────►│  OCR        │
-│  SwiftUI / AppKit     │     │  Vision+FTS5│
-│  hosts the daemon     │     └─────────────┘
-└───────────┬───────────┘
-            │
-     ┌──────┴──────┐
-     ▼             ▼
-  SkyLight      tmux
-  Spaces        (optional)
-  CG → AX → AppleScript
-```
-
-- Session names are `<basename>-<sha256-6chars>` of the absolute path. CLI (Node `crypto`) and app (Swift `CryptoKit`) must match.
-- Terminal windows are found by a `[lattices:session-name]` tag in the tmux title (`set-titles-string`).
-- Focus falls through CGWindowList → Accessibility → AppleScript.
-- Space switching uses private SkyLight APIs loaded with `dlopen` at runtime.
-
-```
-apps/mac/     menu bar app + daemon
-bin/          lattices CLI, app helper, daemon client
-swift/        LatticesTerminalKit, DeckKit
-docs/         user + agent docs
-skills/       lattices, action, voice, blink
-products/     Action and Blink (separate signed apps)
-apps/site/    lattices.dev
-```
-
-## Agent API
-
-The menu bar process binds `127.0.0.1` only. Any local process can connect. That is intentional.
-
-```js
-import { daemonCall, isDaemonRunning } from '@arach/lattices'
-
-if (!(await isDaemonRunning())) {
-  throw new Error('start the app with: lats app')
-}
-
-await daemonCall('sessions.launch', { path: '/Users/you/dev/api' })
-await daemonCall('windows.place', { session: 'api-a1b2c3', placement: 'right' })
-const hits = await daemonCall('windows.search', { query: 'api' })
-```
+Inspect the live API or call it directly:
 
 ```sh
 lats daemon status
-lats call windows.search '{"query":"api"}'
 lats call api.schema
+lats call windows.search '{"query":"api"}'
 ```
 
-Do not guess session hashes. Read them from `lats sessions --json` or `tmux.list`. Full catalog: [docs/api](https://lattices.dev/docs/api).
+For a script, install the package in your project (`npm install @lattices/lattices`):
 
-## Product family
+```js
+import { daemonCall, isDaemonRunning } from '@lattices/lattices'
 
-This repository ships four products. [lattices.dev/family](https://lattices.dev/family) walks the story end to end.
+if (!(await isDaemonRunning())) {
+  throw new Error('Start Lattices with: lats app')
+}
 
-| Product | Role | Root |
-| --- | --- | --- |
-| **Lattices** | Workspace: tiling, sessions, search, daemon | this tree |
-| **[Action](https://lattices.dev/action)** | Computer use: observe, act, record | [`products/action`](products/action) |
-| **[Blink](https://lattices.dev/blink)** | Spatial notes as floating panels | [`products/blink`](products/blink) |
-| **[Speech](https://lattices.dev/speech)** | A voice for agents: background readouts, HUD readalong | [`skills/speech`](skills/speech) |
-
-Action and Blink stay separately signed. Do not fold them into the Lattices menu bar app. `lats action` installs and talks to Action.app (`ws://127.0.0.1:4319`).
-
-## Skills
-
-```sh
-npx skills add arach/lattices --all --global --yes
+const windows = await daemonCall('windows.search', { query: 'api' })
+console.log(windows)
 ```
 
-| Skill | Use |
+The app hosts the API at `ws://127.0.0.1:9399`. It is local-only and has no authentication; any process on your Mac can connect. Read the [API reference](https://lattices.dev/docs/api) and [agent guide](https://lattices.dev/docs/agents) for methods, events, and permissions.
+
+## The Lattices family
+
+| Product | What it adds |
 | --- | --- |
-| [`lattices`](skills/lattices/SKILL.md) | Tile, sessions, search, daemon |
-| [`action`](skills/action/SKILL.md) | Observe, resolve, act, record |
-| [`voice`](skills/voice/SKILL.md) | Speaking and spoken commands |
-| [`blink`](skills/blink/SKILL.md) | Spatial notes |
+| **[Lattices](https://lattices.dev)** | A programmable workspace: windows, projects, screen search, and terminals. |
+| **[Action](https://lattices.dev/action)** | Computer use for agents: observe apps, operate browser surfaces, and record what happened. |
+| **[Blink](https://lattices.dev/blink)** | Spatial notes: editable notes that live in floating windows on your desktop. |
+| **[Speech](https://lattices.dev/speech)** | Spoken agent output with queued playback and a readalong HUD. |
 
-`npx skills add arach/lattices --list` lists without installing.
+Action and Blink are separate apps with their own installation and runtime lifecycles. Their source lives in this repository. [Explore the family](https://lattices.dev/family).
 
-## Docs
-
-| Page | Contents |
-| --- | --- |
-| [Quickstart](https://lattices.dev/docs/quickstart) | Install and first session |
-| [App](https://lattices.dev/docs/app) | Palette, tiling, settings, terminals |
-| [Config](https://lattices.dev/docs/config) | `.lattices.json`, CLI, tile slots |
-| [Concepts](https://lattices.dev/docs/concepts) | Naming, tags, SkyLight, ensure/prefill |
-| [Layers](https://lattices.dev/docs/layers) | Layers and tab groups |
-| [OCR](https://lattices.dev/docs/ocr) | Scan, search, agent usage |
-| [API](https://lattices.dev/docs/api) | Daemon RPC |
-| [Agents](https://lattices.dev/docs/agents) | Agent-facing artifacts |
-
-`lats help` for the CLI. In-repo: `docs/`, `AGENTS.md`.
-
-## Develop
+## Build and contribute
 
 ```sh
+git clone https://github.com/lattices-dev/lattices.git
+cd lattices
+bun install
 bun link
-bun run check           # tsc + Swift app build
-bun run test            # CLI + dependency-free tests
-lats app build          # rebuild the companion
+bun run check
+bun run test
 ```
 
-App package: `apps/mac` (macOS 26+). CLI runs on Node 18+ or Bun.
+The native app uses Swift 6.2 / Xcode 26+. See [AGENTS.md](https://github.com/lattices-dev/lattices/blob/main/AGENTS.md) for component boundaries and build instructions.
+
+| Source | Purpose |
+| --- | --- |
+| `apps/mac` | SwiftUI/AppKit app and local daemon |
+| `bin` | CLI, app helper, and API client |
+| `swift` | LatticesTerminalKit and DeckKit |
+| `products` | Companion products |
+| `skills` | Agent skills |
+| `apps/site` | Website and documentation |
+
+## Documentation
+
+[Quickstart](https://lattices.dev/docs/quickstart) · [App and shortcuts](https://lattices.dev/docs/app) · [Configuration](https://lattices.dev/docs/config) · [Layers](https://lattices.dev/docs/layers) · [Screen search](https://lattices.dev/docs/ocr) · [API](https://lattices.dev/docs/api)
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/lattices-dev/lattices/blob/main/LICENSE)
