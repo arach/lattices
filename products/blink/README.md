@@ -5,7 +5,7 @@
   <source media="(max-width: 600px) and (prefers-color-scheme: light)" srcset="assets/readme/hero-mobile-light.svg">
   <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.svg">
-  <img src="assets/readme/hero-light.svg" width="1200" alt="Blink. A thought, in the right place.">
+  <img src="assets/readme/hero-light.svg" width="1200" alt="Blink. Spatial Markdown notes for macOS.">
 </picture>
 
 <p align="center">
@@ -15,12 +15,12 @@
   <a href="../../skills/blink/SKILL.md">Agent skill</a>
 </p>
 
-Keep a thought beside the work it belongs to. Blink turns local Markdown into floating native notes, with a remembered place on your desktop and a CLI your agents can use too.
+Blink is a native macOS app for floating Markdown notes. Each note remembers its position and size. The app and CLI read and edit the same local files.
 
 <table><tr>
-<td width="33%" valign="top"><strong>Capture a thought</strong><br>Open a note from the menu bar, command palette, or a global hotkey.</td>
-<td width="33%" valign="top"><strong>Give it a place</strong><br>Arrange floating panels beside your work. Return to the same position and size.</td>
-<td width="33%" valign="top"><strong>Share the context</strong><br>You and your agents read and edit the same local Markdown files.</td>
+<td width="33%" valign="top"><strong>Quick capture</strong><br>Open a note from the menu bar, command palette, or a global hotkey.</td>
+<td width="33%" valign="top"><strong>Floating panels</strong><br>Arrange floating panels beside your work. Return to the same position and size.</td>
+<td width="33%" valign="top"><strong>Local Markdown</strong><br>You and your agents read and edit the same local Markdown files.</td>
 </tr></table>
 
 ## Install and run
@@ -172,6 +172,5 @@ for dependency selection and [release documentation](docs/release.md) for packag
 
 ---
 
-<p align="center"><strong>Part of your Lattices workspace.</strong><br>
-<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a><br>
-<sub>Independent apps. A shared home.</sub></p>
+<p align="center">
+<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a></p>
