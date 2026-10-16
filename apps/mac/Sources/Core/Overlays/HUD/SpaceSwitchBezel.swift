@@ -3,315 +3,434 @@ import SwiftUI
 
 // MARK: - Space Switch HUD
 
-/// Acknowledgement for Ctrl+←/→ space jumps handled by
-/// `SpaceSwitchInterceptor`. A tray centred on the display by default: the
-/// Space's number large, the apps on it beside the number, and a row of
-/// logo-cells, one per Space, with the active cell gliding between them.
-/// `SpaceSwitchBezelPosition` is agent-configurable via
-/// `settings.spaceBezel.set` (top, bottom, center, or travelEdge, which
-/// docks at the screen edge the desktop is moving toward).
+/// One retained filmstrip and backdrop. All input is already cached by the
+/// desktop inventory; showing this never scans windows or captures pixels.
+/// Main-thread only. The switch queue never waits for presentation.
 final class SpaceSwitchBezel {
     static let shared = SpaceSwitchBezel()
 
-    /// How long the tray holds after the last switch.
-    static let hold: TimeInterval = 1.6
-
     private var panel: NSPanel?
-    private var hosting: NSHostingView<SpaceSwitchBezelView>?
+    private var backdrop: NSPanel?
+    private let filmstrip = SpaceFilmstripView()
     private var dismissTimer: Timer?
-    private var token = 0
-    private let state = SpaceBezelState()
+    private var generation = 0
+    private var holdingForSwitch = false
+    /// Window alpha is presentation state, not a reliable lifecycle flag:
+    /// AppKit can still report 1 while its animator is already fading out.
+    private var isDismissing = false
+    private var displayID: String?
+    private var spaceIDs: [Int] = []
+    /// Where the surface sits for this gesture. Decided once on open so a
+    /// reversal never moves the tray — travel-edge included.
+    private var surfaceFrame: CGRect?
+    private let wash = SpaceSwitchWash()
+    private var transitCovers: [CGDirectDisplayID: NSPanel] = [:]
+    private var transitImages: [CGDirectDisplayID: CGImage] = [:]
+    private var transitFrames: [CGDirectDisplayID: CGRect] = [:]
+    private var transitVisible = false
+    private var captureTask: Task<Void, Never>?
+    private var transitGeneration = 0
 
-    /// `direction`: -1 = left, +1 = right. `targetIndex` is the 1-based space
-    /// we landed on; nil means the display was already at the edge and
-    /// `currentIndex` is shown with the "EDGE" treatment instead. `spaceId`
-    /// is the Space being shown, used to name it by its apps.
-    ///
-    /// The tray fades in once and never translates. Motion lives in the
-    /// active cell, which glides between positions.
-    func show(direction: Int, targetIndex: Int?, currentIndex: Int?, total: Int, spaceId: Int? = nil, on screen: NSScreen? = nil) {
-        dismissTimer?.invalidate()
+    func show(direction: Int, targetIndex: Int?, currentIndex: Int?, display: DisplaySpaces, holding: Bool = false, scrubbing: Bool = false, fullscreenOrdinal: Int? = nil, on screen: NSScreen? = nil) {
         guard let screen = screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
-        let sf = screen.frame
-
-        token &+= 1
-        let mine = token
-
-        state.direction = direction
-        state.activeIndex = targetIndex ?? currentIndex
-        state.edge = targetIndex == nil
-        state.total = total
-        state.apps = spaceId.map {
-            Self.apps(onSpace: $0, in: DesktopModel.shared.spaceMembershipSnapshot())
-        } ?? []
-
-        if panel == nil {
-            let view = NSHostingView(rootView: SpaceSwitchBezelView(state: state))
-            let p = NSPanel(
-                contentRect: .zero,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-            p.isOpaque = false
-            p.backgroundColor = .clear
-            p.level = .statusBar
-            p.hasShadow = false
-            p.hidesOnDeactivate = false
-            p.isReleasedWhenClosed = false
-            p.isMovable = false
-            p.ignoresMouseEvents = true
-            p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-            p.contentView = view
-            panel = p
-            hosting = view
+        let desktopTarget = display.spaces.firstIndex(where: { $0.index == targetIndex })
+        guard desktopTarget != nil || fullscreenOrdinal != nil else { return }
+        let target = desktopTarget ?? filmstrip.selected ?? 0
+        let started = CACurrentMediaTime()
+        dismissTimer?.invalidate()
+        generation &+= 1
+        holdingForSwitch = holding
+        if scrubbing, filmstrip.isScrubbing, panel?.isVisible == true, displayID == display.displayId {
+            filmstrip.scrub(number: fullscreenOrdinal ?? targetIndex ?? 1,
+                total: display.orderedSpaceIds.count,
+                animated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+                selectedIndex: desktopTarget)
+            return
         }
-        guard let p = panel, let hosting else { return }
-
-        // The tray sizes to its content; the panel adds room for the shadow.
-        hosting.layoutSubtreeIfNeeded()
-        let fit = hosting.fittingSize
-        let endFrame = frame(for: Preferences.shared.spaceSwitchBezelPosition,
-                             direction: direction, width: fit.width, height: fit.height, in: sf)
-
-        if p.isVisible {
-            // Already up: keep the box centred; the cell carries the motion.
-            if p.frame != endFrame { p.setFrame(endFrame, display: true) }
-            p.alphaValue = 1
-            // A glide snapshot may have been ordered in at the same level.
-            p.orderFrontRegardless()
+        let opening = panel?.isVisible != true
+        let ids = display.spaces.map(\.id)
+        let changedDisplay = displayID != display.displayId
+        let width = SpaceFilmstripLayout.trayWidth(screenWidth: screen.frame.width, count: ids.count)
+        let size = CGSize(width: width, height: SpaceFilmstripLayout.height)
+        if opening || changedDisplay || surfaceFrame?.size != size || surfaceFrame.map(screen.frame.contains) != true {
+            surfaceFrame = Self.frame(position: Preferences.shared.spaceSwitchBezelPosition, direction: direction,
+                                      size: size, screen: screen.frame)
+        }
+        guard let frame = surfaceFrame else { return }
+        if panel == nil {
+            let p = Self.makePanel()
+            p.contentView = filmstrip
+            panel = p
+        }
+        guard let panel else { return }
+        if panel.frame != frame { panel.setFrame(frame, display: false) }
+        if opening || changedDisplay || spaceIDs != ids {
+            displayID = display.displayId
+            spaceIDs = ids
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+            let bounds = CGRect(x: screen.frame.minX, y: primaryHeight - screen.frame.maxY,
+                                width: screen.frame.width, height: screen.frame.height)
+            let cards = SpaceFilmstripLayout.cards(spaces: display.spaces,
+                windows: Array(DesktopModel.shared.windows.values), bounds: bounds)
+            filmstrip.configure(cards: cards, size: size, scale: screen.backingScaleFactor)
+            let departure = display.spaces.firstIndex(where: { $0.index == currentIndex }) ?? target
+            filmstrip.select(departure, animated: false)
+        }
+        // Backdrop and strip arrive together. A press that lands during the
+        // fade-out retargets the same fade back up from where it is, rather
+        // than popping to full; a reused panel keeps us from allocating
+        // another display surface per press.
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let fadingOut = isDismissing || (!opening && panel.alphaValue < 1)
+        isDismissing = false
+        if opening {
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+        }
+        let washHost = showBackdrop(on: screen, opening: opening)
+        if opening || fadingOut {
+            // Still geometry, two depths: the backdrop acknowledges the
+            // chord immediately, then the frame resolves into focus. AppKit
+            // retargets an interrupted fade from its current visible alpha.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = reduceMotion ? 0 : 0.24
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0, 0.22, 1)
+                panel.animator().alphaValue = 1
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = reduceMotion ? 0 : 0.12
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0, 0.2, 1)
+                self.backdrop?.animator().alphaValue = 1
+            }
+            if opening { filmstrip.illuminateFrame(animated: !reduceMotion) }
+        }
+        if scrubbing {
+            filmstrip.scrub(number: fullscreenOrdinal ?? targetIndex ?? 1,
+                           total: display.orderedSpaceIds.count, animated: !reduceMotion, selectedIndex: desktopTarget)
+        } else if filmstrip.isScrubbing {
+            filmstrip.endScrubbing(at: desktopTarget, animated: !reduceMotion)
         } else {
-            p.setFrame(endFrame, display: false)
-            p.alphaValue = 0
-            p.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.18
-                p.animator().alphaValue = 1.0
+            filmstrip.select(target, animated: !reduceMotion)
+        }
+        if !scrubbing, direction != 0, !reduceMotion, SpaceSwitchWash.isEnabled, let washHost {
+            wash.pass(direction: direction < 0 ? -1 : 1, in: washHost)
+        }
+        if !holding { armDismissal() }
+        DiagnosticLog.shared.info("SpaceFilmstrip: presentMs=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) opening=\(opening)")
+    }
+
+    /// One bounded, optional departure still per held gesture, captured
+    /// asynchronously while the user selects. Never capture on taps/repeats.
+    /// Exclude our panels, cap pixels, and discard it as soon as transit ends.
+    static func captureWindowIDs(_ numbers: [Int]) -> [CGWindowID] {
+        // AppKit status-item windows can carry 64-bit synthetic identifiers.
+        // They are not WindowServer capture IDs; never narrow them by force.
+        numbers.compactMap { $0 > 0 ? CGWindowID(exactly: $0) : nil }
+    }
+
+    func prepareTransitCover(on screen: NSScreen?) {
+        endTransitCover()
+        guard let screen else { return }
+        // Mission Control opens on every display. Keep each display still,
+        // including the ones which aren't participating in navigation.
+        let screens = [screen] + NSScreen.screens.filter { $0 != screen }
+        let displays = screens.compactMap { screen -> (CGDirectDisplayID, CGRect)? in
+            guard let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else { return nil }
+            return (id, screen.frame)
+        }
+        transitFrames = Dictionary(uniqueKeysWithValues: displays)
+        let mine = transitGeneration
+        let excluded = Self.captureWindowIDs(([panel, backdrop] + transitCovers.values.map { Optional($0) }).compactMap { $0?.windowNumber })
+        captureTask = Task { @MainActor [weak self] in
+            for (id, _) in displays {
+                guard !Task.isCancelled else { return }
+                let image = await WindowCapture.display(displayID: id, showsCursor: false,
+                    excludingWindowIDs: excluded, maximumPixelSize: 1600)
+                guard let self, !Task.isCancelled, self.transitGeneration == mine,
+                      !self.transitVisible else { return }
+                self.transitImages[id] = image
+                DiagnosticLog.shared.info("SpaceScrub: capture display=\(id) pixels=\(image?.width ?? 0)x\(image?.height ?? 0)")
             }
         }
+    }
 
-        if !SpaceSwitchGlide.shared.isEnabled {
-            SpaceEdgeSweep.shared.fire(direction: direction, edge: targetIndex == nil, on: screen)
+    /// Finish the one-shot capture if a very short hold outran it. Readiness
+    /// races a small deadline, so ScreenCaptureKit can never stall navigation.
+    func withTransitCover(_ completion: @escaping () -> Void) {
+        let mine = transitGeneration
+        let pendingCapture = captureTask
+        var started = false
+        let start = { [weak self] in
+            guard !started else { return }
+            started = true
+            if let self, self.transitGeneration == mine { self.beginTransitCover() }
+            completion()
         }
+        if transitImages.count == transitFrames.count || pendingCapture == nil {
+            start()
+        } else {
+            Task { @MainActor in
+                await pendingCapture?.value
+                start()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: start)
+        }
+    }
 
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: Self.hold, repeats: false) { [weak self] _ in
-            guard let self, self.token == mine else { return }
+    func beginTransitCover() {
+        transitVisible = true
+        for (id, frame) in transitFrames {
+            let cover: NSPanel
+            if let retained = transitCovers[id] {
+                cover = retained
+            } else {
+                cover = Self.makePanel()
+                cover.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 2)
+                cover.isOpaque = true
+                let view = NSView()
+                view.wantsLayer = true
+                view.layer?.backgroundColor = NSColor(calibratedRed: 0.045, green: 0.055, blue: 0.065, alpha: 1).cgColor
+                cover.contentView = view
+                transitCovers[id] = cover
+            }
+            cover.setFrame(frame, display: false)
+            cover.contentView?.layer?.contents = transitImages[id]
+            cover.contentView?.layer?.contentsGravity = .resize
+            cover.alphaValue = 1
+            cover.orderFrontRegardless()
+        }
+        DiagnosticLog.shared.info("SpaceScrub: cover snapshots=\(transitImages.count)/\(transitFrames.count)")
+        CATransaction.flush()
+    }
+
+    func endTransitCover() {
+        transitGeneration &+= 1
+        captureTask?.cancel()
+        captureTask = nil
+        for cover in transitCovers.values {
+            cover.orderOut(nil)
+            cover.contentView?.layer?.contents = nil
+        }
+        transitImages.removeAll()
+        transitFrames.removeAll()
+        transitVisible = false
+    }
+
+    /// Called after the switch queue settles, never awaited by that queue.
+    /// A merged 1→18 burst can take longer than the ordinary idle timeout.
+    func finishSwitch() {
+        guard holdingForSwitch else { return }
+        holdingForSwitch = false
+        armDismissal()
+    }
+
+    /// After a missed switch, once the queue is idle: give a late landing a
+    /// moment, then move the strip to the Space actually showing. Any newer
+    /// press bumps the generation and owns the strip instead.
+    func settleOnCurrentSpace() {
+        guard panel?.isVisible == true else { return }
+        let mine = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self] in
+            guard let self, self.generation == mine, self.panel?.isVisible == true else { return }
+            WindowTiler.showSpaceSwitchBezelForCurrentSpace()
+        }
+    }
+
+    static let settleDelay: TimeInterval = 0.2
+
+    private func armDismissal() {
+        dismissTimer?.invalidate()
+        let mine = generation
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: 1.1, repeats: false) { [weak self] _ in
+            guard let self, self.generation == mine else { return }
             self.dismiss()
         }
     }
 
     func dismiss() {
-        guard let p = panel, p.isVisible else { return }
+        endTransitCover()
+        holdingForSwitch = false
+        dismissTimer?.invalidate()
+        dismissTimer = nil
+        generation &+= 1
+        let mine = generation
+        guard let panel, panel.isVisible else {
+            isDismissing = false
+            backdrop?.orderOut(nil)
+            return
+        }
+        isDismissing = true
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.22
-            p.animator().alphaValue = 0
-        }, completionHandler: { p.orderOut(nil) })
-    }
-
-    /// The apps with windows on a Space, frontmost first, without Lattices'
-    /// own panels. At most `limit`, so the tray stays one line.
-    static func apps(onSpace spaceId: Int, in windows: [WindowEntry], limit: Int = 3) -> [String] {
-        var seen = Set<String>()
-        return windows
-            .filter { $0.spaceIds.contains(spaceId) && $0.app != "Lattices" && !$0.app.isEmpty }
-            .sorted { $0.zIndex < $1.zIndex }
-            .compactMap { seen.insert($0.app).inserted ? $0.app : nil }
-            .prefix(limit)
-            .map { $0 }
-    }
-
-    private func frame(for position: SpaceSwitchBezelPosition, direction: Int,
-                       width: CGFloat, height: CGFloat, in sf: NSRect) -> NSRect {
-        switch position {
-        case .travelEdge:
-            let x = direction >= 0 ? sf.maxX - width - 26 : sf.minX + 26
-            return NSRect(x: x, y: sf.midY - height / 2, width: width, height: height)
-        case .top:
-            return NSRect(x: sf.midX - width / 2, y: sf.maxY - height - 50, width: width, height: height)
-        case .center:
-            return NSRect(x: sf.midX - width / 2, y: sf.midY - height / 2, width: width, height: height)
-        case .bottom:
-            return NSRect(x: sf.midX - width / 2, y: sf.minY + 68, width: width, height: height)
-        }
-    }
-
-    static let cellGap: CGFloat = 7
-
-    /// Logo cells stay 20pt through a dozen spaces, then shrink to keep the
-    /// row inside ~360pt.
-    static func cellSize(total: Int) -> CGFloat {
-        guard total > 12 else { return 20 }
-        return max(9, floor((360 - CGFloat(total - 1) * cellGap) / CGFloat(total)))
-    }
-
-    /// The only accent: direction, the active cell's glow and EDGE.
-    static let coral = Color(red: 0xef / 255, green: 0x6a / 255, blue: 0x47 / 255)
-}
-
-// MARK: - Bezel State + View
-
-/// Mutable content for the persistent bezel panel. `show()` mutates this
-/// and SwiftUI animates the cell, while the tray chrome stays put.
-final class SpaceBezelState: ObservableObject {
-    @Published var direction: Int = 1
-    @Published var activeIndex: Int? = nil
-    @Published var edge: Bool = false
-    @Published var total: Int = 0
-    @Published var apps: [String] = []
-}
-
-struct SpaceSwitchBezelView: View {
-    @ObservedObject var state: SpaceBezelState
-    @Namespace private var travel
-
-    private var coral: Color { SpaceSwitchBezel.coral }
-    private var cellSize: CGFloat { SpaceSwitchBezel.cellSize(total: state.total) }
-    private var cellRadius: CGFloat { cellSize * 0.24 }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(state.edge ? "↔" : (state.direction < 0 ? "‹" : "›"))
-                    .font(Typo.monoBold(20))
-                    .foregroundStyle(coral)
-
-                Text("\(state.activeIndex ?? 0)")
-                    .font(Typo.monoBold(34))
-                    .foregroundStyle(Palette.text)
-                    .contentTransition(.numericText(countsDown: state.direction < 0))
-
-                Text(state.edge ? "EDGE" : (state.apps.isEmpty ? "Empty" : state.apps.joined(separator: " · ")))
-                    .font(state.edge ? Typo.monoBold(13) : Typo.body(15))
-                    .tracking(state.edge ? 1 : 0)
-                    .foregroundStyle(state.edge ? coral : (state.apps.isEmpty ? Palette.textMuted : Palette.textDim))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 320, alignment: .leading)
-            }
-            .animation(.snappy(duration: 0.22), value: state.activeIndex)
-
-            if state.total > 1 {
-                HStack(spacing: SpaceSwitchBezel.cellGap) {
-                    ForEach(1...state.total, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: cellRadius, style: .continuous)
-                            .fill(Color.white.opacity(0.14))
-                            .frame(width: cellSize, height: cellSize)
-                            .overlay {
-                                if i == state.activeIndex {
-                                    RoundedRectangle(cornerRadius: cellRadius, style: .continuous)
-                                        .fill(state.edge ? coral : Color(white: 0.95))
-                                        .matchedGeometryEffect(id: "active", in: travel)
-                                        .shadow(color: coral.opacity(state.edge ? 0.5 : 0.3), radius: 5)
-                                }
-                            }
-                    }
-                }
-                .animation(.snappy(duration: 0.22, extraBounce: 0.05), value: state.activeIndex)
-                .animation(.easeOut(duration: 0.18), value: state.edge)
-            }
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
-        .frame(minWidth: 260, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [HUDChrome.baseTop, HUDChrome.baseBottom],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(state.edge ? coral.opacity(0.4) : Color.white.opacity(0.10), lineWidth: 0.75)
-        )
-        .shadow(color: Color.black.opacity(0.45), radius: 18, y: 8)
-        .padding(24)
-    }
-}
-
-// MARK: - Edge Sweep
-
-/// A hairline beam at the very top edge of the display that drifts in the
-/// direction of travel and fades — a subtle directional echo of the space
-/// change itself, since the switch renders as an instant cut.
-final class SpaceEdgeSweep {
-    static let shared = SpaceEdgeSweep()
-
-    private var panel: NSPanel?
-    private let state = SweepState()
-
-    func fire(direction: Int, edge: Bool, on screen: NSScreen? = nil) {
-        guard let screen = screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
-        let vf = screen.visibleFrame
-        let height: CGFloat = 2.5
-        let beamWidth = vf.width * 0.32
-        let y = vf.maxY - height
-
-        state.direction = direction
-        state.edge = edge
-
-        let startX = direction >= 0 ? vf.minX : vf.maxX - beamWidth
-        let endX = direction >= 0 ? vf.maxX - beamWidth : vf.minX
-        let startFrame = NSRect(x: startX, y: y, width: beamWidth, height: height)
-        let endFrame = startFrame.offsetBy(dx: endX - startX, dy: 0)
-
-        if panel == nil {
-            let p = NSPanel(
-                contentRect: startFrame,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-            p.isOpaque = false
-            p.backgroundColor = .clear
-            p.level = .statusBar
-            p.hasShadow = false
-            p.hidesOnDeactivate = false
-            p.isReleasedWhenClosed = false
-            p.isMovable = false
-            p.ignoresMouseEvents = true
-            p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-            p.contentView = NSHostingView(rootView: SweepView(state: state))
-            panel = p
-        }
-        guard let p = panel else { return }
-
-        p.setFrame(startFrame, display: true)
-        p.alphaValue = 1
-        p.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.42
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 0.7, 0.4, 1)
-            p.animator().setFrame(endFrame, display: true)
-            p.animator().alphaValue = 0
+            // A gentle release, accelerating out of the way. No shrinking,
+            // translation, or reverse travel on the preview track.
+            ctx.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.20
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.8, 0.35)
+            panel.animator().alphaValue = 0
+            self.backdrop?.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            self?.panel?.orderOut(nil)
+            guard let self, self.generation == mine else { return }
+            self.isDismissing = false
+            panel.orderOut(nil)
+            self.backdrop?.orderOut(nil)
+            // Clear card backing stores after a gesture; keep only the two
+            // panels and small layer scaffold, with no image cache to grow.
+            self.filmstrip.clear()
+            self.wash.release()
+            self.spaceIDs = []
+            self.surfaceFrame = nil
         })
     }
+
+    @discardableResult
+    private func showBackdrop(on screen: NSScreen, opening: Bool) -> NSView? {
+        if backdrop == nil {
+            let p = Self.makePanel()
+            p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
+            let view = NSView()
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor(calibratedRed: 0.015, green: 0.03, blue: 0.045, alpha: 0.20).cgColor
+            p.contentView = view
+            backdrop = p
+        }
+        guard let backdrop, let view = backdrop.contentView else { return nil }
+        if backdrop.frame != screen.frame { backdrop.setFrame(screen.frame, display: false) }
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        if !reduceTransparency, view.subviews.isEmpty {
+            let blur = NSVisualEffectView(frame: view.bounds)
+            blur.autoresizingMask = [.width, .height]
+            blur.material = .hudWindow
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            blur.appearance = NSAppearance(named: .darkAqua)
+            blur.alphaValue = 0.14
+            view.addSubview(blur)
+        } else if reduceTransparency {
+            view.subviews.forEach { $0.removeFromSuperview() }
+        }
+        if opening || !backdrop.isVisible {
+            backdrop.alphaValue = 0
+            backdrop.orderFrontRegardless()
+        }
+        // The wash is a transparency effect; Reduce Transparency goes without.
+        return reduceTransparency ? nil : view
+    }
+
+    private static func makePanel() -> NSPanel {
+        let p = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.level = .statusBar
+        p.hasShadow = false
+        p.hidesOnDeactivate = false
+        p.isReleasedWhenClosed = false
+        p.isMovable = false
+        p.ignoresMouseEvents = true
+        p.animationBehavior = .none
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        return p
+    }
+
+    static func frame(position: SpaceSwitchBezelPosition, direction: Int, size: CGSize, screen: CGRect) -> CGRect {
+        var origin = CGPoint(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2)
+        switch position {
+        case .center: break
+        case .top: origin.y = screen.maxY - size.height - 50
+        case .bottom: origin.y = screen.minY + 68
+        case .travelEdge: origin.x = direction >= 0 ? screen.maxX - size.width - 26 : screen.minX + 26
+        }
+        return CGRect(origin: origin, size: size)
+    }
 }
 
-final class SweepState: ObservableObject {
-    @Published var direction: Int = 1
-    @Published var edge: Bool = false
-}
+// MARK: - Passing light
 
-private struct SweepView: View {
-    @ObservedObject var state: SweepState
+/// A barely luminous band that crosses the backdrop in the direction of
+/// travel, from the "Passing light" study. It is the only full-screen motion:
+/// tray, focus frame and desktop stay put. Held keys soften the pass so the
+/// screen never strobes. Three retained bands rotate so a new pass never cuts
+/// one off mid-screen; the oldest has faded out by the time it is reused.
+/// Bands are made on first pass and released with the gesture.
+/// Main-thread only.
+final class SpaceSwitchWash {
+    static let duration: CFTimeInterval = 0.48
+    /// A press inside this window of the last pass reads as a held key.
+    static let heldInterval: CFTimeInterval = 0.18
+    static let peak: Float = 0.8
+    static let heldPeak: Float = 0.3
+    private static let bandCount = 3
 
-    private var accent: Color { SpaceSwitchBezel.coral }
+    /// On unless `spaceSwitchKeys.passingLight` is set false.
+    static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: "spaceSwitchKeys.passingLight") as? Bool ?? true
+    }
 
-    var body: some View {
-        // Bright at the leading edge of travel, dying out behind it.
-        LinearGradient(
-            colors: [accent.opacity(0.9), accent.opacity(0.35), Color.clear],
-            startPoint: state.direction >= 0 ? .trailing : .leading,
-            endPoint: state.direction >= 0 ? .leading : .trailing
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private var bands: [CAGradientLayer] = []
+    private var next = 0
+    private var lastPass: CFTimeInterval = 0
+    private var lastDirection = 0
+
+    func pass(direction: Int, in view: NSView) {
+        guard let host = view.layer, view.bounds.width > 0 else { return }
+        let now = CACurrentMediaTime()
+        let held = now - lastPass < Self.heldInterval
+        // Repeats faster than a switch can land keep the band already
+        // travelling instead of relaunching one from the edge.
+        if direction == lastDirection, now - lastPass < Self.heldInterval / 3 { return }
+        lastPass = now
+        lastDirection = direction
+        if bands.isEmpty {
+            bands = (0..<Self.bandCount).map { _ in Self.makeBand() }
+        }
+        let band = bands[next]
+        next = (next + 1) % bands.count
+        if band.superlayer !== host { host.addSublayer(band) }
+
+        let size = view.bounds.size
+        let width = size.width * 0.3
+        let start = direction > 0 ? -width * 0.7 : size.width + width * 0.7
+        let end = direction > 0 ? size.width + width * 0.7 : -width * 0.7
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        band.removeAllAnimations()
+        band.bounds = CGRect(x: 0, y: 0, width: width, height: size.height)
+        band.position = CGPoint(x: end, y: size.height / 2)
+        // CSS skewX(-12deg) in a y-up layer: the top leans forward.
+        band.transform = CATransform3DMakeAffineTransform(CGAffineTransform(a: 1, b: 0, c: tan(12 * .pi / 180), d: 1, tx: 0, ty: 0))
+        band.opacity = 0
+
+        let travel = CABasicAnimation(keyPath: "position.x")
+        travel.fromValue = start
+        travel.toValue = end
+        travel.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+        let glow = CAKeyframeAnimation(keyPath: "opacity")
+        glow.values = [0, held ? Self.heldPeak : Self.peak, 0]
+        glow.keyTimes = [0, 0.15, 1]
+        let group = CAAnimationGroup()
+        group.animations = [travel, glow]
+        group.duration = Self.duration
+        band.add(group, forKey: "pass")
+        CATransaction.commit()
+    }
+
+    /// Drop the bands with the gesture; nothing full-screen outlives it.
+    func release() {
+        bands.forEach { $0.removeAllAnimations(); $0.removeFromSuperlayer() }
+        bands.removeAll()
+        next = 0
+        lastPass = 0
+        lastDirection = 0
+    }
+
+    var liveBandCount: Int { bands.count }
+
+    private static func makeBand() -> CAGradientLayer {
+        let band = CAGradientLayer()
+        let light = NSColor(calibratedRed: 0.68, green: 0.87, blue: 1, alpha: 0.145)
+        band.colors = [light.withAlphaComponent(0).cgColor, light.cgColor, light.withAlphaComponent(0).cgColor]
+        band.startPoint = CGPoint(x: 0, y: 0.5)
+        band.endPoint = CGPoint(x: 1, y: 0.5)
+        band.opacity = 0
+        return band
     }
 }
 
@@ -338,7 +457,6 @@ final class SpaceLandscape {
         direction: Int,
         display: DisplaySpaces,
         activeSpaceId: Int,
-        edge: Bool,
         windows: [WindowEntry],
         on screen: NSScreen? = nil
     ) {
@@ -359,7 +477,6 @@ final class SpaceLandscape {
         windowShots = windowShots.filter { liveWids.contains($0.key) }
 
         state.direction = direction
-        state.edge = edge
         state.cards = cards
         state.activeLabel = cards.first(where: \.active).map { card in
             card.index.map { "DESKTOP \($0)" } ?? card.label.uppercased()
@@ -423,14 +540,13 @@ final class SpaceLandscape {
         captureTask = Task.detached(priority: .utility) { [weak self] in
             await WindowCapture.thumbnails(windowIDs: windowIDs, maximumPixelSize: 480) { batch in
                 await MainActor.run {
-                    guard let self else { return }
+                    guard let self, self.token == mine else { return }
                     for (id, cg) in batch {
                         self.windowShots[id] = NSImage(
                             cgImage: cg,
                             size: NSSize(width: cg.width, height: cg.height)
                         )
                     }
-                    guard self.token == mine else { return }
                     self.state.apply(windowShots: self.windowShots)
                 }
             }
@@ -454,11 +570,25 @@ final class SpaceLandscape {
 
     func dismiss() {
         dismissTimer?.invalidate()
-        guard let p = panel, p.isVisible else { return }
+        dismissTimer = nil
+        captureTask?.cancel()
+        captureTask = nil
+        token &+= 1
+        let mine = token
+        guard let p = panel, p.isVisible else {
+            state.cards = []
+            windowShots.removeAll()
+            return
+        }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.12
             p.animator().alphaValue = 0
-        }, completionHandler: { p.orderOut(nil) })
+        }, completionHandler: { [weak self] in
+            guard let self, self.token == mine else { return }
+            p.orderOut(nil)
+            self.state.cards = []
+            self.windowShots.removeAll()
+        })
     }
 
     private static func cards(
@@ -526,7 +656,6 @@ struct SpaceLandscapeWindow: Identifiable {
 
 final class SpaceLandscapeState: ObservableObject {
     @Published var direction: Int = 1
-    @Published var edge: Bool = false
     @Published var activeLabel: String?
     @Published var cards: [SpaceLandscapeCard] = []
 
@@ -547,19 +676,19 @@ final class SpaceLandscapeState: ObservableObject {
 private struct SpaceLandscapeView: View {
     @ObservedObject var state: SpaceLandscapeState
 
-    private var accent: Color { state.edge ? HUDChrome.amber : HUDChrome.cyan }
+    private var accent: Color { HUDChrome.cyan }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(state.edge ? "↔" : (state.direction < 0 ? "‹" : "›"))
+                Text(state.direction < 0 ? "‹" : "›")
                     .font(Typo.monoBold(13))
                     .foregroundStyle(accent)
-                Text(state.edge ? "EDGE" : (state.activeLabel ?? ""))
+                Text(state.activeLabel ?? "")
                     .lineLimit(1)
                     .font(Typo.monoBold(10))
                     .tracking(0.7)
-                    .foregroundStyle(state.edge ? HUDChrome.amber : Palette.text)
+                    .foregroundStyle(Palette.text)
                 Spacer(minLength: 8)
                 Text("\(state.cards.count) SPACES")
                     .font(Typo.monoBold(6.5))
@@ -573,7 +702,7 @@ private struct SpaceLandscapeView: View {
 
             HStack(spacing: 8) {
                 ForEach(state.cards) { card in
-                    SpaceLandscapeCardView(card: card, edge: state.edge && card.active)
+                    SpaceLandscapeCardView(card: card)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -599,9 +728,8 @@ private struct SpaceLandscapeView: View {
 
 private struct SpaceLandscapeCardView: View {
     let card: SpaceLandscapeCard
-    let edge: Bool
 
-    private var accent: Color { edge ? HUDChrome.amber : HUDChrome.cyan }
+    private var accent: Color { HUDChrome.cyan }
 
     var body: some View {
         VStack(spacing: 5) {
@@ -708,13 +836,11 @@ final class SpaceNumberMark {
             panel = p
         }
 
-        state.number = number
+        if state.number != number { state.number = number }
         let vf = screen.visibleFrame
         let size = NSSize(width: 28, height: 22)
-        panel.setFrame(
-            NSRect(x: vf.minX + 12, y: vf.maxY - size.height - 8, width: size.width, height: size.height),
-            display: true
-        )
+        let frame = NSRect(x: vf.minX + 12, y: vf.maxY - size.height - 8, width: size.width, height: size.height)
+        if panel.frame != frame { panel.setFrame(frame, display: true) }
         if !panel.isVisible {
             panel.alphaValue = 1
             panel.orderFrontRegardless()

@@ -162,6 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
                 LayerStage.shared.restoreParked(reason: "signal \(sig)")
+                SpaceSwitchHotkeys.restoreForTermination()
                 exit(128 + sig)
             }
             source.resume()

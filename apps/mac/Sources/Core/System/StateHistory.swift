@@ -162,7 +162,7 @@ final class StateHistory {
             name: name,
             displays: displays,
             windows: windows,
-            layer: wm.config?.layers == nil ? nil : wm.activeLayerIndex
+            layer: wm.activeLayerSelection
         )
     }
 

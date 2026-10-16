@@ -161,7 +161,7 @@ struct AppShellView: View {
             .background(ShellGlassBackdrop())
         }
         .environment(\.hudTheme, .lattices)
-        .background(HudWindowChrome(colorScheme: .dark))
+        .background(HudWindowChrome(colorScheme: .dark, isMovableByWindowBackground: false))
         .hudsonAppManifest(manifest)
         .onChange(of: windowController.activePage) { page in
             clearRelevantDismissals(for: page)
@@ -255,9 +255,14 @@ struct AppShellView: View {
         let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
         return VStack(spacing: wrap ? 5 : 0) {
             HStack(spacing: 8) {
-                Text(windowController.activePage.label)
-                    .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
-                Spacer(minLength: 8)
+                HStack {
+                    Text(windowController.activePage.label)
+                        .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
+                    Spacer(minLength: 8)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
                 }
@@ -317,7 +322,7 @@ struct AppShellView: View {
         // fixed 632pt minimum otherwise makes the whole shell clip at 600pt.
         let scale = min(1, max(0.1, (availableWidth - 2 * Chrome.inset) / 608))
         return HStack(spacing: 18 * scale) {
-            statusSlot(width: 132 * scale) {
+            statusSlot(width: 150 * scale) {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(runningSessionCount > 0 ? Palette.running : Palette.textMuted)
@@ -326,7 +331,7 @@ struct AppShellView: View {
                 }
             }
 
-            statusSlot(width: 260 * scale) {
+            statusSlot(width: 242 * scale) {
                 Text(desktopShapeText)
             }
 
@@ -561,7 +566,7 @@ private struct SidebarFooterButton: View {
                 .frame(width: HudSidebarLayout.railWidth, height: HudSidebarLayout.rowHeight)
 
             Text(label)
-                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .semibold : .medium))
+                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .medium : .regular))
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
