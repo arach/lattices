@@ -105,6 +105,7 @@ async function main() {
 
   const router = new Router(() => capabilities);
   let clientCount = () => 0;
+  let emit: (event: string, data: unknown) => void = () => {};
   const policy: Policy = { allowUsers: [...opts.allowUsers], allowTags: [...opts.allowTags] };
 
   let binds = opts.binds;
@@ -122,6 +123,7 @@ async function main() {
 
   const primary = binds.find((b) => b !== "127.0.0.1") ?? binds[0];
   const resources = registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount(), emit: (event, data) => emit(event, data) });
+
 
   if (opts.describe) {
     console.log(JSON.stringify(await router.dispatch("host.describe", {}), null, 2));

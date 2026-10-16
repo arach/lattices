@@ -32,7 +32,8 @@ export function handleSubscription(conn: Pick<Conn, "events">, method: string, p
   return { ok: true, events: conn.events ? [...conn.events].sort() : ["*"] };
 }
 
-export const KNOWN_EVENTS = ["windows.changed", "spaces.changed", "host.healthChanged", "layers.changed", "virtual.changed"];
+export const KNOWN_EVENTS = ["windows.changed", "spaces.changed", "computer.acted", "host.healthChanged", "layers.changed", "virtual.changed"];
+
 
 export interface ServeOptions {
   hosts: string[];
