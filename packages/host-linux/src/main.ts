@@ -105,7 +105,6 @@ async function main() {
 
   const router = new Router(() => capabilities);
   let clientCount = () => 0;
-  let emit: (event: string, data: unknown) => void = () => {};
   const policy: Policy = { allowUsers: [...opts.allowUsers], allowTags: [...opts.allowTags] };
 
   let binds = opts.binds;

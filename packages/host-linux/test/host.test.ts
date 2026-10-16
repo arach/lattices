@@ -336,7 +336,7 @@ describe("virtual displays", () => {
 
 describe("computer.acted", () => {
   const display = (displayIndex: number, x: number, w: number, h: number) =>
-    ({ displayIndex, displayId: `D${displayIndex}`, name: "", frame: { x, y: 0, w, h }, visibleFrame: { x, y: 0, w, h }, scale: 1, currentSpaceId: 1, spaces: [] }) as Display;
+    ({ displayIndex, displayId: `D${displayIndex}`, name: "", virtual: false, frame: { x, y: 0, w, h }, visibleFrame: { x, y: 0, w, h }, scale: 1, currentSpaceId: 1, spaces: [] }) as Display;
   const displays = [display(0, 0, 1440, 900), display(1, 1440, 3440, 1440)];
 
   test("a pointer action lands on the display under its point, with a ratio for the overlay", () => {
