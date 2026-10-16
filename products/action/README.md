@@ -5,7 +5,7 @@
   <source media="(max-width: 600px) and (prefers-color-scheme: light)" srcset="assets/readme/hero-mobile-light.svg">
   <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.svg">
-  <img src="assets/readme/hero-light.svg" width="1200" alt="Action. Give your agents a way to act.">
+  <img src="assets/readme/hero-light.svg" width="1200" alt="Action. Native computer use for agents. An app window and its accessibility target inspector.">
 </picture>
 
 <p align="center">
@@ -15,12 +15,12 @@
   <a href="../../skills/action/SKILL.md">Agent skill</a>
 </p>
 
-Action gives agents a way to work with native Mac apps and browser surfaces. See what is on screen, find a target, take an action, and keep a recording of what happened.
+Action lets agents inspect and control native Mac apps and browser surfaces through a local runtime.
 
 <table><tr>
-<td width="33%" valign="top"><strong>See the surface</strong><br>Combine screenshots, accessibility, and OCR to understand the current app.</td>
-<td width="33%" valign="top"><strong>Take the next step</strong><br>Resolve a target, then click, type, scroll, or focus through a local runtime.</td>
-<td width="33%" valign="top"><strong>Keep the evidence</strong><br>Save video, observations, and traces together for a run you can inspect.</td>
+<td width="33%" valign="top"><strong>Inspect</strong><br>Screenshots, accessibility trees, and OCR.</td>
+<td width="33%" valign="top"><strong>Control</strong><br>Target resolution, clicks, typing, scrolling, and focus.</td>
+<td width="33%" valign="top"><strong>Record</strong><br>Video, observations, and session traces.</td>
 </tr></table>
 
 ## Install and run
@@ -188,6 +188,5 @@ and debug log. From the monorepo root, `bun run action:launch` and
 
 ---
 
-<p align="center"><strong>Part of your Lattices workspace.</strong><br>
-<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a><br>
-<sub>Independent apps. A shared home.</sub></p>
+<p align="center">
+<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a></p>

@@ -5,7 +5,7 @@
   <source media="(max-width: 600px) and (prefers-color-scheme: light)" srcset="assets/readme/hero-mobile-light.svg">
   <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.svg">
-  <img src="assets/readme/hero-light.svg" width="1200" alt="Speech. Good work deserves a voice.">
+  <img src="assets/readme/hero-light.svg" width="1200" alt="Speech. Speech playback for agents.">
 </picture>
 
 <p align="center">
@@ -15,14 +15,12 @@
   <a href="../../skills/voice/SKILL.md">Agent skill</a>
 </p>
 
-Hear the update and keep your place. Queue an agent summary or a build result, follow along in the playback HUD, and control the pace while you work.
-
-**The app is called Voice.** This is the speech companion in the Lattices family; its source lives here in `products/voice`.
+Speech queues and plays spoken updates from agents and scripts, with an optional readalong HUD. The macOS app is called **Voice**.
 
 <table><tr>
-<td width="33%" valign="top"><strong>Keep working</strong><br>Playback continues after the requesting agent or script disconnects.</td>
-<td width="33%" valign="top"><strong>Choose your voice</strong><br>Use system voices, local Kokoro, or configured OpenAI and ElevenLabs providers.</td>
-<td width="33%" valign="top"><strong>Set the pace</strong><br>Pause, resume, seek, or skip queued readouts through the Lattices CLI.</td>
+<td width="33%" valign="top"><strong>Persistent queue</strong><br>Playback continues after the requesting agent or script disconnects.</td>
+<td width="33%" valign="top"><strong>Voice providers</strong><br>Use system voices, local Kokoro, or configured OpenAI and ElevenLabs providers.</td>
+<td width="33%" valign="top"><strong>Playback controls</strong><br>Pause, resume, seek, or skip queued readouts through the Lattices CLI.</td>
 </tr></table>
 
 ## Install and run
@@ -160,6 +158,5 @@ Voice has no product-local `docs/` directory yet. The current references are:
 
 ---
 
-<p align="center"><strong>Part of your Lattices workspace.</strong><br>
-<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a><br>
-<sub>Independent apps. A shared home.</sub></p>
+<p align="center">
+<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a></p>
