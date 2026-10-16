@@ -124,7 +124,8 @@ Usage:
                          Snap a window into a named or grid placement slot
   lats distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
   lats layer [name|slot] [--tile|--launch]  List layers, or switch as ⌘⌥ does; slots are the pad's 1-4, 6-9 (daemon required)
-  lats layer reveal        Show All: put back parked windows, unhide apps a switch hid
+  lats layer exit          Exit Layers: restore windows and turn layer focus off
+  lats layer reveal        Alias for exit (also: off, show-all)
   lats layer classic [--one-space]  Every window back as if Lattices weren't running (⌘⌥0); --one-space also gathers onto one desktop per display
   lats layer undo                   Take back the last layer edit (⌘⌥Z); no window moves until the next switch
   lats layer create <name> [wid:N ...] [--json '<specs>']  Save windows (default: on screen) as a new layer

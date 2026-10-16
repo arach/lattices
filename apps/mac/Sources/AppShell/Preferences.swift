@@ -172,8 +172,7 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(spaceSwitchBezelPosition.rawValue, forKey: "spaceSwitchKeys.bezelPosition") }
     }
 
-    /// Speed streaks across the display on each switch. Off falls back to
-    /// the top-edge sweep.
+    /// Optional pointer streaks alongside the desktop filmstrip.
     @Published var spaceSwitchGlideEnabled: Bool {
         didSet { UserDefaults.standard.set(spaceSwitchGlideEnabled, forKey: "spaceSwitchKeys.glide") }
     }
@@ -372,13 +371,13 @@ class Preferences: ObservableObject {
            let position = SpaceSwitchBezelPosition(rawValue: saved) {
             self.spaceSwitchBezelPosition = position
         } else {
-            self.spaceSwitchBezelPosition = .top
+            self.spaceSwitchBezelPosition = .center
         }
 
         if UserDefaults.standard.object(forKey: "spaceSwitchKeys.glide") != nil {
             self.spaceSwitchGlideEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.glide")
         } else {
-            self.spaceSwitchGlideEnabled = true
+            self.spaceSwitchGlideEnabled = false
         }
         if UserDefaults.standard.object(forKey: "layers.confirmSeconds") != nil {
             self.layerSwitchConfirmSeconds = UserDefaults.standard.double(forKey: "layers.confirmSeconds")

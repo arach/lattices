@@ -2,6 +2,25 @@ import AppKit
 import Combine
 import CoreGraphics
 
+/// Keeps native desktop navigation available whenever the interceptor cannot
+/// own it. Dependencies are injectable so failure paths need no real event tap.
+struct SpaceSwitchInputOwnership {
+    var makeTapReady: () -> Bool
+    var removeTap: () -> Void
+    var disableSystemHotkeys: () -> Void
+    var restoreSystemHotkeys: () -> Void
+
+    func reconcile(isRunning: Bool, featureEnabled: Bool, accessibilityGranted: Bool, breakerArmed: Bool) {
+        guard isRunning, featureEnabled, accessibilityGranted, breakerArmed,
+              makeTapReady() else {
+            removeTap()
+            restoreSystemHotkeys()
+            return
+        }
+        disableSystemHotkeys()
+    }
+}
+
 /// Intercepts Ctrl+← / Ctrl+→ before Mission Control sees them and routes the
 /// press through `WindowTiler.performSpaceSwitch` — a synthetic Dock swipe
 /// under a screen-update freeze, so the Space cuts over instead of sliding. A small
@@ -29,48 +48,53 @@ final class SpaceSwitchInterceptor: ObservableObject {
     private var runLoopSource: CFRunLoopSource?
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
+    private var isRunning = false
     private let breaker = EventTapBreaker(label: "SpaceSwitch")
+    private lazy var inputOwnership = SpaceSwitchInputOwnership(
+        makeTapReady: { [weak self] in self?.makeEventTapReady() ?? false },
+        removeTap: { [weak self] in self?.removeEventTap() },
+        disableSystemHotkeys: SpaceSwitchHotkeys.disable,
+        restoreSystemHotkeys: SpaceSwitchHotkeys.restore
+    )
     /// Serializes the actual Space swap. `switchToSpace` can poll the CGS
     /// display list for ~0.45s on a miss — that must never run on the tap
     /// thread or on main.
     private let switchQueue = DispatchQueue(label: "dev.lattices.space-switch", qos: .userInitiated)
 
-    /// Presses not yet handed to the switch queue. Guarded by `pendingLock`;
-    /// written on the tap thread, drained on `switchQueue`.
+    private lazy var navigator = SpaceSwitchNavigator(queue: switchQueue)
+    /// Guarded by pendingLock, including teardown on main. Consume key-up
+    /// even if Ctrl went up first; discard ownership when the tap is removed.
+    private var ownedArrows: Set<Int64> = []
     private let pendingLock = NSLock()
     private var pendingOffset = 0
     private var pendingPoint: CGPoint?
     private var pendingLandscape = false
     private var drainScheduled = false
+    /// A switch in this drain missed its verification window. Read and
+    /// written only on `switchQueue`.
+    private var missedSinceSettle = false
 
     private init() {
         breaker.onStateChanged = { [weak self] newState in
             self?.breakerState = newState
+            self?.refresh()
         }
     }
 
     func start() {
+        isRunning = true
         installObserversIfNeeded()
         refresh()
     }
 
     func stop() {
-        removeEventTap()
-        SpaceSwitchHotkeys.restore()
+        isRunning = false
+        refresh()
     }
 
     func resetForSystemInputBoundary(reason: String) {
         dispatchPrecondition(condition: .onQueue(.main))
-        switch breaker.state {
-        case .armed:
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            } else {
-                refresh()
-            }
-        case .paused, .disabled:
-            return
-        }
+        refresh()
         DiagnosticLog.shared.warn("SpaceSwitch: reset for \(reason)")
     }
 
@@ -78,9 +102,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
     func reArmAfterBreakerTrip() {
         dispatchPrecondition(condition: .onQueue(.main))
         breaker.reset()
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: true)
-        }
+        refresh()
     }
 
     private func installObserversIfNeeded() {
@@ -99,35 +121,32 @@ final class SpaceSwitchInterceptor: ObservableObject {
     }
 
     private func refresh() {
-        guard Preferences.shared.spaceSwitchKeysEnabled,
-              PermissionChecker.shared.accessibility else {
+        dispatchPrecondition(condition: .onQueue(.main))
+        inputOwnership.reconcile(
+            isRunning: isRunning,
+            featureEnabled: Preferences.shared.spaceSwitchKeysEnabled,
+            accessibilityGranted: PermissionChecker.shared.accessibility,
+            breakerArmed: breaker.state == .armed
+        )
+    }
+
+    private func makeEventTapReady() -> Bool {
+        if let eventTap, !CFMachPortIsValid(eventTap) {
             removeEventTap()
-            SpaceSwitchHotkeys.restore()
-            return
         }
-
-        SpaceSwitchHotkeys.disable()
-
-        switch breaker.state {
-        case .paused, .disabled:
-            return
-        case .armed:
-            break
-        }
-
         if eventTap == nil {
             installEventTap()
-        } else if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: true)
         }
+        guard let eventTap, let runLoopSource, CFRunLoopSourceIsValid(runLoopSource) else { return false }
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+        return CGEvent.tapIsEnabled(tap: eventTap)
     }
 
     private func installEventTap() {
-        breaker.reset()
-
         var mask = CGEventMask(0)
         mask |= CGEventMask(1) << CGEventType.keyDown.rawValue
         mask |= CGEventMask(1) << CGEventType.keyUp.rawValue
+        mask |= CGEventMask(1) << CGEventType.flagsChanged.rawValue
 
         // HID first — that is the only insertion point that reliably beats the
         // Mission Control symbolic hotkey. Session is a degraded fallback.
@@ -154,22 +173,23 @@ final class SpaceSwitchInterceptor: ObservableObject {
             return
         }
 
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            DiagnosticLog.shared.warn("SpaceSwitch: failed to install keyboard event tap source")
+            return
+        }
         eventTap = tap
         runLoopSource = source
 
-        if let source {
-            EventTapThread.overlay.add(source: source)
-        }
-        CGEvent.tapEnable(tap: tap, enable: true)
-        breaker.rearm = { [weak self] in
-            guard let self, let tap = self.eventTap else { return }
-            CGEvent.tapEnable(tap: tap, enable: true)
-        }
+        EventTapThread.overlay.add(source: source)
         DiagnosticLog.shared.info("SpaceSwitch: keyboard event tap installed (\(installedLabel))")
     }
 
     private func removeEventTap() {
+        navigator.cancel()
+        pendingLock.lock()
+        ownedArrows.removeAll()
+        pendingLock.unlock()
         if let source = runLoopSource {
             EventTapThread.overlay.remove(source: source)
         }
@@ -194,12 +214,16 @@ final class SpaceSwitchInterceptor: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
             return Unmanaged.passUnretained(event)
         }
 
+        if type == .flagsChanged {
+            if !event.flags.contains(.maskControl) {
+                DispatchQueue.main.async { [weak self] in self?.navigator.release() }
+            }
+            return Unmanaged.passUnretained(event)
+        }
         guard type == .keyDown || type == .keyUp else {
             return Unmanaged.passUnretained(event)
         }
@@ -213,6 +237,27 @@ final class SpaceSwitchInterceptor: ObservableObject {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         guard keyCode == 123 || keyCode == 124 else {
             return Unmanaged.passUnretained(event)
+        }
+
+        if type == .keyUp {
+            pendingLock.lock()
+            let owned = ownedArrows.remove(keyCode) != nil
+            let released = ownedArrows.isEmpty
+            pendingLock.unlock()
+            if owned {
+                if released { DispatchQueue.main.async { [weak self] in self?.navigator.release() } }
+                return nil
+            }
+        }
+
+        // Releasing Ctrl commits selection, but the arrow is still ours until
+        // key-up. Don't leak its remaining repeats into the foreground app.
+        if type == .keyDown, !event.flags.contains(.maskControl),
+           event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            pendingLock.lock()
+            let owned = ownedArrows.contains(keyCode)
+            pendingLock.unlock()
+            if owned { return nil }
         }
 
         // Bare Ctrl switches. Ctrl+Shift is the same switch plus the landscape
@@ -231,7 +276,19 @@ final class SpaceSwitchInterceptor: ObservableObject {
             // Keyboard events normally carry the cursor location; if one
             // arrives empty, nil falls through to the live mouse position.
             let point = event.location
-            enqueue(offset: keyCode == 123 ? -1 : 1, point: point == .zero ? nil : point, landscape: landscape)
+            if landscape {
+                DispatchQueue.main.async { [weak self] in self?.navigator.cancel() }
+                enqueue(offset: keyCode == 123 ? -1 : 1, point: point == .zero ? nil : point, landscape: true)
+            } else {
+                pendingLock.lock()
+                ownedArrows.insert(keyCode)
+                pendingLock.unlock()
+                let repeated = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+                DispatchQueue.main.async { [weak self] in
+                    self?.navigator.press(offset: keyCode == 123 ? -1 : 1, repeated: repeated,
+                                          point: point == .zero ? nil : point)
+                }
+            }
         }
         return nil
     }
@@ -260,30 +317,45 @@ final class SpaceSwitchInterceptor: ObservableObject {
             if offset == 0 {
                 drainScheduled = false
                 pendingLock.unlock()
+                // Correct a miss once the queue is idle, never mid-burst:
+                // the next merged press already plans from where we are.
+                if missedSinceSettle {
+                    missedSinceSettle = false
+                    DispatchQueue.main.async { SpaceSwitchBezel.shared.settleOnCurrentSpace() }
+                }
                 return
             }
             pendingLock.unlock()
-            performSwitch(offset: offset, point: point, landscape: landscape)
+            // A held chord can keep this work item alive for seconds. Release
+            // temporary Cocoa objects per drain, not when the queue goes idle.
+            autoreleasepool {
+                performSwitch(offset: offset, point: point, landscape: landscape)
+            }
         }
     }
 
     private func performSwitch(offset: Int, point: CGPoint?, landscape: Bool) {
-        guard let plan = WindowTiler.planAdjacentSpaceSwitch(offset: offset, from: point) else { return }
+        let started = ProcessInfo.processInfo.systemUptime
+        guard let plan = WindowTiler.planAdjacentSpaceSwitch(offset: offset, from: point),
+              !plan.isEdge else { return }
+        defer {
+            let ms = (ProcessInfo.processInfo.systemUptime - started) * 1000
+            DiagnosticLog.shared.info("SpaceSwitch: offset=\(offset) elapsedMs=\(Int(ms))")
+        }
 
         guard landscape else {
             let direction = plan.offset < 0 ? -1 : 1
-            let glide = { (edge: Bool) in
+            let glide = {
                 DispatchQueue.main.async {
-                    SpaceSwitchGlide.shared.fire(direction: direction, steps: abs(plan.offset), edge: edge)
+                    SpaceSwitchGlide.shared.fire(direction: direction, steps: abs(plan.offset))
                 }
             }
 
             // The target is known before the swipe runs, so confirm it now
             // rather than after the ~150ms+ switch; correct only on a miss.
-            WindowTiler.presentSpaceSwitchBezel(for: plan, switched: !plan.isEdge)
-            if plan.isEdge {
-                glide(true)
-                return
+            WindowTiler.presentSpaceSwitchBezel(for: plan, switched: true, holding: true)
+            defer {
+                DispatchQueue.main.async { SpaceSwitchBezel.shared.finishSwitch() }
             }
 
             // Streaks start once the cut is on screen — fired earlier, the
@@ -291,12 +363,17 @@ final class SpaceSwitchInterceptor: ObservableObject {
             var fired = false
             let switched = WindowTiler.performSpaceSwitch(plan) {
                 fired = true
-                glide(false)
+                glide()
             }
+            // A slow landing can post its system Space change after the
+            // switch returns; keep that from reading as a foreign switch.
+            WindowTiler.noteProgrammaticSwitch()
             if !switched {
-                WindowTiler.presentSpaceSwitchBezel(for: plan, switched: false)
+                // Most misses are late landings. Showing the mid-transition
+                // Space now yanked the strip back, then forward again.
+                missedSinceSettle = true
             } else if !fired {
-                glide(false)
+                glide()
             }
             return
         }
@@ -305,13 +382,13 @@ final class SpaceSwitchInterceptor: ObservableObject {
         // strip can paint from a WindowServer read taken now, with the
         // target highlighted, instead of waiting out the switch.
         let windows = DesktopModel.shared.spaceMembershipSnapshot()
-        showLandscape(plan: plan, activeSpaceId: plan.targetSpaceId ?? plan.currentSpaceId, edge: plan.isEdge, windows: windows)
+        showLandscape(plan: plan, activeSpaceId: plan.targetSpaceId ?? plan.currentSpaceId, windows: windows)
         if !plan.isEdge, !WindowTiler.performSpaceSwitch(plan) {
-            showLandscape(plan: plan, activeSpaceId: plan.currentSpaceId, edge: true, windows: windows)
+            showLandscape(plan: plan, activeSpaceId: plan.currentSpaceId, windows: windows)
         }
     }
 
-    private func showLandscape(plan: WindowTiler.SpaceSwitchPlan, activeSpaceId: Int, edge: Bool, windows: [WindowEntry]) {
+    private func showLandscape(plan: WindowTiler.SpaceSwitchPlan, activeSpaceId: Int, windows: [WindowEntry]) {
         DispatchQueue.main.async {
             SpaceNumberMark.shared.refresh()
             SpaceSwitchBezel.shared.dismiss()
@@ -319,7 +396,6 @@ final class SpaceSwitchInterceptor: ObservableObject {
                 direction: plan.offset < 0 ? -1 : 1,
                 display: plan.display,
                 activeSpaceId: activeSpaceId,
-                edge: edge,
                 windows: windows,
                 on: WindowTiler.screen(for: plan)
             )

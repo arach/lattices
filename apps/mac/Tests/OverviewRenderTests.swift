@@ -135,6 +135,13 @@ final class OverviewRenderTests: XCTestCase {
         ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews(in:))
     }
 
+    func testMoveFailurePresentation() throws {
+        try render("overview-move-error", width: 1120, height: 740, sidebar: false) { model in
+            XCTAssertTrue(model.move(1, toSpace: 5))
+            XCTAssertNotNil(model.actionError)
+        }
+    }
+
     /// The sidebar's long list scrolls on its own at any width: a wheel
     /// moves a list that overflows.
     private func assertListsScroll(width: CGFloat, file: StaticString = #filePath, line: UInt = #line) throws {
@@ -319,7 +326,9 @@ private struct RenderActions: OverviewActions {
     func distribute(_ windows: [(wid: UInt32, pid: Int32)], displayId: UInt32, shape: [Int]?) {}
     func focus(wid: UInt32, pid: Int32) {}
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32) {}
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {}
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (OverviewMoveFailure?) -> Void) {
+        completion(.init(details: "Destination Desktop move failed: Mission Control didn’t open"))
+    }
     func saveLayer(_ plan: LayerEditPlan) throws {}
     func rearrange(layerId: String) throws {}
 }
