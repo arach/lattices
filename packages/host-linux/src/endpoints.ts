@@ -116,6 +116,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
   const actionDeps = { ...defaultEndpointDeps, ...overrides };
   const moveDeps = actionDeps;
   registerLayerEndpoints(router, ctx.emit);
+
   // computer.acted after every executed computer.* action; never fails the action.
   const announce = async (sample: acted.Action | (() => Promise<acted.Action>)) => {
     if (!ctx.emit) return;

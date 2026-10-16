@@ -227,6 +227,7 @@ on its methods; missing tools just hide them.
 | --- | --- | --- |
 | `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move/moveBack`, `spaces.list`, `desktop.snapshot`, `layers.list/members/create/assign/unassign/rename/delete/layout/activate/switch/reveal` |
 
+
 | `displays.virtual` | `hyprctl output create headless` plus a monitor rule (`eval hl.monitor` on 0.55+) | `displays.create`, `displays.remove` |
 
 | `capture.still` | `grim` | `capture.screenshotDisplay/Window/Region`, `capture.still` (inline JPEG) |
