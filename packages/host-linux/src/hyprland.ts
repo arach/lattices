@@ -26,6 +26,10 @@ export interface HyprMonitor {
   id: number;
   name: string;
   description: string;
+  /** Empty on headless (virtual) outputs. */
+  make?: string;
+  model?: string;
+  serial?: string;
   x: number;
   y: number;
   width: number;

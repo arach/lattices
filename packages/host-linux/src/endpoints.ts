@@ -1,6 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
+import * as ownedDisplays from "./displays.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
@@ -170,7 +171,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
         version: VERSION,
         build: BUILD_IDENTITY,
         address: ctx.bindHost,
-        displays,
+        displays: displays.map((d) => ({ ...d, managed: ownedDisplays.readOwned().some((o) => o.name === d.displayId) })),
         capabilities: [...capabilities].sort(),
         capabilityHealth,
         eventStream: hypr.getEventStreamHealth(),
@@ -384,6 +385,46 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     capability: "spaces.read",
     returns: "Array of Display",
     handler: async () => asJson((await desktop.snapshot()).displays),
+  });
+
+  const displayById = async (name: string) => (await desktop.snapshot()).displays.find((d) => d.displayId === name) ?? null;
+
+  router.register({
+    method: "displays.create",
+    description: "Create a virtual (headless) display, or adopt an existing one so the host may remove it later",
+    access: "mutate",
+    capability: "displays.virtual",
+    params: [
+      { name: "name", type: "string", description: "Output name; defaults to the next free LATS-n" },
+      { name: "width", type: "int", required: true, description: "Width in physical pixels" },
+      { name: "height", type: "int", required: true, description: "Height in physical pixels" },
+      { name: "scale", type: "double", description: "Scale factor; defaults to 1" },
+      { name: "refresh", type: "int", description: "Refresh rate in Hz; defaults to 60" },
+      { name: "adopt", type: "bool", description: "Take ownership of an existing output with this name" },
+    ],
+    returns: "Object with ok, the Display, created, adopted and trace",
+    handler: async (params) => {
+      const width = num(params, "width");
+      const height = num(params, "height");
+      if (width === undefined) throw RouterError.missingParam("width");
+      if (height === undefined) throw RouterError.missingParam("height");
+      const scale = num(params, "scale") ?? 1;
+      const refresh = num(params, "refresh") ?? 60;
+      if (width < 320 || height < 200 || width > 7680 || height > 4320) throw new RouterError("width/height out of range (320x200 to 7680x4320)");
+      if (scale <= 0 || scale > 4) throw new RouterError("scale out of range (0, 4]");
+      const result = await ownedDisplays.create({ name: str(params, "name"), spec: { width, height, scale, refresh }, adopt: bool(params, "adopt") });
+      return asJson({ ok: true, ...result, display: await displayById(result.name) });
+    },
+  });
+
+  router.register({
+    method: "displays.remove",
+    description: "Remove a virtual display this host created or adopted; windows on it move to another display",
+    access: "mutate",
+    capability: "displays.virtual",
+    params: [{ name: "displayId", type: "string", required: true, description: "Output name, as in Display.displayId" }],
+    returns: "Object with ok, name and removed",
+    handler: async (params) => asJson({ ok: true, ...(await ownedDisplays.remove(requireStr(params, "displayId"))) }),
   });
 
   router.register({
