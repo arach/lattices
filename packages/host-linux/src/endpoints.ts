@@ -105,13 +105,13 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
   return result;
 }
 
-export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies) {
+export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies, actionDeps = { snapshot: desktop.snapshot, cursorPos: hypr.cursorPos, scroll: input.scroll }) {
   // computer.acted after every executed computer.* action; never fails the action.
   const announce = async (sample: acted.Action | (() => Promise<acted.Action>)) => {
     if (!ctx.emit) return;
     try {
       const action = typeof sample === "function" ? await sample() : sample;
-      const snap = await desktop.snapshot();
+      const snap = await actionDeps.snapshot();
       const target = action.wid != null ? snap.windows.find((w) => w.wid === action.wid) : snap.windows.find((w) => w.isFocused);
       ctx.emit("computer.acted", acted.toEvent({ ...action, wid: action.wid ?? target?.wid ?? null }, snap.displays, target?.displayIndex));
     } catch {
@@ -598,9 +598,9 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     handler: async (params) => {
       const plan = { x: num(params, "x") ?? null, y: num(params, "y") ?? null, dx: num(params, "dx") ?? 0, dy: num(params, "dy") ?? 0 };
       if (!executes(params)) return staged(plan);
-      const extent = input.layoutExtent((await desktop.snapshot()).displays);
-      await input.scroll(plan.x ?? undefined, plan.y ?? undefined, plan.dx * 15, plan.dy * 15, extent);
-      await announce(async () => ({ kind: "scroll", label: `Scroll ${plan.dy ? (plan.dy > 0 ? "down" : "up") : plan.dx > 0 ? "right" : "left"}`, point: plan.x !== null && plan.y !== null ? { x: plan.x, y: plan.y } : await hypr.cursorPos() }));
+      const extent = input.layoutExtent((await actionDeps.snapshot()).displays);
+      await actionDeps.scroll(plan.x ?? undefined, plan.y ?? undefined, plan.dx * 15, plan.dy * 15, extent);
+      await announce(async () => ({ kind: "scroll", label: `Scroll ${plan.dy ? (plan.dy > 0 ? "down" : "up") : plan.dx > 0 ? "right" : "left"}`, point: plan.x !== null && plan.y !== null ? { x: plan.x, y: plan.y } : await actionDeps.cursorPos() }));
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
