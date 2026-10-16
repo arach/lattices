@@ -857,6 +857,23 @@ enum WindowTiler {
         return result
     }
 
+    /// Each desktop's Space id by the UUID macOS uses for it in
+    /// com.apple.spaces. The original primary desktop can have an empty UUID.
+    static func spaceIdsByUUID() -> [String: Int] {
+        guard let mainConn = CGS.mainConnectionID,
+              let copyManaged = CGS.copyManagedDisplaySpaces,
+              let managed = copyManaged(mainConn())?.takeRetainedValue() as? [[String: Any]] else { return [:] }
+        var result: [String: Int] = [:]
+        for display in managed {
+            for space in display["Spaces"] as? [[String: Any]] ?? [] where (space["type"] as? Int ?? 0) == 0 {
+                guard let uuid = space["uuid"] as? String,
+                      let sid = space["id64"] as? Int ?? space["ManagedSpaceID"] as? Int else { continue }
+                if result[uuid] == nil { result[uuid] = sid }
+            }
+        }
+        return result
+    }
+
     /// Get the current active Space ID
     static func getCurrentSpace() -> Int {
         guard let mainConn = CGS.mainConnectionID, let getActive = CGS.getActiveSpace else { return 0 }
@@ -1120,13 +1137,15 @@ enum WindowTiler {
     /// Poll completion using a monotonic deadline. Zero means the display
     /// could not be read; it is never a landed desktop. The injectable clock
     /// lets regression tests replay late commits without moving real Spaces.
+    /// Keep the worker occupied for the Dock's late-commit window, so the
+    /// next queued switch cannot post over a swipe still in flight.
     static func waitForSpaceChange(
         from initial: Int,
         read: () -> Int,
         now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         pause: () -> Void = { usleep(10_000) }
     ) -> Int {
-        let deadline = now() + 1.0
+        let deadline = now() + 3.0
         while true {
             let current = read()
             if current != 0 && current != initial { return current }
