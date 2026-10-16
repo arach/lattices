@@ -68,6 +68,11 @@ a LAN IP for a phone without Tailscale.`);
 }
 
 async function main() {
+  if (process.argv[2] === "__virtual-space-worker") {
+    const { runVirtualSpaceWorker } = await import("./virtual-space-worker.ts");
+    await runVirtualSpaceWorker();
+    return;
+  }
   if (process.argv[2] === "visit-test") {
     const { runVisitTest } = await import("./bridge/visit-test.ts");
     await runVisitTest(process.argv.slice(3));
@@ -116,7 +121,8 @@ async function main() {
   if (policy.allowUsers.length === 0 && self) policy.allowUsers.push(self.userId);
 
   const primary = binds.find((b) => b !== "127.0.0.1") ?? binds[0];
-  registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount() });
+  const resources = registerEndpoints(router, { bindHost: primary, tailnetName: self?.hostname, startedAt: Date.now(), clientCount: () => clientCount(), emit: (event, data) => emit(event, data) });
+
 
   if (opts.describe) {
     console.log(JSON.stringify(await router.dispatch("host.describe", {}), null, 2));
@@ -181,6 +187,7 @@ async function main() {
     stopEvents();
     if (pending) clearTimeout(pending);
     live.stop();
+    await resources.virtualSpace.stop();
     await bridge?.stop();
     server.stop();
     process.exit(0);

@@ -4,13 +4,13 @@ import { execFile } from "node:child_process";
 export function run(
   command: string,
   args: string[],
-  options: { input?: string | Buffer; timeoutMs?: number; encoding?: "utf8" | "buffer" } = {}
+  options: { input?: string | Buffer; timeoutMs?: number; encoding?: "utf8" | "buffer"; env?: NodeJS.ProcessEnv } = {}
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       command,
       args,
-      { timeout: options.timeoutMs ?? 10_000, maxBuffer: 64 * 1024 * 1024 },
+      { env: options.env ?? process.env, timeout: options.timeoutMs ?? 10_000, maxBuffer: 64 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
           const detail = String(stderr || error.message).trim();

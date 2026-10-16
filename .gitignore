@@ -86,3 +86,8 @@ apps/ios/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
 artifacts/
 apps/artifacts/
 apps/ios/.artifacts/
+
+# Local agent tooling and design reviews (at any depth)
+.agent/
+.agents/
+.impeccable/
