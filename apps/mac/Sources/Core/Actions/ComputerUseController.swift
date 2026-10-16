@@ -3720,7 +3720,9 @@ final class ComputerUseController {
             }
         }
 
-        let previousValue = axAttributeString(element, attribute: kAXValueAttribute)
+        // Mutation inputs and verification must preserve the complete value.
+        // axAttributeString trims and truncates text for display in snapshots.
+        let previousValue = axString(element, attribute: kAXValueAttribute)
         let baseValue = append ? (previousValue ?? "") : ""
         let insertedValue = append ? (baseValue + text) : text
         let interval = typeIntervalMs.map { max(4, min($0, 160)) }
@@ -3739,7 +3741,7 @@ final class ComputerUseController {
             try setAXValue(insertedValue)
         }
 
-        let verified = axAttributeString(element, attribute: kAXValueAttribute)
+        let verified = axString(element, attribute: kAXValueAttribute)
         return AXTextInsertionResult(
             role: elementInfo.role,
             roleDescription: elementInfo.roleDescription,
