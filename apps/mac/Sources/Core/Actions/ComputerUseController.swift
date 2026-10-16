@@ -3760,6 +3760,20 @@ final class ComputerUseController {
         maxElements: Int,
         timeoutMs: Int
     ) throws -> AXSnapshotContext {
+        // AX calls targeting this process invoke our AppKit/SwiftUI accessibility
+        // implementation directly. Traversing it on the daemon queue can enter
+        // view layout off the main thread and crash the Swift exclusivity runtime.
+        // Keep only the self-inspection on main; remote AX and capture stay off it.
+        if window.pid == ProcessInfo.processInfo.processIdentifier, !Thread.isMainThread {
+            return try DispatchQueue.main.sync {
+                try self.axSnapshot(
+                    window: window,
+                    maxDepth: maxDepth,
+                    maxElements: maxElements,
+                    timeoutMs: timeoutMs
+                )
+            }
+        }
         guard AXIsProcessTrusted() else {
             throw RouterError.custom("Accessibility permission is required for computer.windowState")
         }
