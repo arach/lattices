@@ -225,7 +225,9 @@ on its methods; missing tools just hide them.
 
 | Capability | Backend | Methods |
 | --- | --- | --- |
-| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move/moveBack`, `spaces.list`, `desktop.snapshot` |
+| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move/moveBack`, `spaces.list`, `desktop.snapshot`, `layers.list/members/create/assign/unassign/rename/delete/layout/activate/switch/reveal` |
+
+
 | `displays.virtual` | `hyprctl output create headless` plus a monitor rule (`eval hl.monitor` on 0.55+) | `displays.create`, `displays.remove` |
 
 | `capture.still` | `grim` | `capture.screenshotDisplay/Window/Region`, `capture.still` (inline JPEG) |
@@ -284,7 +286,7 @@ system telemetry, a placement cockpit, the screen preview and the trackpad.
 Actions: `layout.placeFrontmost`, `switch.focusItem`, `keys.send`,
 `keys.type`, `clipboard.pasteFromDevice`, `window.dragBy`,
 `spaces.focusIndex`, `spaces.focusRelative`, `displays.focus`. Mac-only
-actions (voice, Talkie, layers) answer "Not available on Linux".
+bridge actions (voice, Talkie, layers) answer "Not available on Linux".
 
 The bridge identity and trusted devices live in `~/.lattices/host/`
 (`bridge-key.json`, `bridge-devices.json`, both 0600). `--no-bridge` turns
@@ -324,3 +326,96 @@ Socket2 state is logged once per distinct status/reason (no recurring retry
 noise). Recovery watches the runtime/Hyprland socket directories and reconnects
 when socket2 is created/replaced. There is no reconnect timer or polling loop.
 A stopped subscription closes its socket and all filesystem watchers.
+
+## Layers and layouts
+
+The local Linux app's Layers page and the CLI share `~/.lattices/workspace.json`.
+Create, assign, remove, rename and delete save pinned windows without losing
+unrelated config fields. The first write backs up an existing file. Layer layout
+choices port the Mac algorithm: In place, Auto, Columns and Master stack.
+
+`layers.activate` and `layers.switch` accept `layer`/`name` or `index`, with
+`focus` or `tile` mode and optional `dryRun: true`. They affect the focused
+display's current desktop. Nonmembers go to `special:lattices`; `layers.reveal`
+restores them to the desktop they came from when it is showing. The app window
+and pinned desktop windows stay visible. `layers-stage-linux.json` retains
+parked windows and the active layer across host restarts. `layers.changed`
+notifies subscribers after editing or switching.
+
+`layers.layout` accepts `{ layer, layout }`, where layout is `none`, `auto`,
+`columns` or `master-stack`. Launch mode, undo, Mac app hiding and project
+companion rules are unavailable. Saved window pins keep their original window
+and process; reopened windows can be added again. App rules use Linux window
+classes. `LATTICES_WORKSPACE_DIR` can select a separate development workspace.
+
+## Virtual computer use
+
+The local app's **Overview → Virtual space** view starts a headless Sway desktop
+and previews it without switching the physical desktop. Its worker has a private
+Wayland socket, runtime directory, D-Bus session and persistent virtual pointer.
+No physical display or input device is attached. Wayland apps still run as the current
+user and share its filesystem; this is a separate desktop session.
+
+Install `sway`, `grim`, `wtype` and `dbus-run-session`. OCR also needs `tesseract`.
+For a portable development runtime, `LATTICES_VIRTUAL_SWAY` names the Sway binary
+(with `swaymsg` beside it), and `LATTICES_VIRTUAL_LIBRARY_PATH` supplies its library
+path. Normal installations need neither variable.
+
+| Method | Parameters / result |
+|--------|---------------------|
+| `computer.virtual.start` | Optional `width`, `height`; default 1280 × 800, range 640 × 480 to 2560 × 1600 |
+| `computer.virtual.status` | Availability, running state, dimensions and virtual windows with their own `wid` values |
+| `computer.virtual.launch` | `app`: `browser`, `terminal` or an executable on PATH; optional `args` for an executable |
+| `computer.virtual.capture` | Whole desktop PNG in base64 with width, height and timestamp |
+| `computer.virtual.stop` | Closes the virtual apps, compositor and private D-Bus session |
+
+The browser preset uses Chromium or Chrome with a separate persistent profile in
+`~/.lattices/virtual-space/browser`; terminal uses `foot`. Start, launch, stop and
+input require the existing `drive` scope for remote clients. Status, capture and
+observe are read operations.
+
+Add `space: "virtual"` to `computer.click`, `doubleClick`, `rightClick`, `aim`,
+`scroll`, `drag`, `typeText`, `pressKey`, `hotkey` or `observe`. Leaving `space`
+out targets the physical desktop. Any other explicit value is rejected. Input
+stages by default; `treatment: "execute"` runs it. Virtual targets resolve only
+against the virtual window list. `xRatio`/`yRatio` address that desktop or a target
+window; drag uses absolute `fromX`/`fromY` and `toX`/`toY`. Observe returns OCR for
+the whole virtual desktop and optionally its PNG (`image: true`); it does not
+crop to a target window or region. Host tmux sessions cannot be input targets.
+
+```sh
+lats call computer.virtual.start
+lats call computer.virtual.launch '{"app":"browser"}'
+lats call computer.click '{"space":"virtual","xRatio":0.5,"yRatio":0.5,"treatment":"execute"}'
+lats call computer.typeText '{"space":"virtual","text":"hello","treatment":"execute"}'
+lats call computer.observe '{"space":"virtual","image":true}'
+lats call computer.virtual.stop
+```
+
+`virtual.changed` announces starts, launches, stops and failures. The app previews
+at two frames per second only while the virtual view is visible. The virtual
+desktop belongs to the host; closing the app leaves it running. Stopping the host
+also stops the virtual session. Existing physical windows are not moved into it.
+
+### Virtual action caller deadlines
+
+Virtual input uses an end-to-end deadline, not just a worker timeout. RPC callers
+must include an absolute Unix-millisecond deadline in the request envelope for
+executed virtual input and virtual app launch:
+
+    {"id":"click-1","method":"computer.click","deadline":1792123000000,"params":{"space":"virtual","x":100,"y":100,"treatment":"execute"}}
+
+Use Date.now() + budgetMs, not the example timestamp. CLI daemonCallTo, the
+published CUA SDK transport, and the Linux app backend supply this automatically.
+A transport mutation without a deadline is rejected before it can be queued.
+The host clamps the caller's deadline to its shorter internal limit, carries it
+to the worker, and cancels queued requests when their connection closes.
+
+The app's 5-second input budget therefore expires in the worker too, even when
+OCR is still running. The worker acknowledges cancellation of unstarted input.
+Already-started work or unconfirmed cancellation reports **outcome uncertain;
+do not retry blindly**. Known mutation clients wait a bounded 1.5-second receipt
+grace after the action deadline; this is cancellation/receipt time, not extra
+permission to start input. On a network failure without an authoritative receipt,
+other clients must also treat the outcome as uncertain. Caller/server clocks must
+be synchronized for absolute deadlines.

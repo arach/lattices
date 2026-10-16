@@ -239,6 +239,7 @@ bun install
 bun link
 bun run check
 bun run test
+bun run linux:app # Linux desktop app (Bun + Quickshell)
 ```
 
 The native app uses Swift 6.2 / Xcode 26+. See [AGENTS.md](https://github.com/lattices-dev/lattices/blob/main/AGENTS.md) for component boundaries and build instructions.
@@ -260,3 +261,5 @@ The native app uses Swift 6.2 / Xcode 26+. See [AGENTS.md](https://github.com/la
 ## License
 
 [MIT](https://github.com/lattices-dev/lattices/blob/main/LICENSE)
+
+Linux setup: [apps/linux/README.md](apps/linux/README.md).

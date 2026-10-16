@@ -2,7 +2,10 @@ import { hostname as osHostname } from "node:os";
 import * as acted from "./acted.ts";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
+import { registerVirtualSpaceEndpoints } from "./virtual-space.ts";
+import { registerLayerEndpoints } from "./layers.ts";
 import * as ownedDisplays from "./displays.ts";
+
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
@@ -29,6 +32,7 @@ export interface HostContext {
   startedAt: number;
   clientCount: () => number;
   /** Broadcast an event to subscribed connections (server.ts). */
+
   emit?: (event: string, data: unknown) => void;
 }
 
@@ -111,6 +115,8 @@ const defaultEndpointDeps = { resolveTarget: desktop.resolveTarget, plan: hypr.p
 export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies, overrides: Partial<typeof defaultEndpointDeps> = {}) {
   const actionDeps = { ...defaultEndpointDeps, ...overrides };
   const moveDeps = actionDeps;
+  registerLayerEndpoints(router, ctx.emit);
+
   // computer.acted after every executed computer.* action; never fails the action.
   const announce = async (sample: acted.Action | (() => Promise<acted.Action>)) => {
     if (!ctx.emit) return;
@@ -1056,4 +1062,5 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       return asJson({ data: buffer.toString("base64"), offset, length, size, eof: offset + length >= size });
     },
   });
+  return { virtualSpace: registerVirtualSpaceEndpoints(router, ctx.emit) };
 }
