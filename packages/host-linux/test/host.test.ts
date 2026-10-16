@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { admit, isLoopback } from "../src/auth.ts";
 import { grimArgs, imageSize } from "../src/capture.ts";
-import { isVirtual, toDisplays, toWindow, widFor, type Window } from "../src/desktop.ts";
+import { isVirtual, toDisplays, toWindow, widFor, type Display, type Window } from "../src/desktop.ts";
 import { clear as clearOrigins, get as getOrigin, record as recordOrigin, returnOps } from "../src/moves.ts";
 import { monitorRule, nextName, validName } from "../src/displays.ts";
+
+import { keyLabel, toEvent, typeLabel } from "../src/acted.ts";
 
 import { spell, type HyprClient, type HyprMonitor, type HyprWorkspace } from "../src/hyprland.ts";
 import { keysym, parseShortcut, wtypeKeyArgs } from "../src/input.ts";
@@ -263,7 +265,8 @@ describe("event subscriptions", () => {
 
   test("unsubscribe removes from all, or stops everything without a list", () => {
     const conn = { identity: { user: "u", node: "n" }, events: null as Set<string> | null };
-    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["host.healthChanged", "windows.changed"]);
+    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["computer.acted", "host.healthChanged", "windows.changed"]);
+
     expect(handleSubscription(conn, "events.unsubscribe", {})?.events).toEqual([]);
     expect(handleSubscription(conn, "windows.list", {})).toBeNull();
   });
@@ -327,6 +330,32 @@ describe("virtual displays", () => {
   test("headless outputs have no EDID identity", () => {
     expect(isVirtual({ make: "", model: "", serial: "" })).toBe(true);
     expect(isVirtual({ make: "Dell Inc.", model: "AW3425DWM", serial: "JWLC444" })).toBe(false);
+
+  });
+});
+
+describe("computer.acted", () => {
+  const display = (displayIndex: number, x: number, w: number, h: number) =>
+    ({ displayIndex, displayId: `D${displayIndex}`, name: "", virtual: false, frame: { x, y: 0, w, h }, visibleFrame: { x, y: 0, w, h }, scale: 1, currentSpaceId: 1, spaces: [] }) as Display;
+  const displays = [display(0, 0, 1440, 900), display(1, 1440, 3440, 1440)];
+
+  test("a pointer action lands on the display under its point, with a ratio for the overlay", () => {
+    expect(toEvent({ kind: "click", label: "Click", point: { x: 3160.4, y: 720 }, wid: 7 }, displays, undefined, 1)).toEqual({
+      kind: "click", label: "Click", point: { x: 3160, y: 720 }, to: null, wid: 7, element: null,
+      displayIndex: 1, ratio: { x: 0.5, y: 0.5 }, toRatio: null, at: 1,
+    });
+  });
+
+  test("a keyboard action uses the target window's display and has no point", () => {
+    const e = toEvent({ kind: "hotkey", label: keyLabel("p", ["ctrl", "shift"], 1) }, displays, 0, 1);
+    expect(e.label).toBe("ctrl+shift+p");
+    expect(e.displayIndex).toBe(0);
+    expect(e.point).toBeNull();
+  });
+
+  test("typed text never reaches the label", () => {
+    expect(typeLabel(12, true)).toBe("Type 12 chars + Enter");
+    expect(typeLabel(1, false)).toBe("Type 1 char");
 
   });
 });
