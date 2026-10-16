@@ -105,13 +105,13 @@ enum BrowseMenu {
 
     private static func layersSection() -> [OmniResult] {
         let workspace = WorkspaceManager.shared
-        guard let layers = workspace.config?.layers else { return [] }
+        let layers = workspace.layers
         var out: [OmniResult] = []
         let windowCounts = workspace.layerWindowCounts()
         for (index, layer) in layers.enumerated() {
             let i = index
             let count = windowCounts.indices.contains(i) ? windowCounts[i] : 0
-            let isActive = i == workspace.activeLayerIndex
+            let isActive = i == workspace.activeLayerSelection
             let facts: [String?] = [LayerOverview.chord(forIndex: i), LayerOverview.countNote(count), isActive ? "active" : nil]
             let subtitle = facts.compactMap { $0 }.joined(separator: " · ")
             if count > 0 {
@@ -136,18 +136,13 @@ enum BrowseMenu {
                 })
             }
         }
-        let stage = LayerStage.shared.status()
-        if !stage.parked.isEmpty || !stage.hiddenApps.isEmpty {
-            out.append(OmniResult(
-                kind: .layer,
-                title: "Show All Windows",
-                subtitle: "\(stage.parked.count) parked · \(stage.hiddenApps.count) hidden",
-                icon: "eye",
-                score: 0
-            ) {
-                DispatchQueue.global(qos: .userInitiated).async { LayerStage.shared.showAll() }
-            })
-        }
+        out.insert(OmniResult(
+            kind: .layer,
+            title: "Exit Layers",
+            subtitle: workspace.layerRecoveryMessage ?? "Show all windows and turn layer focus off",
+            icon: "rectangle.portrait.and.arrow.right",
+            score: 0
+        ) { workspace.exitLayers() }, at: 0)
         return out
     }
 

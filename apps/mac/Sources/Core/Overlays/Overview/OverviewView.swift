@@ -49,6 +49,10 @@ struct OverviewView: View {
         VStack(spacing: 0) {
             scopeBar
             Divider().overlay(Palette.border)
+            if let error = model.actionError {
+                moveError(error)
+                Divider().overlay(Palette.border)
+            }
             VStack(spacing: 0) {
                 stage
                 Divider().overlay(Palette.border)
@@ -64,15 +68,6 @@ struct OverviewView: View {
                     .background(Palette.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(10)
-                } else if let error = model.actionError {
-                    Text(error)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.kill)
-                        .padding(10)
-                        .background(Palette.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding(10)
-                        .accessibilityLabel("Window move failed: \(error)")
                 }
             }
             // The list lies over the stage and tray, under the scope bar
@@ -110,6 +105,45 @@ struct OverviewView: View {
             model.detach(canvas: controller)
             model.stop()
         }
+    }
+
+    private func moveError(_ error: OverviewMoveError) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+                .font(.system(size: 16))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(error.title).font(.system(size: 13, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                if let destination = error.destination {
+                    Text("\(error.windowTitle.isEmpty ? error.app : error.windowTitle) → \(destination.title)")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textMuted)
+                        .lineLimit(2)
+                }
+                Text(error.destination == nil ? error.failure.details : error.failure.message)
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup("Technical details") {
+                    Text(error.failure.details)
+                        .font(Typo.mono(10))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Try Again") { model.retryMove() }
+                .disabled(!model.canRetryMove)
+            Button("Dismiss") { model.dismissActionError() }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .foregroundStyle(Palette.text)
+        .padding(14)
+        .background(Palette.surface)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: Scope bar
@@ -896,13 +930,6 @@ private struct OverviewSelectionPanel: View {
                 focused(row)
             }
             bulkActions
-            if let error = model.actionError {
-                Text(error)
-                    .font(Typo.mono(8))
-                    .foregroundColor(Palette.kill)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

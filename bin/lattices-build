@@ -77,7 +77,7 @@ cmd_package() {
     fi
 
     # Companions are downloaded on demand and cached, never shipped in the package.
-    LATTICES_SKIP_HELPERS=1 bun "$ROOT/bin/lattices-app.ts" build
+    LATTICES_BUILD_CHANNEL=release LATTICES_SKIP_HELPERS=1 bun "$ROOT/bin/lattices-app.ts" build
     show_app "Package app bundle" "$RELEASE_BUNDLE"
     green "Package bundle ready: $RELEASE_BUNDLE"
 }

@@ -1,137 +1,89 @@
 <p align="center">
-  <img src="assets/hero.svg" width="100%" alt="lattices — macOS developer workspace manager" />
+  <img src="https://raw.githubusercontent.com/lattices-dev/lattices/main/assets/hero.svg" width="100%" alt="Lattices: workspaces for agents (and you)" />
 </p>
 
-<h1 align="center">lattices</h1>
+<h1 align="center">Lattices</h1>
+
+<p align="center"><strong>Workspaces for agents (and you)</strong><br />
+Arrange your windows, move between projects, and give your agents the same desktop controls you use.</p>
 
 <p align="center">
-  <strong>macOS developer workspace manager.</strong><br />
-  Tile windows, keep tmux sessions, search the screen, and drive the desktop from a local daemon.
-</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/@arach/lattices"><img alt="npm" src="https://img.shields.io/npm/v/@arach/lattices.svg" /></a>
-  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-informational.svg" /></a>
-  <a href="https://github.com/arach/lattices/releases/latest"><img alt="macOS" src="https://img.shields.io/badge/platform-macOS-black.svg" /></a>
-  <a href="https://www.npmjs.com/package/@arach/lattices"><img alt="node" src="https://img.shields.io/node/v/@arach/lattices.svg" /></a>
+  <a href="https://lattices.dev">Website</a> ·
+  <a href="https://lattices.dev/docs/quickstart">Get started</a> ·
+  <a href="https://lattices.dev/docs/api">Agent API</a> ·
+  <a href="https://github.com/lattices-dev/lattices/releases/latest">Download for Mac</a>
 </p>
 
 <p align="center">
-  <a href="https://lattices.dev">lattices.dev</a>
-  · <a href="https://lattices.dev/family">what it can do</a>
-  · <a href="https://lattices.dev/docs/overview">docs</a>
-  · <a href="https://github.com/arach/lattices/releases/latest">releases</a>
-  · <a href="https://lattices.dev/docs/api">agent API</a>
+  <a href="https://www.npmjs.com/package/@lattices/lattices"><img alt="npm version" src="https://img.shields.io/npm/v/@lattices/lattices.svg" /></a>
+  <a href="https://github.com/lattices-dev/lattices/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-informational.svg" /></a>
+  <img alt="macOS 26 or later" src="https://img.shields.io/badge/macOS-26%2B-black.svg" />
 </p>
 
 <p align="center">
-  <img src="assets/readme-demo.gif" width="100%" alt="lattices — agent session, gesture preview, and synced workspace state" />
+  <img src="https://raw.githubusercontent.com/lattices-dev/lattices/main/assets/readme-demo.gif" width="100%" alt="Lattices arranging windows with gesture previews and shared workspace state" />
 </p>
 
-Native Swift menu bar app (`apps/mac`) plus a TypeScript CLI (`bin/lattices.ts`). The app hosts a localhost WebSocket daemon. Agents, scripts, and the CLI use the same surface. A Linux machine can run `packages/host-linux` and speak that protocol, so a Mac can list, place, and visit its windows.
+Lattices is a native macOS app with a command bar, window tiling, workspace layers, screen search, and persistent terminal sessions. Use hotkeys and mouse gestures yourself, or let an agent inspect and arrange the same workspace through `lats` and the local API.
 
-```
-■ □ □     tile      search     spaces
-■ □ □     sessions  daemon     OCR
-■ ■ ■     layers    voice      agents
-```
+**Explore the companion apps:** [Action](products/action/README.md) · [Blink](products/blink/README.md) · [Speech / Voice](products/voice/README.md)
 
-<table>
-<tr>
-<td><strong>Tile</strong><br>Halves, quarters, thirds, and <code>CxR</code> grids from hotkeys, CLI, or the palette.</td>
-<td><strong>Search</strong><br>Titles, apps, session tags, terminal cwd, and indexed OCR.</td>
-<td><strong>Spaces</strong><br>Ctrl+← / Ctrl+→ switches Spaces as an instant cut.</td>
-</tr>
-<tr>
-<td><strong>Sessions</strong><br><code>.lattices.json</code> panes, optional tmux, ensure/prefill on reattach.</td>
-<td><strong>Daemon</strong><br><code>ws://127.0.0.1:9399</code>, localhost only, no auth.</td>
-<td><strong>OCR</strong><br>Vision + FTS5. Quick scan every 60s, deep scan every 2h.</td>
-</tr>
-<tr>
-<td><strong>Layers</strong><br>Cmd+Option+1–9 aims a layer. Release switches. Slot 5 shows the current one.</td>
-<td><strong>Voice</strong><br>Ctrl+Option+Space opens the command bar. Hold Option while it is key to speak (Vox, in-process on <code>:9398</code>).</td>
-<td><strong>Agents</strong><br>CLI, <code>daemonCall</code>, and installable skills.</td>
-</tr>
-</table>
+## Start with your desktop
 
-Without tmux you still get the app, tiling, layers, OCR, search, and the daemon. tmux adds persistent sessions.
+1. [Download Lattices for Mac](https://github.com/lattices-dev/lattices/releases/latest), open the DMG, and drag Lattices to Applications.
+2. Launch Lattices and grant Accessibility access when prompted. Enable Screen Recording for screen capture and OCR.
+3. Press **Control+Option+Left** to tile the frontmost window to the left half of your screen. Press **Control+Option+Space** to open the command bar.
 
-## Install
+The app requires macOS 26 or later. tmux is optional: window management, layers, search, and the agent API work without it.
 
-The menu bar app is macOS 26+. The published package is `@arach/lattices` (`@lattices/cli` is an old name, stuck at 0.11.1). The `lats` and `lattices` binaries are one command, and the launcher runs it with [Bun](https://bun.sh). The docs use `lats`.
+| Your workspace | What Lattices does |
+| --- | --- |
+| Windows | Tile halves, thirds, quarters, and grids with hotkeys, gestures, the command bar, or the API. |
+| Projects | Group windows into workspace layers and return to a working context. |
+| Spaces | Move between macOS desktops with instant switching and a desktop preview. |
+| Search | Find windows by title, app, terminal directory, session, and indexed screen text. |
+| Terminals | Define panes in `.lattices.json` and reattach to persistent tmux sessions. |
+| Agents | Expose the same workspace through a local API and installable skills. |
 
-The npm package is `darwin` only. Linux does not install the menu bar app. A Hyprland machine runs the host in [`packages/host-linux`](packages/host-linux), below.
+## Install the command line tools
+
+Install [Bun](https://bun.sh) to run the CLI. You can install the package with npm (Node 18+) or Bun:
 
 ```sh
-npm install -g @arach/lattices
-lats app                # build or download the menu bar companion
-```
-
-From a checkout:
-
-```sh
-git clone https://github.com/arach/lattices
-cd lattices && bun link
+npm install -g @lattices/lattices
 lats app
+lats
 ```
 
-One-shot installer (Homebrew, tmux, Bun, CLI, menu bar app). The script itself rejects macOS older than 13. The app requires 26.
+`lats app` launches the bundled menu bar app. Bare `lats` shows workspace status. Both `lats` and `lattices` run the same CLI.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+lats search api --deep
+lats tile right
+lats map
 ```
 
-`lats app install` registers a user LaunchAgent so the companion starts at login.
+The npm package is macOS-only. For a Hyprland machine, use the [Linux host](#linux-host).
 
-Grant **Accessibility** and **Screen Recording** under System Settings → Privacy & Security. Instant Space switching, window targeting, OCR, and mouse gestures need them.
+The [setup guide](https://lattices.dev/docs/quickstart) covers Homebrew, login startup, permissions, and the one-command installer.
 
-### Linux host
+### Existing installations
 
-`packages/host-linux` exposes a Hyprland desktop to other Lattices machines over Tailscale. It uses the Mac daemon envelope (`{id, method, params}`) on port 9399, bound to this machine's tailnet IPv4 address and to `127.0.0.1`. Loopback is trusted. Every other client pairs once. The companion bridge listens on the same addresses, port 5287.
+`@arach/lattices` and `@lattices/cli` remain supported compatibility packages. They receive the same CLI, exports, and bundled app as `@lattices/lattices`. Update using the package name you already installed. From version 0.14.1, `lats app upgrade` also preserves that package name.
 
-Needs Bun, a Hyprland session, and Tailscale. The visiting cursor also needs Quickshell for the overlay and `wtype` for keystrokes.
+The repository moved from `arach/lattices` to `lattices-dev/lattices`. Existing Git remotes and release links redirect to the new location. Your configuration, sessions, and app identity stay the same. See the [migration guide](https://lattices.dev/docs/namespace-migration).
 
-```sh
-bun install --cwd packages/host-linux --ignore-scripts --omit optional
-bun packages/host-linux/src/main.ts          # or: bun packages/host-linux/src/main.ts --describe
-```
+## Keep a terminal session alive
 
-`packages/host-linux/systemd/` has user units. The tray installer fills in this checkout and the current Bun, links the units, and enables the tray. The host stays off at login until you enable it.
-
-```sh
-bun packages/host-linux/scripts/install-tray.ts
-systemctl --user enable --now lattices-host   # when you want the host at login
-```
-
-From a Mac that already has `lats`:
-
-```sh
-lats hosts add archie archie
-lats --host archie pair                        # approve the code on archie
-lats --host archie call host.describe
-lats --host archie call windows.place '{"app":"firefox","placement":"left"}'
-```
-
-Pairing defaults to scope `act`. `--read-only` and `--drive` ask for less or more, and a wider scope needs a new approval. `clients.approve` and `clients.deny` are accepted only on the host's loopback. `lats hosts` lists `~/.lattices/hosts.json` and `LATTICES_HOSTS`. `lats hosts --discover` probes your own online tailnet devices for port 9399.
-
-Bring the host pointer home without a visit:
-
-```sh
-lats --host archie call mouse.home
-```
-
-More of the protocol, the tray, and capability probes: [`packages/host-linux/README.md`](packages/host-linux/README.md).
-
-## First session
+Install tmux (`brew install tmux`), then:
 
 ```sh
 cd ~/your-project
-lats init               # writes .lattices.json
-lats app                # menu bar app and daemon
-lats start              # create or attach (tmux); alias: lats tmux
+lats init
+lats start
 ```
 
-Bare `lats` is a status screen. It does not attach.
+`lats init` creates `.lattices.json`. `lats start` creates or reattaches the project's tmux session; `lats tmux` is an alias. Close your terminal and run `lats start` again to return to the session.
 
 ```json
 {
@@ -143,228 +95,168 @@ Bare `lats` is a status screen. It does not attach.
 }
 ```
 
-No config: if `package.json` has `dev`, `start`, `serve`, or `watch`, two panes (shell on the left, that script on the right). Package manager follows `bun.lock` / `bun.lockb`, then `pnpm-lock.yaml`, `yarn.lock`, then npm. Otherwise one shell pane.
+## Linux host
+
+The [Linux host](packages/host-linux/README.md) exposes a Hyprland desktop to other Lattices machines over Tailscale. A Mac can inspect, place, and visit its windows through the same API envelope (`{id, method, params}`). The host listens on its tailnet IPv4 address and `127.0.0.1`, port 9399. Non-loopback clients must pair; loopback is trusted. The visit bridge uses port 5287.
+
+Install Bun and Tailscale, then run these commands inside a Hyprland session. Visiting also requires Quickshell for the cursor overlay and `wtype` for keyboard input.
 
 ```sh
-lats search api --deep
-lats place frontend left
-lats tile right
-lats map
+bun install --cwd packages/host-linux --ignore-scripts --omit optional
+bun packages/host-linux/src/main.ts
 ```
 
-`--deep` and `--all` both search the index and live terminal tabs (cwd, titles, tmux, running commands).
+For tray controls and systemd user units:
+
+```sh
+bun packages/host-linux/scripts/install-tray.ts
+systemctl --user enable --now lattices-host
+```
+
+The tray installer enables the tray. The second command also enables the host at login. Keep the checkout in place because the units use its paths.
+
+From a Mac with `lats` installed:
+
+```sh
+lats hosts add archie archie
+lats --host archie pair              # approve the code on archie
+lats --host archie call host.describe
+lats --host archie call windows.place '{"app":"firefox","placement":"left"}'
+```
+
+Pairing requests the `act` scope by default. Use `--read-only` or `--drive` to request a different scope. Wider access requires a new approval. `lats hosts` lists configured hosts; `lats hosts --discover` probes your online tailnet devices. See the [host README](packages/host-linux/README.md) for capabilities and pairing controls.
 
 ## Machines
 
-Workspace → Machines lists this Mac, visit pairings, and Lattices hosts (`hosts` is still a page name). The canvas draws local displays to scale and each paired machine from the displays `host.describe` reported, or one generic 1920×1080 screen when a host has none. Drag a machine against a display. The stretch of edge it touches is where the pointer crosses, so two machines can share a side. A drag of a local display is a draft. **Apply** starts a 15-second trial. **Keep** accepts it (`lats visit arrangement keep`). **Revert** restores the previous origins (`lats visit arrangement revert`). Opening the page does not arm a visit.
+Open **Workspace → Machines** to arrange this Mac's displays and paired machines. Drag a machine against a display to choose the edge where your pointer crosses. Moving a local display creates a draft: **Apply** starts a 15-second trial, **Keep** accepts it, and **Revert** restores the previous arrangement. Opening Machines does not arm a visit.
 
-A visit lends this Mac's mouse and keyboard to a paired machine. The Mac pointer parks. The host draws a coral visitor labelled with this machine's name, and keys type there. The host's own pointer stays put until a click, scroll, or drag. Arm edge crossing, then push past the edge:
+A visit lends this Mac's mouse and keyboard to a paired machine. Pair the visit bridge, choose an edge, then arm crossing:
 
 ```sh
-lats visit pair archie              # bridge defaults to archie:5287; approve on archie
-lats visit side archie left         # or: lats visit place archie 3440 0
+lats visit pair archie               # bridge defaults to archie:5287; approve there
+lats visit side archie left
 lats visit on
-lats visit archie                   # enter now, at the middle of the touching span
+lats visit archie                    # enter immediately
 ```
 
-`lats visit pair` can also take `host:port` and then a side (`left`, `right`, `top`, `bottom`). The default side is `right`. A visit ends when the visitor leaves by the edge it entered, the channel drops, or either side hears nothing for 6 seconds. Control+Option+Command+Home and `lats visit end` end it and leave the Mac pointer where it was parked. `lats home` and `lats mouse home` end it and move the pointer to the center of the main display (menu bar: Bring Cursor Home).
-
-`lats visit off` disarms crossing. `lats visit status` prints pairings. `lats visit forget archie` drops one.
-
-A display marked elsewhere stays off this Mac's pointer. Pushing toward it visits the machine assigned to it.
+The host draws a labelled visitor cursor while the Mac pointer stays parked. Return through the entry edge, press **Control+Option+Command+Home**, or run `lats visit end` to finish. `lats home` also returns the pointer to the center of the Mac's main display. A disconnected or unresponsive visit ends automatically.
 
 ```sh
+lats visit off                      # disarm edge crossing
+lats visit status
 lats visit screens
-lats elsewhere 2 archie             # number or a case-insensitive name fragment
+lats elsewhere 2 archie             # this display shows the paired machine
 lats here 2
-```
-
-The menu bar app can receive visits. That stays off until you enable it. The Machines switch is "Let other machines visit this Mac".
-
-```sh
-lats visit host on
+lats visit host on                  # explicitly allow visits to this Mac
 lats visit host off
-```
-
-`lats machines` merges this machine, `~/.lattices/hosts.json`, and visit pairings: reachable or not, OS, version, commit, display count, pairing, placement. `--json` too.
-
-```sh
-lats bring dell                     # every other display's windows onto this one
+lats machines                      # local machine, configured hosts, and visit pairings
+lats @archie call windows.list      # API call on a configured host
+lats bring dell                     # bring other displays' windows to this display
 lats bring --undo
-lats main dell                      # 15-second trial
+lats main dell                      # try a different main display for 15 seconds
 lats main dell --keep
-lats @archie windows                # daemon command on a configured host; @local is here
-lats @archie call windows.list
 ```
 
-`lats @<host>` only runs commands that call the daemon. Anything else is local-only. The Mac daemon still binds `127.0.0.1:9399` only, so `@host` reaches a machine that is actually listening at the address in `~/.lattices/hosts.json` or `LATTICES_HOSTS`. The Linux host does. Visit pairing is separate from that file. Add machine in the app can write a host, start a visit pairing, or both.
-
-[`docs/visit.md`](docs/visit.md).
+Visit pairing and API host configuration are separate. `lats @<host>` forwards daemon commands to a configured address; it does not make a Mac's loopback daemon remotely reachable. Read the [visit guide](docs/visit.md) for placement, receiving visits, and arrangement recovery.
 
 ## Keyboard
 
-Hyper is Control+Option+Shift+Command. Caps Lock hold → Hyper, tap → Escape (on by default; Settings → General → Keyboard remaps).
+These are the default bindings. Hyper means Control+Option+Shift+Command.
 
 | Shortcut | Action |
 | --- | --- |
-| **Ctrl+← / Ctrl+→** | Instant Space switch (Mission Control slide hotkeys stay off while this is on) |
-| **Ctrl+Option+arrows** | Tile the frontmost window to a half. With the aim HUD already up, arrows set the aim and releasing Ctrl+Option applies. Two arrows aim a corner |
-| **Ctrl+Option+1–9** | Tile to that cell of the 3×3 matrix (number row or numpad) |
-| **Ctrl+Option+Shift+1 / 2 / 3** | Tile thirds |
-| **Ctrl+Option+G** | 4×4 grid placement |
-| **Ctrl+Option+V** | Fill an open 3×2 cell |
-| **Ctrl+Option+mouse** | Aim HUD; release to tile, stay centered to cancel |
-| **Ctrl+Option+Space** | Command bar |
-| **Cmd+Option+1–9** | Aim the layer in that slot. Release Cmd+Option to switch. 5 shows the current layer. Numpad digits hit the same slots |
-| **Hyper+L** | Overview |
+| **Control+Left / Right** | Switch Spaces instantly |
+| **Control+Option+arrows** | Tile the frontmost window to a half |
+| **Control+Option+1–9** | Place the window in a cell of the 3×3 matrix |
+| **Control+Option+Shift+1 / 2 / 3** | Tile thirds |
+| **Control+Option+Space** | Open the command bar |
+| **Command+Option+1–9** | Aim a workspace layer; release to switch. Slot 5 shows the current layer |
 | **Hyper+1** | Workspace home |
-| **Hyper+G** | In-place window tools |
-| **Ctrl+Cmd+M** | Hands-off mode |
+| **Hyper+L** | Overview |
 
-Voice Command is a rebindable shortcut with no default binding. Hold Option while the command bar is key to speak. Middle-drag up sends Hyper+D, which fires only after that shortcut is bound.
+Voice Command is rebindable and has no default shortcut. Hold Option while the command bar has keyboard focus to speak. See [App and shortcuts](https://lattices.dev/docs/app) for the remaining bindings.
 
-Inside a tmux session: prefix is Ctrl+B. `d` detach, arrows move panes, `z` zoom, `[` scroll.
+## Give your agents workspace access
 
-Only bare Ctrl+arrows are claimed for Spaces. Ctrl+Option+arrows still tile.
+Install the family skills:
 
-## Mouse
-
-Hold a button, draw, release. Defaults live in `~/.lattices/mouse-shortcuts.json` (Settings → Shortcuts → Mouse Gestures).
-
-| Gesture | Default |
-| --- | --- |
-| Middle-drag **left** / **right** | Previous / next Space |
-| Middle-drag **down** | Screen map |
-| Middle-drag **up** | Sends Hyper+D (the Voice Command shortcut) |
-| Back-button **circle** | macOS area screenshot (Cmd+Shift+4) |
-
-Browsers keep native middle-click and side-button behavior. Rules are data: `mouse.shortcuts.upsert` over the daemon, no Swift change required. See [`docs/mouse-gestures.md`](docs/mouse-gestures.md).
-
-## Architecture
-
-```
-  agents / scripts / CLI
-            │
-            │  ws://127.0.0.1:9399     voice :9398
-            ▼
-┌───────────────────────┐     ┌─────────────┐
-│  Menu bar app         │────►│  OCR        │
-│  SwiftUI / AppKit     │     │  Vision+FTS5│
-│  hosts the daemon     │     └─────────────┘
-└───────────┬───────────┘
-            │
-     ┌──────┴──────┐
-     ▼             ▼
-  SkyLight      tmux
-  Spaces        (optional)
-  CG → AX → AppleScript
+```sh
+npx skills add lattices-dev/lattices --all --global --yes
 ```
 
-- Session names are `<basename>-<sha256-6chars>` of the absolute path. CLI (Node `crypto`) and app (Swift `CryptoKit`) must match.
-- Terminal windows are found by a `[lattices:session-name]` tag in the tmux title (`set-titles-string`).
-- Focus falls through CGWindowList → Accessibility → AppleScript.
-- Space switching uses private SkyLight APIs loaded with `dlopen` at runtime.
-
-```
-apps/mac/              menu bar app + daemon (127.0.0.1:9399)
-bin/                   lattices CLI, app helper, MCP (`lats mcp`), daemon client
-packages/host-linux/   Hyprland host and visitor (tailnet :9399, bridge :5287)
-swift/                 LatticesTerminalKit, DeckKit
-docs/                  user + agent docs
-skills/                lattices, action, voice, blink
-products/              Action, Blink, Voice (separate signed apps)
-apps/site/             lattices.dev
-```
-
-## Agent API
-
-The menu bar process binds `127.0.0.1` only. Any local process can connect. That is intentional.
-
-```js
-import { daemonCall, isDaemonRunning } from '@arach/lattices'
-
-if (!(await isDaemonRunning())) {
-  throw new Error('start the app with: lats app')
-}
-
-await daemonCall('sessions.launch', { path: '/Users/you/dev/api' })
-await daemonCall('windows.place', { session: 'api-a1b2c3', placement: 'right' })
-const hits = await daemonCall('windows.search', { query: 'api' })
-```
+Inspect the live API or call it directly:
 
 ```sh
 lats daemon status
-lats call windows.search '{"query":"api"}'
 lats call api.schema
+lats call windows.search '{"query":"api"}'
 ```
 
-Do not guess session hashes. Read them from `lats sessions --json` or `tmux.list`. Full catalog: [docs/api](https://lattices.dev/docs/api).
+For a script, install the package in your project (`npm install @lattices/lattices`):
+
+```js
+import { daemonCall, isDaemonRunning } from '@lattices/lattices'
+
+if (!(await isDaemonRunning())) {
+  throw new Error('Start Lattices with: lats app')
+}
+
+const windows = await daemonCall('windows.search', { query: 'api' })
+console.log(windows)
+```
+
+The app hosts the API at `ws://127.0.0.1:9399`. It is local-only and has no authentication; any process on your Mac can connect. Read the [API reference](https://lattices.dev/docs/api) and [agent guide](https://lattices.dev/docs/agents) for methods, events, and permissions.
+
+You can also expose the CLI as a stdio MCP server:
 
 ```sh
-lats mcp                              # stdio MCP server
+lats mcp
 lats mcp --list
-lats mcp --print-config claude        # claude, codex, or kimi
+lats mcp --print-config claude       # also: codex or kimi
 ```
 
-Agent config names the binary, not a checkout path: `lattices` with args `["mcp"]`. Toolsets are `browser` and `hosts` (`--toolsets` limits which load). The Mac daemon has no auth because it binds loopback. The Linux host does not: a tailnet client pairs before any method runs.
+Use the installed `lattices` binary with arguments `["mcp"]` in agent configuration. The `browser` and `hosts` toolsets can be selected with `--toolsets`. See the [MCP guide](docs/mcp.md).
 
-## Product family
+## The Lattices family
 
-This repository ships four products. [lattices.dev/family](https://lattices.dev/family) walks the story end to end.
+Each product has its own app, README, and source directory. Start here:
 
-| Product | Role | Root |
-| --- | --- | --- |
-| **Lattices** | Workspace: tiling, sessions, search, daemon | this tree |
-| **[Action](https://lattices.dev/action)** | Computer use: observe, act, record | [`products/action`](products/action) |
-| **[Blink](https://lattices.dev/blink)** | Spatial notes as floating panels | [`products/blink`](products/blink) |
-| **[Speech](https://lattices.dev/speech)** | Playback for agents: queue, readalong HUD. Dictation stays in the menu bar app | [`products/voice`](products/voice) |
+| Product | What it adds |
+| --- | --- |
+| **[Lattices](https://lattices.dev)** | A programmable workspace: windows, projects, screen search, and terminals. |
+| **[Action](products/action/README.md)** | Computer use for agents: observe apps, operate browser surfaces, and record what happened. |
+| **[Blink](products/blink/README.md)** | Spatial notes: editable notes that live in floating windows on your desktop. |
+| **[Speech / Voice](products/voice/README.md)** | Spoken agent output with queued playback and a readalong HUD. |
 
-Action and Blink stay separately signed. Do not fold them into the Lattices menu bar app. `lats action` installs and talks to Action.app (`ws://127.0.0.1:4319`).
+Action, Blink, and Voice have independent installation and runtime lifecycles. Their source lives together under [`products/`](products/). [Explore the family](https://lattices.dev/family).
 
-## Skills
+## Build and contribute
 
 ```sh
-npx skills add arach/lattices --all --global --yes
-```
-
-| Skill | Use |
-| --- | --- |
-| [`lattices`](skills/lattices/SKILL.md) | Tile, sessions, search, daemon |
-| [`action`](skills/action/SKILL.md) | Observe, resolve, act, record |
-| [`voice`](skills/voice/SKILL.md) | Speaking and spoken commands |
-| [`blink`](skills/blink/SKILL.md) | Spatial notes |
-
-`npx skills add arach/lattices --list` lists without installing.
-
-## Docs
-
-| Page | Contents |
-| --- | --- |
-| [Quickstart](https://lattices.dev/docs/quickstart) | Install and first session |
-| [App](https://lattices.dev/docs/app) | Palette, tiling, settings, terminals |
-| [Config](https://lattices.dev/docs/config) | `.lattices.json`, CLI, tile slots |
-| [Concepts](https://lattices.dev/docs/concepts) | Naming, tags, SkyLight, ensure/prefill |
-| [Layers](https://lattices.dev/docs/layers) | Layers and tab groups |
-| [OCR](https://lattices.dev/docs/ocr) | Scan, search, agent usage |
-| [API](https://lattices.dev/docs/api) | Daemon RPC |
-| [Agents](https://lattices.dev/docs/agents) | Agent-facing artifacts |
-| [Visit](docs/visit.md) | Visiting cursor, Machines, pairing |
-| [MCP](docs/mcp.md) | `lats mcp` |
-| [Linux host](packages/host-linux/README.md) | Hyprland host, systemd, visitor |
-
-`lats help` for the CLI. In-repo: `docs/`, `AGENTS.md`.
-
-## Develop
-
-```sh
+git clone https://github.com/lattices-dev/lattices.git
+cd lattices
+bun install
 bun link
-bun run check           # tsc + Swift app build
-bun run test            # CLI + dependency-free tests
-lats app build          # rebuild the companion
+bun run check
+bun run test
 ```
 
-App package: `apps/mac` (macOS 26+). The CLI launcher runs under Bun. Linux host tests: `bun test --cwd packages/host-linux`.
+The native app uses Swift 6.2 / Xcode 26+. See [AGENTS.md](https://github.com/lattices-dev/lattices/blob/main/AGENTS.md) for component boundaries and build instructions.
+
+| Source | Purpose |
+| --- | --- |
+| `apps/mac` | SwiftUI/AppKit app and local daemon |
+| `bin` | CLI, app helper, API client, and MCP server |
+| `packages/host-linux` | Hyprland host, visit bridge, and tray |
+| `swift` | LatticesTerminalKit and DeckKit |
+| `products` | Companion products |
+| `skills` | Agent skills |
+| `apps/site` | Website and documentation |
+
+## Documentation
+
+[Quickstart](https://lattices.dev/docs/quickstart) · [App and shortcuts](https://lattices.dev/docs/app) · [Configuration](https://lattices.dev/docs/config) · [Layers](https://lattices.dev/docs/layers) · [Screen search](https://lattices.dev/docs/ocr) · [API](https://lattices.dev/docs/api) · [Visits](docs/visit.md) · [Linux host](packages/host-linux/README.md)
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/lattices-dev/lattices/blob/main/LICENSE)
