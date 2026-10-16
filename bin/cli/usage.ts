@@ -53,6 +53,7 @@ Machines and displays:
   lats display gather <display> [--to <display>]  Move a display's windows onto another, laid out as they were
   lats display restore [display]  Put gathered windows back where they sat
   lats display lend <display>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
+  lats display assignments  Apps macOS holds to one desktop (Dock › Assign To)
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
   lats --host <name> pair Pair with a lattices-host (approve on the host)
@@ -99,6 +100,7 @@ Usage:
                          List synthesized terminal instances
   lats capture window [wid]  Save a screenshot run artifact
   lats capture display [index]  Save a full-display screenshot run artifact
+  lats --host <name> capture display [index]  Screenshot another host, saved on this Mac
   lats capture record window [wid]  Record a window/visible region as a .mov artifact
   lats capture record-command --app Scout -- <cmd>
                          Record a target while running an action command
@@ -123,7 +125,8 @@ Usage:
                          Snap a window into a named or grid placement slot
   lats distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
   lats layer [name|slot] [--tile|--launch]  List layers, or switch as ⌘⌥ does; slots are the pad's 1-4, 6-9 (daemon required)
-  lats layer reveal        Show All: put back parked windows, unhide apps a switch hid
+  lats layer exit          Exit Layers: restore windows and turn layer focus off
+  lats layer reveal        Alias for exit (also: off, show-all)
   lats layer classic [--one-space]  Every window back as if Lattices weren't running (⌘⌥0); --one-space also gathers onto one desktop per display
   lats layer undo                   Take back the last layer edit (⌘⌥Z); no window moves until the next switch
   lats layer create <name> [wid:N ...] [--json '<specs>']  Save windows (default: on screen) as a new layer

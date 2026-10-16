@@ -8,7 +8,7 @@ final class LongCardModel: ObservableObject {
     @Published var visit = VisitController.shared.status()
     @Published var screens: [DisplayGather.Screen] = []
     @Published var layers: [String] = []
-    @Published var activeLayer = 0
+    @Published var activeLayer: Int?
     /// Closes the card; actions that take you somewhere else close it first.
     var dismiss: () -> Void = {}
     var hideLong: () -> Void = {}
@@ -17,7 +17,7 @@ final class LongCardModel: ObservableObject {
         visit = VisitController.shared.status()
         screens = DisplayGather.screens()
         layers = WorkspaceManager.shared.config?.layers?.map(\.label) ?? []
-        activeLayer = WorkspaceManager.shared.activeLayerIndex
+        activeLayer = WorkspaceManager.shared.activeLayerSelection
     }
 
     func run(_ method: String, _ params: JSON? = nil, close: Bool = true) {

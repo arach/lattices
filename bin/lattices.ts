@@ -3480,7 +3480,10 @@ switch (command) {
     const actionScript = resolve(import.meta.dir, "lattices-action.ts");
     try {
       execFileSync("bun", [actionScript, ...args.slice(1)], { stdio: "inherit" });
-    } catch { /* exit code forwarded */ }
+    } catch (error) {
+      process.exitCode = typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status: number }).status : 1;
+    }
     break;
   }
   case "-h":

@@ -34,6 +34,8 @@ enum ActionHostCommand: String {
     case guidedCalculatorDemo = "guided-calculator-demo"
     case quitApp = "quit-app"
     case status
+    case capabilities
+    case isolationContext = "isolation-context"
     case request
     case openAccessibilitySettings = "open-accessibility-settings"
     case openScreenRecordingSettings = "open-screen-recording-settings"
@@ -43,6 +45,7 @@ enum ActionHostCommand: String {
     case stageOverlay = "stage-overlay"
     case drape
     case agentLayer = "agent-layer"
+    case agentDisplay = "agent-display"
     case blinkClick = "blink-click"
     case blinkType = "blink-type"
     case blinkKey = "blink-key"
@@ -3839,14 +3842,14 @@ func waitForFinishedSignal(at path: String) throws {
     }
 }
 
-/// Quit every running copy of Action and wait for it to actually be gone.
+/// Quit the launcher without disconnecting persistent monitors or stopping independent tasks.
 ///
 /// Asks first with `terminate()` — the quit Apple Event, which lets the app run
 /// `applicationWillTerminate` and stop its agent child — and escalates to
 /// `forceTerminate()` only for whatever is still standing when the grace period
 /// runs out. A single healthy instance answers in about 0.15s; the long tail is
 /// an instance that is wedged, and forcing that one is the point.
-func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
+func terminateRunningActionApps(timeout: TimeInterval = 6, logger: DebugLogger) -> Bool {
     let bundleId = ActionAppIdentity.mainBundleIdentifier
 
     // Everything except this process. `bun run native:host -- quit-app` runs the same
@@ -3855,10 +3858,17 @@ func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
     // before it can write its reply, and the caller sees a hang followed by
     // "ActionHost did not write a reply file".
     let selfPid = ProcessInfo.processInfo.processIdentifier
-    func running() -> [NSRunningApplication] {
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
-            .filter { $0.processIdentifier != selfPid }
-    }
+    // Snapshot only positively identified launchers. Unknown processes are preserved;
+    // a shared bundle ID is not ownership of a display, recording, or another task.
+    let launchers = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+        .filter { $0.processIdentifier != selfPid }
+        .filter { app in
+            let args = ActionProcessRole.arguments(pid: app.processIdentifier)
+            let quit = ActionProcessRole.isLauncher(args)
+            logger.log("quit-app: pid=\(app.processIdentifier) role=\(args?.dropFirst().first ?? "unknown") action=\(quit ? "quit-launcher" : "preserve-helper")")
+            return quit
+        }
+    func running() -> [NSRunningApplication] { launchers.filter { !$0.isTerminated } }
 
     guard !running().isEmpty else {
         return true
@@ -3905,6 +3915,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         throw ActionHostError.unsupportedOS("drape should be started via runUICommand")
     case .agentLayer:
         throw ActionHostError.unsupportedOS("agent-layer should be started via runUICommand")
+    case .agentDisplay:
+        throw ActionHostError.unsupportedOS("agent-display should be started via runUICommand")
     case .demoCursorOverlay:
         throw ActionHostError.unsupportedOS("demo-cursor-overlay should be started via runUICommand")
     case .agentCursorOverlay:
@@ -3917,16 +3929,20 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         let runner = GuidedCaptureSessionRunner(writer: writer, logger: logger, options: options)
         try await runner.run()
     case .quitApp:
-        let didQuit = terminateRunningActionApps()
+        let didQuit = terminateRunningActionApps(logger: logger)
         try writer.write(
             ActionHostResponse(
                 status: didQuit ? "quit" : "error",
                 outputPath: nil,
                 detail: didQuit
-                    ? "terminated-running-action-apps"
+                    ? "terminated-action-launchers-preserved-independent-helpers"
                     : "action-still-running-after-force-terminate"
             )
         )
+    case .capabilities:
+        try writer.write(ActionBuildProvenance.current)
+    case .isolationContext:
+        try writer.write(ActionIsolationContext.capture())
     case .status:
         try writer.write(snapshot(promptAccessibility: false))
     case .request:
@@ -4629,11 +4645,11 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
 @main
 struct ActionHostMain {
     static func main() {
-        if Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
+        let options = CommandOptions(arguments: CommandLine.arguments)
+        if options.command != .isolationContext, Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
             ActionPreferenceMigration.migrateIfNeeded()
         }
 
-        let options = CommandOptions(arguments: CommandLine.arguments)
         let writer = ResponseWriter(replyFile: options.options["reply-file"])
         let logger = DebugLogger(path: options.options["debug-log"])
         let command = options.command ?? .launcher
@@ -4707,6 +4723,19 @@ struct ActionHostMain {
                     let controller = try ActionDrapeController(options: options)
                     try controller.run()
                 } catch {
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
+        case .agentDisplay:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionAgentDisplayController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionHostResponse(status: "error", outputPath: nil, detail: error.localizedDescription))
                     FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
                     Darwin.exit(1)
                 }

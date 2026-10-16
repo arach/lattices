@@ -240,6 +240,19 @@ write_info_plist() {
             </array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.lattices.overview-window</string>
+            <key>UTTypeDescription</key>
+            <string>Lattices Overview Window</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -419,7 +432,6 @@ cmd_link() {
     fi
     cd "$ROOT"
     bun link
-    bun link @lattices/cli
     if command -v lattices >/dev/null 2>&1; then
         green "Linked. \`lattices\` -> $(command -v lattices)"
     else
@@ -433,7 +445,9 @@ cmd_unlink() {
         red "bun not found."
         exit 1
     fi
-    bun remove -g @lattices/cli >/dev/null 2>&1 || true
+    for package in @lattices/lattices @arach/lattices @lattices/cli; do
+        bun remove -g "$package" >/dev/null 2>&1 || true
+    done
     green "Unlinked."
 }
 

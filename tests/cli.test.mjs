@@ -814,6 +814,22 @@ test("layer list: slot digits and resolver window counts", () => {
   assert.match(layerListLines(layers, 0)[0], /3 entries/);
 });
 
+test("layer list: exiting removes the active mark and keeps configured layers", () => {
+  const layers = [
+    { index: 0, label: "Web", projectCount: 3 },
+    { index: 4, label: "Docs", projectCount: 1 },
+  ];
+  const activeLines = layerListLines(layers, 4);
+  const exitedLines = layerListLines(layers, null);
+  assert.deepEqual(exitedLines, [
+    "  [1] Web   3 entries",
+    "  [6] Docs  1 entry",
+  ]);
+  assert.equal(activeLines[0], exitedLines[0]);
+  assert.equal(activeLines[1].slice(0, exitedLines[1].length), exitedLines[1]);
+  assert.ok(exitedLines.every((line) => !line.includes("active")));
+});
+
 test("layer switch: the pad's centre fails without touching the daemon", () => {
   const { status, stdout, stderr } = runCliRaw(["layer", "5"]);
   const combined = `${stdout}\n${stderr}`;

@@ -582,6 +582,7 @@ struct OverviewTray: View {
         let title: String
         let detail: String
         let rows: [OverviewRow]
+        let destination: OverviewMoveDestination?
     }
 
     var groups: [Group] {
@@ -595,13 +596,14 @@ struct OverviewTray: View {
                 let state = onMap ? "on the map" : space.isCurrent ? "live" : (space.mapNote ?? "not showing")
                 let group = Group(
                     id: "\(space.spaceId)", title: space.title,
-                    detail: "\(monitor.display.name) · \(state)", rows: space.rows
+                    detail: "\(monitor.display.name) · \(state)", rows: space.rows,
+                    destination: OverviewWindowDrop.destination(on: monitor.display, spaceId: space.spaceId)
                 )
                 if onMap { shown.append(group) } else { rest.append(group) }
             }
         }
         if !model.projection.unplaced.isEmpty {
-            rest.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced))
+            rest.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced, destination: nil))
         }
         return shown + rest
     }
@@ -622,9 +624,12 @@ struct OverviewTray: View {
                             ForEach(groups) { group in
                                 groupView(group)
                                     .frame(width: width, height: geo.size.height, alignment: .topLeading)
+                                    .contentShape(Rectangle())
                                     .overlay(alignment: .trailing) {
                                         Rectangle().fill(Palette.border).frame(width: 1)
                                     }
+                                    .modifier(OverviewWindowDropTarget(model: model, destination: group.destination))
+                                    .accessibilityHint(group.destination.map { "Drop a window to move it to \($0.title)" } ?? "")
                             }
                         }
                     }
