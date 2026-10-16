@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname } from "node:path";
+import { pairingHeaders } from "../../../../../bin/host-pairing.js";
 import type {
   BackdropPreset,
   Bounds,
@@ -70,7 +71,13 @@ export class RemoteHostClient {
   private open(): Promise<WebSocket> {
     if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve(this.socket);
     this.opening ??= new Promise<WebSocket>((resolve, reject) => {
-      const socket = new WebSocket(this.url);
+      const endpoint = new URL(this.url);
+      const headers = Object.fromEntries(pairingHeaders(
+        { host: endpoint.hostname, port: Number(endpoint.port || 9399) }, endpoint.pathname
+      ).map((line) => line.split(": ", 2)));
+      // Action runs in Bun, whose WebSocket constructor accepts upgrade headers.
+      const Client = WebSocket as unknown as new (url: string, options: { headers: Record<string, string> }) => WebSocket;
+      const socket = new Client(this.url, { headers });
       socket.onopen = () => {
         this.socket = socket;
         this.opening = null;

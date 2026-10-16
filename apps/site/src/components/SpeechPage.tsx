@@ -1,8 +1,8 @@
 import { SiteHeader } from './SiteChrome'
 import { SpeechMark } from './SpeechMark'
 
-const downloadUrl = 'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
-const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/voice'
+const downloadUrl = 'https://github.com/lattices-dev/lattices/releases/download/speech-v0.2.0/Speech.dmg'
+const sourceUrl = 'https://github.com/lattices-dev/lattices/tree/main/products/voice'
 
 const features = [
   {
@@ -303,7 +303,7 @@ export default function SpeechPage() {
         <nav aria-label="Footer">
           <a href="/docs/overview">Docs</a>
           <a href="/blog">Blog</a>
-          <a href="https://github.com/arach/lattices">GitHub</a>
+          <a href="https://github.com/lattices-dev/lattices">GitHub</a>
         </nav>
       </footer>
     </div>

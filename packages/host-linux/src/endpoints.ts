@@ -1,11 +1,12 @@
 import { hostname as osHostname } from "node:os";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
-import { hasCommand, run } from "./exec.ts";
+import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
 import * as moves from "./moves.ts";
+import { bringCursorHome, type CursorHomeDependencies } from "./cursor-home.ts";
 import * as ocr from "./ocr.ts";
 import * as record from "./record.ts";
 import { closeSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
@@ -13,9 +14,11 @@ import { sep } from "node:path";
 import { parsePlacement, type Rect } from "./placement.ts";
 import { Router, RouterError, bool, num, requireStr, str, type Json, type Params } from "./router.ts";
 import * as tmux from "./tmux.ts";
-import { virtualPointerAvailable } from "./wayland.ts";
+import { capabilities, capabilityHealth, refreshCapabilities } from "./host-capabilities.ts";
+export { capabilities, refreshCapabilities } from "./host-capabilities.ts";
 
-export const VERSION = "0.1.0";
+import { BUILD_IDENTITY, VERSION } from "./build-info.ts";
+export { VERSION } from "./build-info.ts";
 
 export interface HostContext {
   bindHost: string;
@@ -23,27 +26,6 @@ export interface HostContext {
   tailnetName?: string;
   startedAt: number;
   clientCount: () => number;
-}
-
-/** Capabilities from LAT-013. Probed once at start; `refreshCapabilities` re-probes. */
-export const capabilities = new Set<string>();
-
-export async function refreshCapabilities() {
-  capabilities.clear();
-  if (hypr.available() && hasCommand("hyprctl")) {
-    capabilities.add("windows.read");
-    capabilities.add("windows.place");
-    capabilities.add("spaces.read");
-  }
-  if (hasCommand("grim")) capabilities.add("capture.still");
-  if (hasCommand("wayvnc")) capabilities.add("capture.live");
-  if (hasCommand("wtype")) capabilities.add("input.keys");
-  if (await virtualPointerAvailable()) capabilities.add("input.pointer");
-  if (hasCommand("tmux")) capabilities.add("sessions.tmux");
-  if (hasCommand("tesseract") && capabilities.has("capture.still")) capabilities.add("ocr");
-  if (hasCommand("ffmpeg") && capabilities.has("capture.still")) capabilities.add("capture.record");
-  if (capabilities.has("windows.read")) capabilities.add("apps.open");
-  return capabilities;
 }
 
 const asJson = (value: unknown) => value as Json;
@@ -121,7 +103,15 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
   return result;
 }
 
-export function registerEndpoints(router: Router, ctx: HostContext) {
+export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies) {
+  router.register({
+    method: "mouse.home",
+    description: "Bring the cursor to the focused real monitor",
+    access: "mutate",
+    capability: "spaces.read",
+    returns: "Object with ok, monitor, x and y",
+    handler: async () => asJson(await bringCursorHome(cursorDeps)),
+  });
   // ── Host ────────────────────────────────────────────────────────────
   router.register({
     method: "daemon.status",
@@ -135,6 +125,7 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
         uptime: (Date.now() - ctx.startedAt) / 1000,
         clientCount: ctx.clientCount(),
         version: VERSION,
+        build: BUILD_IDENTITY,
         platform: "linux",
         windowCount: snap?.windows.length ?? 0,
         tmuxSessionCount: sessions.length,
@@ -157,16 +148,32 @@ export function registerEndpoints(router: Router, ctx: HostContext) {
     access: "read",
     returns: "Object with platform, hostname, displays, capabilities, methods",
     handler: async () => {
-      const displays = capabilities.has("spaces.read") ? (await desktop.snapshot()).displays : [];
+      if (!capabilities.has("spaces.read") && capabilityHealth["spaces.read"]?.available === false && hypr.available()) {
+        await refreshCapabilities();
+      }
+      let displays: desktop.Display[] = [];
+      if (capabilities.has("spaces.read")) {
+        try { displays = (await desktop.snapshot()).displays; }
+        catch (error) {
+          const reason = (error as Error).message;
+          for (const name of ["windows.read", "windows.place", "spaces.read", "apps.open", "capture.still", "capture.live", "input.pointer", "ocr", "capture.record"]) {
+            capabilities.delete(name);
+            capabilityHealth[name] = { available: false, reason };
+          }
+        }
+      }
       return asJson({
         platform: "linux",
         compositor: hypr.available() ? "hyprland" : null,
         hostname: osHostname(),
         tailnetName: ctx.tailnetName ?? null,
         version: VERSION,
+        build: BUILD_IDENTITY,
         address: ctx.bindHost,
         displays,
         capabilities: [...capabilities].sort(),
+        capabilityHealth,
+        eventStream: hypr.getEventStreamHealth(),
         methods: router.available().map((e) => e.method).sort(),
         keyMapping: "command and control map to ctrl; option to alt; super, meta and win to the logo key",
       });

@@ -135,6 +135,13 @@ final class OverviewRenderTests: XCTestCase {
         ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews(in:))
     }
 
+    func testMoveFailurePresentation() throws {
+        try render("overview-move-error", width: 1120, height: 740, sidebar: false) { model in
+            XCTAssertTrue(model.move(1, toSpace: 5))
+            XCTAssertNotNil(model.actionError)
+        }
+    }
+
     /// The sidebar's long list scrolls on its own at any width: a wheel
     /// moves a list that overflows.
     private func assertListsScroll(width: CGFloat, file: StaticString = #filePath, line: UInt = #line) throws {
@@ -179,8 +186,8 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertEqual(differing, 0, "opening the list moved the stage at \(width)", file: file, line: line)
     }
 
-    /// Selecting a window on the right-hand map may paint its capsule, but
-    /// must not reserve a toolbar row and shift any other display map.
+    /// Selecting a window on the right-hand map puts its actions in the row
+    /// under the maps, and must not shift any display map.
     private func assertSelectionActionsOverlay(width: CGFloat, height: CGFloat,
                                                file: StaticString = #filePath, line: UInt = #line) throws {
         func pixels(selected: Bool) throws -> NSBitmapImageRep {
@@ -193,7 +200,7 @@ final class OverviewRenderTests: XCTestCase {
         let unselected = try pixels(selected: false)
         let selected = try pixels(selected: true)
         // The left monitor and its Desktop strip, clear of the right map's
-        // capsule, scope bar and selection tray, must be pixel-identical.
+        // scope bar, actions row and tray, must be pixel-identical.
         let clearWidth = Int(width * 0.22)
         let clearHeight = Int(height - OverviewTray.height - OverviewStage.hintHeight - 12)
         var differing = 0
@@ -257,6 +264,8 @@ final class OverviewRenderTests: XCTestCase {
     func testWideSidebar() throws { try render("wide-sidebar", width: 1590, height: 688, sidebar: true) }
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
     func testLaptopSidebar() throws { try render("laptop-sidebar", width: 1110, height: 648, sidebar: true) }
+    func testWideSelected() throws { try render("wide-selected", width: 1760, height: 760, sidebar: false) { $0.select(15) } }
+    func testLaptopSelected() throws { try render("laptop-selected", width: 1110, height: 648, sidebar: false) { $0.select(15) } }
     func testWideFullWindow() throws { try render("wide-full", width: 1760, height: 760, sidebar: false) }
     func testWideLayerSidebar() throws {
         try render("wide-layer-sidebar", width: 1590, height: 688, sidebar: true) { model in
@@ -317,7 +326,9 @@ private struct RenderActions: OverviewActions {
     func distribute(_ windows: [(wid: UInt32, pid: Int32)], displayId: UInt32, shape: [Int]?) {}
     func focus(wid: UInt32, pid: Int32) {}
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32) {}
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {}
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (OverviewMoveFailure?) -> Void) {
+        completion(.init(details: "Destination Desktop move failed: Mission Control didn’t open"))
+    }
     func saveLayer(_ plan: LayerEditPlan) throws {}
     func rearrange(layerId: String) throws {}
 }
