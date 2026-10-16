@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { boundedWait, checkDeadline, deadlineSleep, type CDPSession } from "./transport.ts";
 
@@ -11,15 +12,62 @@ type Director = {
   open(input: Record<string, unknown>): Promise<Status>;
   status(): Promise<Status>;
   actRefusal(): Promise<string | undefined>;
-  close(): Promise<Status>;
-
+  displayStatus(): Promise<{ active: boolean; state: string }>;
 };
 type Runtime = {
+  requireSafety: () => Promise<void>;
   director: Director;
   openWindow: (port: number, bounds: Bounds) => Promise<string>;
   browserConfig: () => { app: string; bundleId: string };
   spacesBinding: (bundleId: string) => Promise<string | undefined>;
 };
+
+type BrowserSafety = {
+  runtimeParity?: { state?: string };
+  native?: { privateLayer?: string; manifest?: { features?: { persistentAgentDisplay?: boolean; namedWorkspaces?: boolean } } | null };
+  safety?: { privateLayer?: { blocked?: boolean; reason?: string } };
+  acceptance?: { privateLayer?: { state?: string; reasons?: string[] } };
+};
+
+/** Consume Action's evidence verification; prepared display state alone is not acceptance. */
+export function requireBrowserSafety(capabilities: BrowserSafety): void {
+  const safety = capabilities.safety?.privateLayer;
+  if (safety?.blocked !== false) {
+    throw new Error(`Action private-layer safety is blocked or unverified: ${safety?.reason ?? "missing safety evidence"}. Refusing background browser work.`);
+  }
+  if (capabilities.runtimeParity?.state !== "matched-source-digest"
+    || capabilities.native?.privateLayer !== "declared-by-build"
+    || capabilities.native.manifest?.features?.persistentAgentDisplay !== true
+    || capabilities.native.manifest.features.namedWorkspaces !== true) {
+    throw new Error("Action browser requires a matched app/runtime with persistent named workspaces. Resolve the selected Action app's provenance before background browser work.");
+  }
+  const acceptance = capabilities.acceptance?.privateLayer;
+  if (acceptance?.state !== "accepted") {
+    throw new Error(`Action private-layer acceptance is ${acceptance?.state ?? "unverified"}: ${acceptance?.reasons?.join(" ") ?? "matching host evidence is required"}. Refusing background browser work.`);
+  }
+}
+
+/** Capability discovery hashes the bundle and invokes a synchronous native context probe.
+ * Keep that read-only work outside the MCP event loop so its deadline can cancel it.
+ */
+export async function readBrowserCapabilities(actionRoot: string, app: string, previous?: BrowserSafety): Promise<BrowserSafety> {
+  checkDeadline();
+  const moduleURL = pathToFileURL(join(actionRoot, "packages/runtime/src/capabilities.ts")).href;
+  const script = `
+    const { actionCapabilities, refreshActionCapabilities } = await import(${JSON.stringify(moduleURL)});
+    const previous = ${JSON.stringify(previous ?? null)};
+    const value = await (previous ? refreshActionCapabilities(previous) : actionCapabilities(${JSON.stringify(actionRoot)}, {
+      bundlePath: ${JSON.stringify(app)}, nativeHostPath: ${JSON.stringify(resolve(actionRoot, "native/engine/scripts/run-app-host.sh"))}
+    }));
+    process.stdout.write(JSON.stringify(value));
+  `;
+  const child = Bun.spawn([process.execPath, "-e", script], { stdout: "pipe", stderr: "pipe" });
+  return boundedWait((async () => {
+    const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+    if (code !== 0) throw new Error(`Action browser safety discovery failed: ${stderr.trim() || `exit ${code}`}`);
+    return JSON.parse(stdout) as BrowserSafety;
+  })(), "Verify Action browser safety", () => child.kill());
+}
 
 export function windowIsOnLayer(window: { left: number; top: number; width: number; height: number }, layer: Bounds): boolean {
   return window.width > 0 && window.height > 0
@@ -32,14 +80,36 @@ export function assertUnpinnedBrowser(bundleId: string, binding: string | undefi
   if (binding) throw new Error(`${bundleId} is assigned to a Desktop and cannot stay on the Action virtual display. Set Dock > Options > Assign To: None, or install/select Action's Chrome for Testing. No browser was launched.`);
 }
 
+export function browserWorkspace(profileDir: string, override?: string): string {
+  const workspace = override ?? `browser-${createHash("sha256").update(resolve(profileDir)).digest("hex").slice(0, 12)}`;
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(workspace)) {
+    throw new Error("ACTION_BROWSER_WORKSPACE must be 1–32 lowercase letters, digits, or hyphens, starting with a letter.");
+  }
+  return workspace;
+}
+
+/** Read-only preflight: never provision a monitor or replace another task. */
+export async function requireBrowserWorkspace(director: Pick<Director, "displayStatus" | "status">, workspace: string): Promise<void> {
+  const display = await director.displayStatus();
+  if (!display.active || display.state !== "ready") {
+    throw new Error(`Action browser workspace ${workspace} has no ready display (${display.state}). During an explicit display setup interval, run: lats action layer prepare --workspace ${workspace}. No browser was launched.`);
+  }
+  if ((await director.status()).active) {
+    throw new Error(`Action workspace ${workspace} already has an active task. Close it explicitly or select another prepared ACTION_BROWSER_WORKSPACE. No browser was launched.`);
+  }
+}
+
 /** Reuse Action's layer director and browser window creation, not a second display implementation.
- * A profile-local state root avoids replacing an operator's unrelated Action layer.
- * The native layer watches Chrome's PID, so shared MCP owners can exit independently.
+ * Use a named workspace in the same registry as explicit Action preparation.
+ * Chrome owns the task's lifetime; the prepared monitor has a separate owner.
  */
 export class HeadedBrowserLayer {
   private runtime?: Runtime;
   private chromePid?: number;
-  constructor(private actionRoot: string, private profileDir: string) {}
+  readonly workspace: string;
+  constructor(private actionRoot: string, private profileDir: string) {
+    this.workspace = browserWorkspace(profileDir, process.env.ACTION_BROWSER_WORKSPACE);
+  }
 
   requiredFor(pid: number | undefined): boolean {
     if (!pid) return false;
@@ -56,12 +126,20 @@ export class HeadedBrowserLayer {
     }
     const { AgentLayerDirector } = await import(pathToFileURL(join(runtimeRoot, "agent-layer.ts")).href);
     const { openBrowserWindow, layerBrowserConfig, spacesBinding } = await import(pathToFileURL(join(runtimeRoot, "agent-layer-browser.ts")).href);
+    // Verify the exact app that runHost launches, including custom app paths.
+    // Discovery only reads provenance and invokes the read-only isolation-context command.
+    let capabilities: BrowserSafety | undefined;
+    const requireSafety = async () => {
+      capabilities = await readBrowserCapabilities(this.actionRoot, app, capabilities);
+      requireBrowserSafety(capabilities);
+      checkDeadline();
+    };
     const director: Director = new AgentLayerDirector("unused", {
-      root: join(this.profileDir, ".agent-layer"),
+      workspace: this.workspace,
       runHost: async (args: string[]) => {
         checkDeadline();
         // Run the installed signed app via Launch Services, never auto-build/reinstall it.
-        // Chrome, not this MCP caller, owns the display's lifetime.
+        // Chrome, not this MCP caller, owns the task's lifetime.
         const owners = args.indexOf("--owner-pids");
         if (owners >= 0) args.splice(owners, 2);
         args.push("--owner-pids", String(this.chromePid), "--idle-timeout", "0");
@@ -82,11 +160,13 @@ export class HeadedBrowserLayer {
         } finally { await rm(dir, { recursive: true, force: true }); }
       },
     });
-    return this.runtime = { director, openWindow: openBrowserWindow, browserConfig: layerBrowserConfig, spacesBinding };
+    return this.runtime = { director, requireSafety, openWindow: openBrowserWindow, browserConfig: layerBrowserConfig, spacesBinding };
   }
 
   async launchApp(override?: string): Promise<string> {
     const runtime = await this.prepare();
+    await runtime.requireSafety();
+    await requireBrowserWorkspace(runtime.director, this.workspace);
     const app = override ?? runtime.browserConfig().app;
     // Ask Launch Services for the actual bundle identity without launching it.
     const identity = Bun.spawn(["/usr/bin/osascript", "-e", `id of application ${JSON.stringify(app)}`], { stdout: "pipe", stderr: "pipe" });
@@ -99,7 +179,8 @@ export class HeadedBrowserLayer {
   }
 
   async status(pid: number): Promise<Status> {
-    const { director } = await this.prepare();
+    const { director, requireSafety } = await this.prepare();
+    await requireSafety();
     const refusal = await director.actRefusal();
     if (refusal) throw new Error(refusal);
     const status = await director.status();
@@ -110,22 +191,18 @@ export class HeadedBrowserLayer {
   }
 
   async open(pid: number): Promise<void> {
+    const { director, requireSafety } = await this.prepare();
+    await requireSafety();
     this.chromePid = pid;
     // Outlive the state file: a closed/lost layer must not silently permit on-screen acts.
     writeFileSync(join(this.profileDir, ".action-layer-pid"), String(pid));
-    const { director } = await this.prepare();
     const existing = await director.status();
     if (existing.active) {
       if (existing.subject?.pid === pid) { await this.status(pid); return; }
-      const previous = existing.subject?.pid;
-      let alive = true;
-      if (previous) { try { process.kill(previous, 0); } catch { alive = false; } }
-      if (alive) throw new Error("This profile's Action layer has a different live owner; refusing to replace it.");
-      // Chrome exited but its layer's owner watcher has not ticked yet.
-      await director.close();
+      throw new Error(`Action workspace ${this.workspace} has a different active task; refusing to replace it.`);
     }
     checkDeadline();
-    await director.open({ pid, windowless: true, width: 1600, height: 1200, pip: false, owner: "detached" });
+    await director.open({ pid, windowless: true, pip: false, owner: "detached" });
     checkDeadline();
     await this.status(pid);
     // A hidden app does not draw even on the layer. It still has no windows here.

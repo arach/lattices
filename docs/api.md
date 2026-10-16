@@ -28,7 +28,7 @@ lats daemon status
 3. Call a method from Node.js:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
@@ -85,6 +85,36 @@ lattices uses a JSON-RPC-style protocol over WebSocket on port **9399**.
 | Missing parameter | A required param was not provided   |
 | Not found       | The referenced resource doesn't exist |
 
+### Method names and aliases
+
+Methods are named `<domain>.<verb>`, with plural domains: `windows.place`,
+`sessions.launch`, `layers.switch` ([LAT-012](proposals/LAT-012-domain-api.md)).
+The pre-LAT-012 names still work as aliases, and `api.schema` lists them under
+`aliases` (old name → new name):
+
+| Old | New |
+|-----|-----|
+| `window.focus/move/place/present/resolve` | `windows.focus/move/place/present/resolve` |
+| `window.pick.start` | `windows.pick` |
+| `window.tile` | `windows.place` (`position` becomes `placement`) |
+| `layer.activate`, `layer.switch` | `layers.activate`, `layers.switch` |
+| `space.optimize` | `spaces.optimize` |
+| `session.*` | `sessions.*` |
+| `group.launch/kill` | `groups.launch/kill` |
+| `tabStacks.list/add/select/layout` | `tabs.list/add/select/layout` |
+| `tabStacks.create`, `tabStacks.delete` | `tabs.stack`, `tabs.unstack` |
+| `lattices.search` | `search.query` |
+| `focus.status/enter/exit/toggle` (Focus Mode) | `solo.status/enter/exit/toggle` |
+| `tmux.sessions`, `tmux.inventory` | `tmux.list`, `tmux.list({ includeOrphans: true })` |
+| `ocr.recent` | `ocr.history` without `wid` |
+| `intents.execute` | `intents.run` |
+| `actions.history`, `actions.undo` | `history.list`, `history.undo` |
+
+Action receipts keep their own `type` values (`window.place`, `window.move`);
+those name the action, not the RPC method. The Node.js `daemonCall()` client
+and LatticesKit retry a new name under its old one when an older daemon
+answers `Unknown method`.
+
 ### Connection lifecycle
 
 - The server starts when the menu bar app launches and stops when it quits.
@@ -95,6 +125,13 @@ lattices uses a JSON-RPC-style protocol over WebSocket on port **9399**.
 - If the server restarts (e.g. after `lats app restart`), existing
   connections are dropped. Clients should reconnect and treat it as
   stateless. There is no session resumption.
+
+### Remote hosts
+
+A Linux machine running `lattices-host` ([LAT-013](proposals/LAT-013-linux-host.md))
+serves the same protocol on its tailnet address, port 9399. Point a client at it
+with `LATTICES_DAEMON_HOST` (and `LATTICES_DAEMON_PORT`), or `lats --host <name>`.
+Call `host.describe` first: it lists the host's platform, capabilities and methods.
 
 ## Node.js client
 
@@ -107,7 +144,7 @@ matching internally.
 Send an RPC call and await the response.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Read-only
 const status = await daemonCall('daemon.status')
@@ -115,8 +152,8 @@ const windows = await daemonCall('windows.list')
 const win = await daemonCall('windows.get', { wid: 1234 })
 
 // Mutations
-await daemonCall('session.launch', { path: '/Users/you/dev/myapp' })
-await daemonCall('window.place', {
+await daemonCall('sessions.launch', { path: '/Users/you/dev/myapp' })
+await daemonCall('windows.place', {
   session: 'myapp-a1b2c3',
   placement: { kind: 'tile', value: 'left' }
 })
@@ -133,7 +170,7 @@ await daemonCall('projects.scan', null, 10000)
 Check if the server is reachable.
 
 ```js
-import { isDaemonRunning } from '@lattices/cli'
+import { isDaemonRunning } from '@lattices/lattices'
 
 if (await isDaemonRunning()) {
   console.log('daemon is up')
@@ -149,7 +186,7 @@ typed SDK facade, which validates params with dependency-free schemas and calls
 the same daemon methods directly.
 
 ```ts
-import { cua } from '@lattices/sdk'
+import { cua } from '@lattices/lattices/cua'
 
 await cua.magicCursor({
   app: 'Scout',
@@ -176,19 +213,18 @@ await cua.click({
 })
 ```
 
-`@lattices/cli/cua` exposes the same CUA module for CLI-adjacent scripts, but
-new app and agent code should use `@lattices/sdk` or `@lattices/sdk/cua` so the
-import names the product surface instead of the CLI package.
+`@lattices/lattices/cua` exposes this typed CUA module. Existing imports from
+`@arach/lattices/cua` and `@lattices/cli/cua` remain supported.
 
 ### Error handling
 
 `daemonCall` throws on errors — always wrap calls in try/catch:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 try {
-  await daemonCall('session.launch', { path: '/nonexistent' })
+  await daemonCall('sessions.launch', { path: '/nonexistent' })
 } catch (err) {
   // err.message is one of:
   //   "Not found"              — resource doesn't exist
@@ -1298,10 +1334,10 @@ sources at an app-owned folder such as `~/Library/Application Support/...`.
 | `deck.manifest` | read | Shared companion deck manifest |
 | `deck.snapshot` | read | Current companion deck runtime snapshot |
 | `deck.perform` | write | Perform a companion deck action |
-| `focus.status` | read | Check whether Focus Mode is active |
-| `focus.enter` | write | Spotlight the frontmost window |
-| `focus.exit` | write | Exit Focus Mode and restore the window |
-| `focus.toggle` | write | Toggle Focus Mode for the frontmost window |
+| `solo.status` | read | Check whether Focus Mode is active |
+| `solo.enter` | write | Spotlight the frontmost window |
+| `solo.exit` | write | Exit Focus Mode and restore the window |
+| `solo.toggle` | write | Toggle Focus Mode for the frontmost window |
 | `daemon.status` | read | Health check and stats |
 | `api.schema` | read | Full API schema for self-discovery |
 | `diagnostics.list` | read | Recent diagnostic entries |
@@ -1358,20 +1394,20 @@ Example:
 }
 ```
 
-#### `focus.status`, `focus.enter`, `focus.exit`, `focus.toggle`
+#### `solo.status`, `solo.enter`, `solo.exit`, `solo.toggle`
 
 Control the same reversible Focus Mode exposed through the **Hyper+Z** chord
-and command palette. `focus.enter` targets the currently frontmost window;
-`focus.exit` restores the exact frame captured on entry.
+and command palette. `solo.enter` targets the currently frontmost window;
+`solo.exit` restores the exact frame captured on entry.
 
 ```bash
-lats call focus.enter
-lats call focus.status
-lats call focus.exit
+lats call solo.enter
+lats call solo.status
+lats call solo.exit
 ```
 
 Each method returns the resulting `active` state. Mutating methods also return
-`ok`; `focus.enter` returns `ok: false` when there is no eligible frontmost
+`ok`; `solo.enter` returns `ok: false` when there is no eligible frontmost
 window.
 
 #### `daemon.status`
@@ -1494,12 +1530,11 @@ Supported action types:
 | `windows.preview` | read | Cached PNG preview for a window |
 | `windows.search` | read | Search windows by query |
 | `spaces.list` | read | macOS display spaces |
-| `window.pick.start` | read | Ask the user to choose one visible window in a read-only Hyperspace survey |
-| `window.place` | write | Place a window or session using a typed placement spec |
-| `window.tile` | write | Compatibility wrapper for session tiling |
-| `window.focus` | write | Focus a window / switch Spaces |
-| `window.move` | write | Move a window to another display, placement slot, or Space |
-| `space.optimize` | write | Optimize a set of windows using an explicit scope and strategy |
+| `windows.pick` | read | Ask the user to choose one visible window in a read-only Hyperspace survey |
+| `windows.place` | write | Place a window or session using a typed placement spec |
+| `windows.focus` | write | Focus a window / switch Spaces |
+| `windows.move` | write | Move a window to another display, placement slot, or Space |
+| `spaces.optimize` | write | Optimize a set of windows using an explicit scope and strategy |
 | `layout.distribute` | write | Compatibility wrapper for visible-window balancing |
 
 #### `desktop.snapshot`
@@ -1681,7 +1716,7 @@ terminal/JSON projection, and visible-surface lifecycle guidance.
 ]
 ```
 
-#### `window.place`
+#### `windows.place`
 
 Canonical window placement mutation. Use this when an agent needs a
 single, typed placement contract across voice, CLI, and daemon clients.
@@ -1717,7 +1752,7 @@ compact `CxR:C,R`. The canonical `grid:` form is 0-indexed; the compact form is
 
 **Returns**: execution receipt including resolved target, placement, and trace.
 
-#### `window.pick.start`
+#### `windows.pick`
 
 Open Hyperspace in a read-only selection mode and wait for the user to choose
 one visible window. Letter hints, Tab/Return, and clicking a survey tile select;
@@ -1736,22 +1771,7 @@ for the duration of the pick.
 Returns `status: "selected"` with a window, or `cancelled`, `timeout`, or
 `unavailable` without one.
 
-#### `window.tile`
-
-Compatibility wrapper for `window.place` when the target is a lattices
-session window.
-
-**Params**:
-
-| Field      | Type   | Required | Description                             |
-|------------|--------|----------|-----------------------------------------|
-| `session`  | string | yes      | Session name                            |
-| `position` | string | yes      | Placement shorthand or grid syntax      |
-
-This method exists for compatibility. New integrations should prefer
-`window.place`.
-
-#### `window.focus`
+#### `windows.focus`
 
 Focus a window — bring it to front and switch Spaces if needed.
 
@@ -1764,70 +1784,71 @@ Focus a window — bring it to front and switch Spaces if needed.
 
 Provide either `wid` or `session`. If `wid` is given, it takes priority.
 
-#### `window.move`
+#### `windows.move`
 
-Move a specific window to another display, into a placement slot, or to a
-different macOS Space. `window.place` stays the canonical placement mutation;
-`window.move` adds the display-to-display move that preserves the window's
-normalized geometry.
+Move a specific window to a display and desktop in one verified operation.
+Without a placement, the window keeps its normalized position and size on the
+target display. A Space ID identifies one desktop on one display; Desktop 2
+on a physical monitor differs from Desktop 2 on a virtual display.
 
 **Params**:
 
-| Field       | Type             | Required | Description                                        |
-|-------------|------------------|----------|----------------------------------------------------|
-| `wid`       | number           | no       | Target CGWindowID (preferred)                      |
-| `session`   | string           | no       | Session name (legacy target)                       |
-| `display`   | number           | no       | Target display index (`spaces.list` `displayIndex`) |
-| `placement` | string \| object | no       | Placement slot on the target display               |
-| `position`  | string           | no       | Alias for `placement`                              |
-| `spaceId`   | number           | no       | Target Space ID (from `spaces.list`)               |
-| `dryRun`    | bool             | no       | Plan and validate without moving the window        |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | number | no | Target CGWindowID (preferred) |
+| `session` | string | no | Session name (legacy target) |
+| `display` | number | no | Target display index from `spaces.list` |
+| `spaceId` | number | no | Absolute target Space ID from `spaces.list` |
+| `placement` | string \| object | no | Placement slot on the target display |
+| `position` | string | no | Alias for `placement` |
+| `dryRun` | bool | no | Validate and plan without moving the window or changing the view |
 
-Provide `wid` or `session` — there is no frontmost fallback — plus at least one
-of `display`, `placement`, or `spaceId`. Invalid combinations are rejected
-synchronously:
+Provide `wid` or `session`, plus at least one of `display`, `spaceId`, or
+`placement`. There is no frontmost-window fallback.
 
-- `spaceId` cannot be combined with `display` or `placement`; move Spaces and
-  geometry in separate calls.
-- An unknown `placement` string or unresolvable `display` index is an error,
-  not a silent default.
+- `spaceId` selects its owning display when `display` is omitted. If both are
+  supplied, the Space must belong to that display. A mismatch is an error.
+- `display` alone selects that display's current desktop. Display indexes
+  resolve through stable display UUIDs.
+- `placement` can accompany either destination. Without a placement, a
+  cross-display move maps the source frame onto the target visible frame and
+  clamps it to fit. A same-display desktop move preserves the frame.
+- Unknown displays, Spaces, and placements are errors. A window must belong
+  to one ordinary desktop; full-screen and multi-Space windows are rejected
+  when their relocation cannot be verified.
 
-**Semantics**:
+For an inactive source desktop, Lattices first carries the window to the
+source display's current desktop. It then moves the window to the target
+display and carries it to the requested desktop. Mission Control can appear
+during these steps. Keep the pointer free until the operation finishes.
 
-- `display` **without** `placement` — the window's normalized `x/y/w/h` within
-  its source display's visible frame is preserved onto the target display's
-  visible frame and clamped to fit. Display indexes resolve to screens through
-  stable display UUIDs, not array order.
-- `display` **with** `placement` (or `placement` alone) — routes through the
-  canonical `window.place` execution path; the receipt carries
-  `compatibilityMethod: "window.move"`.
-- `session` + `spaceId` — waits for `moveWindowToSpace` and returns
-  `{ ok, wid, spaceId, moved, method }` instead of fire-and-forget.
-- `wid` + `spaceId` — synchronous Space move through the CGS primitive. Returns
-  `{ ok, moved, method, fromSpaceIds }`; `method` is `"CGS"` when the window
-  actually moved or `"switch-view"` when macOS denied the move and only the
-  view switched. An unknown `spaceId` is rejected with `Not found`, and CGS
-  being unavailable is an error. `dryRun: true` validates the target and
-  returns `status: "planned"` without touching the window or the view.
-
-**Returns** (geometry moves): an execution receipt with `status`
+**Returns**: an execution receipt with `status`
 (`ok`/`planned`/`blocked`/`failed`), before/target/after frames in `mutations`,
-`sourceDisplay` and `display` (name, index, visible frame), `targetResolution`,
-`verified`, `trace`, and undo metadata. Successful moves are undoable via
-`actions.undo`.
+`sourceDisplay`, `display`, `spaceId`, `fromSpaceIds`, and `afterSpaceIds`.
+`verified` requires `verifiedFrame`, `verifiedDisplay`, and `verifiedSpace`
+to succeed. An AX call or a desktop view switch alone cannot report success.
+A placement receipt retains `action.type: "window.place"` and
+`compatibilityMethod: "window.move"`.
+
+On partial failure, Lattices attempts to restore the original display,
+desktop, and frame. The receipt reports `failureReason`, `rollback`, and the
+observed final state. Successful moves support `actions.undo`, including the
+original desktop. Allow up to 60 seconds for verification and recovery.
 
 ```js
-// Move window 4182 to display 1, keeping its relative size and position
-await daemonCall('window.move', { wid: 4182, display: 1 })
+// Move to the current desktop on display 0, preserving relative geometry.
+await daemonCall('window.move', { wid: 4182, display: 0 }, 60000)
 
-// Move it to display 1 and snap it into the right half
-await daemonCall('window.move', { wid: 4182, display: 1, placement: 'right' })
+// Choose the exact physical display and desktop in one operation.
+await daemonCall('window.move', { wid: 4182, display: 0, spaceId: 3 }, 60000)
 
-// Plan only — validate the move and preview frames without executing
-await daemonCall('window.move', { wid: 4182, display: 1, dryRun: true })
+// Preview a move and placement without changing the window or desktop view.
+await daemonCall('window.move', {
+  wid: 4182, display: 0, spaceId: 3, placement: 'left', dryRun: true
+})
 ```
 
-#### `space.optimize`
+#### `spaces.optimize`
 
 Canonical space-balancing mutation. Use this when the goal is to make
 the current workspace coherent rather than placing one specific window.
@@ -1850,7 +1871,7 @@ affected window IDs, and trace.
 
 #### `layout.distribute`
 
-Compatibility wrapper for `space.optimize` with `scope=visible` and
+Compatibility wrapper for `spaces.optimize` with `scope=visible` and
 `strategy=balanced`.
 
 **Params**: none
@@ -1861,21 +1882,24 @@ Compatibility wrapper for `space.optimize` with `scope=visible` and
 
 | Method | Type | Description |
 |--------|------|-------------|
-| `tmux.sessions` | read | Lattices tmux sessions |
-| `tmux.inventory` | read | All sessions including orphans |
-| `session.launch` | write | Launch a project session |
-| `session.kill` | write | Kill a session |
-| `session.detach` | write | Detach clients from a session |
-| `session.sync` | write | Reconcile session to config |
-| `session.restart` | write | Restart a pane's process |
+| `tmux.list` | read | Lattices tmux sessions, or every session including orphans |
+| `sessions.launch` | write | Launch a project session |
+| `sessions.kill` | write | Kill a session |
+| `sessions.detach` | write | Detach clients from a session |
+| `sessions.sync` | write | Reconcile session to config |
+| `sessions.restart` | write | Restart a pane's process |
 
 All session methods require tmux to be installed.
 
-#### `tmux.sessions`
+#### `tmux.list`
 
 List tmux sessions that belong to lattices.
 
-**Params**: none
+**Params**:
+
+| Field            | Type    | Required | Description |
+|------------------|---------|----------|-------------|
+| `includeOrphans` | boolean | no       | Return every tmux session, including ones lattices does not track |
 
 **Returns**: array of session objects:
 
@@ -1900,13 +1924,8 @@ List tmux sessions that belong to lattices.
 ]
 ```
 
-#### `tmux.inventory`
-
-List all tmux sessions including orphans (sessions not tracked by lattices).
-
-**Params**: none
-
-**Returns**:
+With `includeOrphans: true`, returns every tmux session instead, including
+orphans (sessions not tracked by lattices):
 
 ```json
 {
@@ -1915,9 +1934,9 @@ List all tmux sessions including orphans (sessions not tracked by lattices).
 }
 ```
 
-Both arrays contain session objects (same shape as `tmux.sessions`).
+Both arrays contain session objects (same shape as `tmux.list`).
 
-#### `session.launch`
+#### `sessions.launch`
 
 Launch a new tmux session for a project. If a session already exists,
 it will be reattached. The project must be in the scanned project list —
@@ -1945,7 +1964,7 @@ call `projects.list` to check, or `projects.scan` to refresh.
 within ~4s. **Errors**: `Not found` if the path isn't in the scanned project
 list.
 
-#### `session.kill`
+#### `sessions.kill`
 
 Kill a tmux session by name.
 
@@ -1958,7 +1977,7 @@ Kill a tmux session by name.
 **Returns**: `{ "ok": true, "session": "…", "verified": true }` when the
 session is gone. `ok` / `verified` are false if it is still listed.
 
-#### `session.detach`
+#### `sessions.detach`
 
 Detach all clients from a session (keeps it running).
 
@@ -1968,7 +1987,7 @@ Detach all clients from a session (keeps it running).
 |--------|--------|----------|---------------------|
 | `name` | string | yes      | Session name        |
 
-#### `session.sync`
+#### `sessions.sync`
 
 Reconcile a running session to match its declared `.lattices.json` config.
 Recreates missing panes, re-applies layout, restores labels, re-runs
@@ -1982,7 +2001,7 @@ commands in idle panes.
 
 **Errors**: `Not found` if the path isn't in the project list.
 
-#### `session.restart`
+#### `sessions.restart`
 
 Restart a specific pane's process within a session.
 
@@ -2003,22 +2022,23 @@ Restart a specific pane's process within a session.
 | `projects.scan` | write | Re-scan project directory |
 | `layers.list` | read | Workspace layers, active index, and what switches put away |
 | `layers.members` | read | Each layer's entries and the windows they hold, on any desktop |
-| `layers.reveal` | write | Show All: put back parked windows, unhide apps a switch hid |
+| `layers.exit` | write | Exit layer focus and restore parked windows |
+| `layers.reveal` | write | Compatibility alias for `layers.exit` |
 | `layers.create` | write | Save windows as a new layer |
 | `layers.assign` | write | Add windows to a layer |
 | `layers.unassign` | write | Take windows out of a layer |
 | `layers.rename` | write | Rename a layer |
 | `layers.delete` | write | Delete a layer |
-| `layer.activate` | write | Switch to a workspace layer; `focus`, `tile` or `launch` |
-| `layer.switch` | write | Same as `layer.activate` |
-| `group.launch` | write | Launch a tab group |
-| `group.kill` | write | Kill a tab group |
-| `tabStacks.list` | read | List ephemeral cross-app tab stacks |
-| `tabStacks.create` | write | Create a stack from selected or explicit windows |
-| `tabStacks.add` | write | Add windows to a live stack |
-| `tabStacks.select` | write | Focus a member tab |
-| `tabStacks.layout` | write | Toggle or set tabs/grid layout |
-| `tabStacks.delete` | write | Ungroup without closing windows |
+| `layers.activate` | write | Switch to a workspace layer; `focus`, `tile` or `launch` |
+| `layers.switch` | write | Same as `layers.activate` |
+| `groups.launch` | write | Launch a tab group |
+| `groups.kill` | write | Kill a tab group |
+| `tabs.list` | read | List ephemeral cross-app tab stacks |
+| `tabs.stack` | write | Create a stack from selected or explicit windows |
+| `tabs.add` | write | Add windows to a live stack |
+| `tabs.select` | write | Focus a member tab |
+| `tabs.layout` | write | Toggle or set tabs/grid layout |
+| `tabs.unstack` | write | Ungroup without closing windows |
 
 #### `projects.list`
 
@@ -2055,8 +2075,7 @@ repo or adding a `.lattices.json` config.
 
 #### `layers.list`
 
-List configured workspace layers and the active index. `stage` lists
-what layer switches have put away: parked windows and hidden apps.
+List configured workspace layers and whether layer focus is active.
 
 **Params**: none
 
@@ -2069,16 +2088,56 @@ what layer switches have put away: parked windows and hidden apps.
     { "id": "mobile", "label": "Mobile", "index": 1, "projectCount": 2 }
   ],
   "active": 0,
-  "stage": {
-    "parked": [{ "wid": 4812, "app": "Ghostty", "title": "mini: web · server" }],
-    "hidden": ["Slack"]
-  }
+  "focusActive": true,
+  "rememberedIndex": 0,
+  "stage": { "parked": [], "hidden": [] }
 }
 ```
 
-Returns empty `layers` array if no workspace config is loaded. `stage`
-is read as it stands: a window that closed or was dragged back since the
-last switch can still be listed until something prunes the ledger.
+`active` is `null` after exiting layers. `rememberedIndex` retains the last
+selected layer index; it does not mean that layer focus is active. `stage`
+lists windows parked and apps hidden by Lattices. Returns an empty `layers`
+array if no workspace config is loaded.
+
+#### `layers.exit`
+
+Exit layer focus and restore windows that Lattices parked or hid. Saved
+layer definitions and window desktop assignments remain intact. Apps the
+user hid stay hidden. Select a layer explicitly to enter layer focus again.
+
+**Params**: none
+
+**Returns**:
+
+```json
+{
+  "ok": true,
+  "focusActive": false,
+  "active": null,
+  "unparked": 3,
+  "stillParked": 0,
+  "rescued": 0,
+  "unhidden": ["Slack"],
+  "stillHidden": [],
+  "recoveryPending": false,
+  "stage": { "parked": [], "hidden": [] }
+}
+```
+
+`unparked` counts restored windows. `rescued` counts untracked windows
+recovered from the parking corner. `stillParked` and `stillHidden` report
+restoration that remains pending; `ok` confirms exit, not complete recovery.
+
+A window on an inactive desktop can remain parked until that desktop is
+visible. Lattices retains its saved position and retries restoration when
+you visit the desktop. The exit action does not switch desktops or gather
+windows onto the current desktop. Check `recoveryPending` and `stage` for
+outstanding recovery.
+
+#### `layers.reveal`
+
+Compatibility alias for `layers.exit`, with the same result. The former
+Show All action also exits layer focus.
 
 #### `layers.members`
 
@@ -2172,7 +2231,7 @@ await daemonCall('layers.assign', { layer: 'review', wid: 4321 })
 await daemonCall('layers.unassign', { layer: 'review', wid: 4321 })
 ```
 
-#### `layer.activate`
+#### `layers.activate`
 
 Switch to a workspace layer. With no `mode` it switches as ⌘⌥ does.
 
@@ -2196,12 +2255,12 @@ Provide either `index` or `name`.
 
 **Returns**: execution receipt including resolved layer, mode, and trace.
 
-#### `layer.switch`
+#### `layers.switch`
 
-The same as `layer.activate`, `focus` unless a `mode` is given. It
+The same as `layers.activate`, `focus` unless a `mode` is given. It
 posts a `layer.switched` event.
 
-#### `group.launch`
+#### `groups.launch`
 
 Launch a tab group session.
 
@@ -2213,7 +2272,7 @@ Launch a tab group session.
 
 **Errors**: `Not found` if the group ID doesn't match any configured group.
 
-#### `group.kill`
+#### `groups.kill`
 
 Kill a tab group session.
 
@@ -2230,14 +2289,14 @@ Lattices run. If `windowIds` is omitted, create/add uses the latest multi-window
 selection from Hyperspace.
 
 ```bash
-lats call tabStacks.create '{"name":"Research","placement":"top-left"}'
-lats call tabStacks.layout '{"mode":"grid"}'
-lats call tabStacks.select '{"index":1}'
-lats call tabStacks.layout '{"mode":"tabs"}'
-lats call tabStacks.delete '{}'
+lats call tabs.stack '{"name":"Research","placement":"top-left"}'
+lats call tabs.layout '{"mode":"grid"}'
+lats call tabs.select '{"index":1}'
+lats call tabs.layout '{"mode":"tabs"}'
+lats call tabs.unstack '{}'
 ```
 
-`tabStacks.create` needs at least two live windows. You may instead pass
+`tabs.stack` needs at least two live windows. You may instead pass
 `{"windowIds":[123,456]}`. The optional `id` on add/select/layout/delete defaults
 to the active group. Layout mode is `tabs`, `grid`, or `toggle`; selecting uses a
 zero-based `index` or `windowId`.
@@ -2387,7 +2446,7 @@ Search terminal instances by various criteria.
 |--------|------|-------------|
 | `ocr.snapshot` | read | Current OCR results for all visible windows |
 | `ocr.search` | read | Full-text search across OCR history |
-| `ocr.history` | read | OCR timeline for a specific window |
+| `ocr.history` | read | OCR timeline for one window, or all windows |
 | `ocr.scan` | write | Trigger an immediate OCR scan |
 
 See [Screen OCR](/docs/ocr) for configuration, scan schedules, and storage details.
@@ -2437,13 +2496,14 @@ Full-text search across OCR history using SQLite FTS5.
 
 #### `ocr.history`
 
-Get the OCR timeline for a specific window, ordered by most recent first.
+Get the OCR timeline for a specific window, or across every window when
+`wid` is omitted, ordered by most recent first.
 
 **Params**:
 
 | Field   | Type   | Required | Description                |
 |---------|--------|----------|----------------------------|
-| `wid`   | number | yes      | CGWindowID                 |
+| `wid`   | number | no       | CGWindowID; omit for every window |
 | `limit` | number | no       | Max results (default 50)   |
 
 #### `ocr.scan`
@@ -2468,6 +2528,12 @@ They have no `id` field — listen for messages with an `event` field.
 | `layer.switched` | Active workspace layer changes |
 | `ocr.scanComplete` | OCR scan cycle finishes |
 | `processes.changed` | Developer processes start or stop |
+
+A connection receives every event until it filters them. `events.subscribe`
+takes `{ "events": ["windows.changed"] }` (or `["*"]` for all again);
+`events.unsubscribe` removes names, or every event when called without a
+list. Both act on the connection they arrive on and return its current
+filter. Linux hosts (LAT-013) push `windows.changed` and `spaces.changed`.
 
 #### `windows.changed`
 
@@ -2521,16 +2587,16 @@ is available at ws://127.0.0.1:9399.
 - CLI: `lats search myproject`, `lats search myproject --deep`, or `lats search myproject --all` (same as `--deep`)
 
 ### Actions
-- Focus a window: `daemonCall('window.focus', { wid: 1234 })`
-- Place a window: `daemonCall('window.place', { session: 'name', placement: 'left' })`
-- Launch a project: `daemonCall('session.launch', { path: '/absolute/path' })`
-- Switch layers: `daemonCall('layer.activate', { name: 'web' })`; add `mode: 'launch'` to start what isn't running
-- Optimize the workspace: `daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })`
+- Focus a window: `daemonCall('windows.focus', { wid: 1234 })`
+- Place a window: `daemonCall('windows.place', { session: 'name', placement: 'left' })`
+- Launch a project: `daemonCall('sessions.launch', { path: '/absolute/path' })`
+- Switch layers: `daemonCall('layers.activate', { name: 'web' })`; add `mode: 'launch'` to start what isn't running
+- Optimize the workspace: `daemonCall('spaces.optimize', { scope: 'visible', strategy: 'balanced' })`
 - CLI: `lats place myproject left` (search + focus + tile in one step)
 
 ### Import
 \```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 \```
 ```
 
@@ -2539,22 +2605,22 @@ import { daemonCall } from '@lattices/cli'
 An orchestrator agent can set up the full workspace for sub-agents:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Discover what's available
 const projects = await daemonCall('projects.list')
 
 // Launch the projects we need
-await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('session.launch', { path: '/Users/you/dev/api' })
+await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
+await daemonCall('sessions.launch', { path: '/Users/you/dev/api' })
 
 // Tile them side by side
-const sessions = await daemonCall('tmux.sessions')
+const sessions = await daemonCall('tmux.list')
 const fe = sessions.find(s => s.name.startsWith('frontend'))
 const api = sessions.find(s => s.name.startsWith('api'))
 
-await daemonCall('window.place', { session: fe.name, placement: 'left' })
-await daemonCall('window.place', { session: api.name, placement: 'right' })
+await daemonCall('windows.place', { session: fe.name, placement: 'left' })
+await daemonCall('windows.place', { session: api.name, placement: 'right' })
 ```
 
 ### Reactive event pattern
@@ -2593,7 +2659,7 @@ ws.on('open', () => {
 Always verify the daemon is running before making calls:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@lattices/cli'
+import { isDaemonRunning, daemonCall } from '@lattices/lattices'
 
 if (!(await isDaemonRunning())) {
   console.error('lats daemon is not running — start it with: lats app')
@@ -2618,3 +2684,55 @@ The extension wraps the existing daemon and keeps Lattices' macOS-native
 runtime, run artifacts, action receipts, and computer-use `treatment` semantics.
 It does not bundle `cua-driver` or enable browser automation. See
 [Pi Lattices Extension](/docs/pi-lattices) for the tool list and smoke checks.
+
+### Machines and visiting cursor
+
+The Machines page uses these existing endpoints: `visit.status`, `visit.pair`,
+`visit.arm`, `visit.end`, `visit.screens`, and `visit.elsewhere`.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `visit.forget` | `host: string` | `{ok: boolean}`; false if absent. Ends an active visit to that host. |
+| `visit.side` | `host: string`, `side: left\|right\|top\|bottom` | `{ok: true}`; errors for unknown hosts or invalid sides. Occupied sides swap, preserving both keys. |
+| `mouse.home` | none | Ends the current visit and returns the cursor to this Mac. |
+
+`visit.pair` requires host-side approval of the returned code. A new pairing
+cannot replace an occupied side; move or forget its occupant first.
+
+## Machines and displays
+
+`lats @<host> <command...>` routes daemon-backed CLI commands through `callHost`
+using `~/.lattices/hosts.json` and `LATTICES_HOSTS`. `@local` selects the local
+endpoint. No SSH is used. Commands requiring local files, application lifecycle
+or tmux actions report `local-only`; remote RPC failures never fall back to local
+actions. `lats @host call <method> [params-json]` exposes the host's API directly.
+A host only supports methods present in its installed version.
+
+`lats machines [--json]` merges configured hosts, outbound visit pairings and
+this machine by name/address. It probes `host.describe` and reports reachability,
+OS, version/commit, display count, pairing and placement. Offline/unknown values
+remain explicit. Pairing inventory falls back to the saved visit host list when
+the local daemon is unavailable. JSON returns `{machines, pairingError?}`.
+
+| Method | Parameters | Behavior |
+| --- | --- | --- |
+| `host.describe` | none | Mac/Linux identity: `platform`, `hostname`, `version`, `build` (version/commit), `displays`, capabilities and methods. Unknown build fields are null. |
+| `bring` | `display: int|string`, or `undo: true` | Composes `display.gather` for every other display. Undo delegates to `display.restore`. Returns gather or restore results. |
+| `main` | `display: int|string`, `keep?: bool` | Delegates to `visit.main`; starts its 15-second rollback trial. `keep` calls `visit.arrangement.keep` only after success. |
+| `elsewhere` | `display: int|string`, `name?: string` | Alias of `visit.elsewhere` with `on: true`; optionally records the machine on the display. |
+| `here` | `display: int|string` | Alias of `visit.elsewhere` with `on: false`. |
+| `visit.start` | `host: string` | Starts an explicit visit at the midpoint of a paired machine's touching span, without arming edge crossing. Missing pairing, no touching span, overlap or capture failure is an error. End the current visit before starting another. |
+| `home` | none | Alias of `mouse.home`: ends the visit and returns the cursor home. |
+
+CLI forms: `bring dell`, `bring --undo`, `main u32 --keep`,
+`elsewhere u32 archie`, `here u32`, `visit archie`, and `home`.
+Display selectors use the `display.gather` resolver: display index from
+`display list`, or a case-insensitive name fragment (first match). The existing
+`visit.main` and `visit.elsewhere` `screen` parameters accept these same selectors;
+CLI `--display` flags and `capture display` also accept names.
+
+The Machines page, command bar and Machines menu use these same operations.
+The page shows version/commit and marks a lower numeric release version **Behind**.
+A differing commit without proven version ordering is **Different build**, not a
+claim about commit ancestry. The Machines page's Open action selects the existing
+still/live host view. No deployment, pairing, arming or visit occurs on page open.

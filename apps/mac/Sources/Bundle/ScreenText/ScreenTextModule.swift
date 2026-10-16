@@ -48,34 +48,17 @@ final class ScreenTextModule: BundleModule {
 
         api.register(Endpoint(
             method: "ocr.history",
-            description: "Get OCR content timeline for a specific window",
+            description: "Get the OCR content timeline for one window, or across all windows when wid is omitted (chronological, from persistent store)",
             access: .read,
             params: [
-                Param(name: "wid", type: "uint32", required: true, description: "Window ID"),
-                Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
-            ],
-            returns: .array(model: "OcrSearchResult"),
-            handler: { params in
-                guard let wid = params?["wid"]?.uint32Value else {
-                    throw RouterError.missingParam("wid")
-                }
-                let limit = params?["limit"]?.intValue ?? 50
-                let results = OcrStore.shared.history(wid: wid, limit: limit)
-                return .array(results.map { Encoders.ocrSearchResult($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "ocr.recent",
-            description: "Get recent OCR entries across all windows (chronological, from persistent store)",
-            access: .read,
-            params: [
+                Param(name: "wid", type: "uint32", required: false, description: "Window ID; omit for every window"),
                 Param(name: "limit", type: "int", required: false, description: "Max results (default 50)"),
             ],
             returns: .array(model: "OcrSearchResult"),
             handler: { params in
                 let limit = params?["limit"]?.intValue ?? 50
-                let results = OcrStore.shared.recent(limit: limit)
+                let results = params?["wid"]?.uint32Value.map { OcrStore.shared.history(wid: $0, limit: limit) }
+                    ?? OcrStore.shared.recent(limit: limit)
                 return .array(results.map { Encoders.ocrSearchResult($0) })
             }
         ))

@@ -41,14 +41,14 @@ test("skills/ is the family catalog", () => {
 test("lattices skill teaches current workspace commands", () => {
   const source = readFileSync(join(skillsRoot, "lattices", "SKILL.md"), "utf8");
   expect(source).toContain("lats daemon status");
-  expect(source).toContain("window.place");
+  expect(source).toContain("windows.place");
 });
 
 test("action skill teaches the native drive loop", () => {
   const source = readFileSync(join(skillsRoot, "action", "SKILL.md"), "utf8");
-  expect(source).toContain("action.drive.begin");
-  expect(source).toContain("action.observe.snapshot");
-  expect(source).toContain("action-browser@action");
+  expect(source).toContain("`drive_begin`");
+  expect(source).toContain("`observe_snapshot`");
+  expect(source).toContain("`browser_*`");
 });
 
 test("voice skill teaches say, simulate and intents", () => {
@@ -56,7 +56,7 @@ test("voice skill teaches say, simulate and intents", () => {
   expect(source).toContain("lats voice say");
   expect(source).toContain("lats voice simulate");
   expect(source).toContain("lats voice intents");
-  expect(source).toContain("window.place");
+  expect(source).toContain("windows.place");
 });
 
 test("blink skill teaches the shipped notes CLI", () => {

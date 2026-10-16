@@ -16,7 +16,7 @@ Lattices.app.
 Lattices hosts an in-process voice runtime. Spoken commands are another client of the
 same execution layer as the CLI and daemon. Spoken commands must resolve
 into the same canonical mutations as the `lattices` skill
-(`window.place`, `layer.activate`, `space.optimize`).
+(`windows.place`, `layers.activate`, `spaces.optimize`).
 
 When this skill is invoked, run the command. Summarize the matched intent
 and the result. Do not invent intent names or slot values.
@@ -72,7 +72,7 @@ Equivalent daemon calls:
 lats call voice.status
 lats call voice.simulate '{"text":"tile this left","execute":true}'
 lats call intents.list
-lats call intents.execute '{"intent":"tile_window","slots":{"position":"left"},"rawText":"put this on the left","source":"agent"}'
+lats call intents.run '{"intent":"tile_window","slots":{"position":"left"},"rawText":"put this on the left","source":"agent"}'
 ```
 
 ## What people say
@@ -82,11 +82,11 @@ and release to stop.
 
 | Phrase | Result |
 | --- | --- |
-| "Tile this left" | `window.place` left |
+| "Tile this left" | `windows.place` left |
 | "Focus Safari" | Focus that app |
 | "Find all vox windows" | Search |
 | "Launch the vox project" | Session launch |
-| "Switch to layer 2" | `layer.activate` |
+| "Switch to layer 2" | `layers.activate` |
 | "Scan the screen" | OCR scan |
 | "List all windows" | Window list |
 

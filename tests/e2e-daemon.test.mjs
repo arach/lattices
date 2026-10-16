@@ -140,11 +140,31 @@ test("projects.scan round-trips and projects.list remains readable", async () =>
   }
 });
 
-test("tmux.inventory returns array buckets", async () => {
-  const inventory = await daemonCall("tmux.inventory");
+test("tmux.list with includeOrphans returns array buckets", async () => {
+  const inventory = await daemonCall("tmux.list", { includeOrphans: true });
   assert.equal(typeof inventory, "object");
   assert.ok(Array.isArray(inventory.all));
   assert.ok(Array.isArray(inventory.orphans));
+});
+
+test("api.schema advertises LAT-012 names and lists the old ones as aliases", async () => {
+  const schema = await daemonCall("api.schema");
+  const methods = new Set(schema.methods.map((m) => m.method));
+  for (const name of ["windows.place", "windows.focus", "sessions.launch", "layers.switch", "tmux.list", "search.query"]) {
+    assert.ok(methods.has(name), `${name} should be advertised`);
+  }
+  for (const name of ["window.place", "session.launch", "tmux.sessions", "tmux.inventory", "lattices.search"]) {
+    assert.ok(!methods.has(name), `${name} should only be an alias`);
+  }
+  assert.equal(schema.aliases?.["window.place"], "windows.place");
+  assert.equal(schema.aliases?.["tmux.inventory"], "tmux.list");
+});
+
+test("old method names still route through their aliases", async () => {
+  const inventory = await daemonCall("tmux.inventory");
+  assert.ok(Array.isArray(inventory.all));
+  assert.ok(Array.isArray(inventory.orphans));
+  assert.ok(Array.isArray(await daemonCall("tmux.sessions")));
 });
 
 test("spaces.list returns displays with ordered spaces and a current space", async () => {
@@ -235,26 +255,26 @@ test("CLI search --json returns structured quick-search results", () => {
   }
 });
 
-// ── window.move contract ─────────────────────────────────────────────
+// ── windows.move contract ─────────────────────────────────────────────
 //
 // These tests exercise validation and dry-run planning only; none of them
 // moves a real window.
 
-test("window.move rejects a missing target instead of falling back to frontmost", async () => {
+test("windows.move rejects a missing target instead of falling back to frontmost", async () => {
   await assert.rejects(
-    daemonCall("window.move", { display: 0 }),
+    daemonCall("windows.move", { display: 0 }),
     /wid or session/,
   );
 });
 
-test("window.move rejects a call with no operation", async () => {
+test("windows.move rejects a call with no operation", async () => {
   await assert.rejects(
-    daemonCall("window.move", { wid: 999999999 }),
+    daemonCall("windows.move", { wid: 999999999 }),
     /display, placement, or spaceId/,
   );
 });
 
-test("window.move plans one explicit display and desktop destination without moving", async () => {
+test("windows.move plans one explicit display and desktop destination without moving", async () => {
   const windows = await daemonCall("windows.list");
   const candidate = windows.find((window) => window.isOnScreen && window.spaceIds?.length === 1);
   const displays = await daemonCall("spaces.list");
@@ -262,7 +282,7 @@ test("window.move plans one explicit display and desktop destination without mov
   if (!candidate || !destination) return;
   const spaceId = destination.spaces[0].id;
   const before = { frame: candidate.frame, spaces: candidate.spaceIds };
-  const receipt = await daemonCall("window.move", {
+  const receipt = await daemonCall("windows.move", {
     wid: candidate.wid, display: destination.displayIndex, spaceId, dryRun: true,
   });
   assert.equal(receipt.ok, true);
@@ -275,32 +295,32 @@ test("window.move plans one explicit display and desktop destination without mov
 
   const otherDisplay = displays.find((display) => display.displayIndex !== destination.displayIndex);
   if (otherDisplay) {
-    await assert.rejects(daemonCall("window.move", {
+    await assert.rejects(daemonCall("windows.move", {
       wid: candidate.wid, display: otherDisplay.displayIndex, spaceId, dryRun: true,
     }), /space|display/i, "a mismatched display and Space must be rejected");
   }
 });
 
-test("window.move rejects an unknown placement synchronously", async () => {
+test("windows.move rejects an unknown placement synchronously", async () => {
   await assert.rejects(
-    daemonCall("window.move", { wid: 999999999, placement: "diagonal" }),
+    daemonCall("windows.move", { wid: 999999999, placement: "diagonal" }),
     /Unknown placement/,
   );
 });
 
-test("window.move rejects an unknown wid", async () => {
+test("windows.move rejects an unknown wid", async () => {
   await assert.rejects(
-    daemonCall("window.move", { wid: 999999999, display: 0 }),
+    daemonCall("windows.move", { wid: 999999999, display: 0 }),
     /Not found: window/,
   );
 });
 
-test("window.move dry run plans a display move with structured geometry", async () => {
+test("windows.move dry run plans a display move with structured geometry", async () => {
   const windows = await daemonCall("windows.list");
   const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
   if (!candidate) return; // headless desktop — nothing to plan against
 
-  const receipt = await daemonCall("window.move", { wid: candidate.wid, display: 0, dryRun: true });
+  const receipt = await daemonCall("windows.move", { wid: candidate.wid, display: 0, dryRun: true });
   assert.equal(receipt.ok, true);
   assert.equal(receipt.status, "planned");
   assert.equal(receipt.dryRun, true);
@@ -326,12 +346,12 @@ test("window.move dry run plans a display move with structured geometry", async 
   }
 });
 
-test("window.move dry run with placement routes through canonical window.place", async () => {
+test("windows.move dry run with placement routes through canonical windows.place", async () => {
   const windows = await daemonCall("windows.list");
   const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
   if (!candidate) return;
 
-  const receipt = await daemonCall("window.move", {
+  const receipt = await daemonCall("windows.move", {
     wid: candidate.wid,
     display: 0,
     placement: "left",
@@ -344,13 +364,13 @@ test("window.move dry run with placement routes through canonical window.place",
   assert.equal(receipt.placement?.value, "left");
 });
 
-test("window.move placement rejects an explicit unknown display", async () => {
+test("windows.move placement rejects an explicit unknown display", async () => {
   const windows = await daemonCall("windows.list");
   const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
   if (!candidate) return;
 
   await assert.rejects(
-    daemonCall("window.move", {
+    daemonCall("windows.move", {
       wid: candidate.wid,
       display: 999999,
       placement: "left",
@@ -360,12 +380,12 @@ test("window.move placement rejects an explicit unknown display", async () => {
   );
 });
 
-test("window.place dry run resolves an explicit wid without mutating", async () => {
+test("windows.place dry run resolves an explicit wid without mutating", async () => {
   const windows = await daemonCall("windows.list");
   const candidate = (Array.isArray(windows) ? windows : []).find((w) => w.isOnScreen);
   if (!candidate) return;
 
-  const receipt = await daemonCall("window.place", {
+  const receipt = await daemonCall("windows.place", {
     wid: candidate.wid,
     placement: "bottom-right",
     dryRun: true,

@@ -205,7 +205,7 @@ final class IntentEngine {
                 // Resolve target: explicit session, wid, app name, or frontmost
                 if let session = req.slots["session"]?.stringValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.place",
+                        method: "windows.place",
                         params: .object(["session": .string(session), "placement": placement.jsonValue])
                     )
                 }
@@ -256,7 +256,7 @@ final class IntentEngine {
                     }
 
                     return try LatticesApi.shared.dispatch(
-                        method: "space.optimize",
+                        method: "spaces.optimize",
                         params: .object([
                             "scope": .string("selection"),
                             "windowIds": .array(selectionIds.map { .int(Int($0)) }),
@@ -295,7 +295,7 @@ final class IntentEngine {
             handler: { req in
                 func focusEntry(_ entry: WindowEntry, resolution: String, requested: String? = nil) throws -> JSON {
                     let response = try LatticesApi.shared.dispatch(
-                        method: "window.focus",
+                        method: "windows.focus",
                         params: .object(["wid": .int(Int(entry.wid))])
                     )
                     guard case .object(var obj) = response else { return response }
@@ -315,13 +315,13 @@ final class IntentEngine {
 
                 if let session = req.slots["session"]?.stringValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.focus",
+                        method: "windows.focus",
                         params: .object(["session": .string(session)])
                     )
                 }
                 if let wid = req.slots["wid"]?.intValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.focus",
+                        method: "windows.focus",
                         params: .object(["wid": .int(wid)])
                     )
                 }
@@ -331,7 +331,7 @@ final class IntentEngine {
                     }
 
                     let searchResult = try? LatticesApi.shared.dispatch(
-                        method: "lattices.search",
+                        method: "search.query",
                         params: .object([
                             "query": .string(app),
                             "sources": .array([
@@ -392,7 +392,7 @@ final class IntentEngine {
                         if name.localizedCaseInsensitiveContains(project) ||
                            path.localizedCaseInsensitiveContains(project) {
                             return try LatticesApi.shared.dispatch(
-                                method: "session.launch",
+                                method: "sessions.launch",
                                 params: .object(["path": .string(path)])
                             )
                         }
@@ -431,12 +431,12 @@ final class IntentEngine {
 
                 if let index = Int(layer) {
                     return try LatticesApi.shared.dispatch(
-                        method: "layer.switch",
+                        method: "layers.switch",
                         params: .object(["index": .int(index)])
                     )
                 }
                 return try LatticesApi.shared.dispatch(
-                    method: "layer.switch",
+                    method: "layers.switch",
                     params: .object(["name": .string(layer)])
                 )
             }
@@ -492,7 +492,7 @@ final class IntentEngine {
             ],
             slots: [],
             handler: { _ in
-                try LatticesApi.shared.dispatch(method: "tmux.sessions", params: nil)
+                try LatticesApi.shared.dispatch(method: "tmux.list", params: nil)
             }
         ))
 
@@ -542,7 +542,7 @@ final class IntentEngine {
                     params["scope"] = .string("selection")
                     params["windowIds"] = .array(selectionIds.map { .int(Int($0)) })
                     return try LatticesApi.shared.dispatch(
-                        method: "space.optimize",
+                        method: "spaces.optimize",
                         params: .object(params)
                     )
                 }
@@ -603,13 +603,13 @@ final class IntentEngine {
                 }
 
                 // Try direct name first
-                let sessions = try LatticesApi.shared.dispatch(method: "tmux.sessions", params: nil)
+                let sessions = try LatticesApi.shared.dispatch(method: "tmux.list", params: nil)
                 if case .array(let list) = sessions {
                     for s in list {
                         let name = s["name"]?.stringValue ?? ""
                         if name.localizedCaseInsensitiveContains(session) {
                             return try LatticesApi.shared.dispatch(
-                                method: "session.kill",
+                                method: "sessions.kill",
                                 params: .object(["name": .string(name)])
                             )
                         }
@@ -850,7 +850,7 @@ final class IntentEngine {
                 if let pos = req.slots["position"]?.stringValue {
                     params["position"] = .string(pos)
                 }
-                return try LatticesApi.shared.dispatch(method: "window.present", params: .object(params))
+                return try LatticesApi.shared.dispatch(method: "windows.present", params: .object(params))
             }
         ))
 

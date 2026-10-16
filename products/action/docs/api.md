@@ -25,6 +25,13 @@ The connection receive side remains armed while requests execute so an
 operation-scoped cancellation can arrive during a gesture; response writes are
 serialized and remain correlated by request id.
 
+## Remote Linux hosts
+
+Action's RemoteEngine signs its host connections using the Lattices CLI's
+paired identity. Pair once with `lats --host <host> pair --drive` and approve
+on that host before using `ACTION_REMOTE_HOST`. Each reconnect gets a fresh
+timestamp and nonce. Local loopback connections remain trusted.
+
 ## Request Shape
 
 ```json

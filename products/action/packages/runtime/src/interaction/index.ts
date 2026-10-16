@@ -116,7 +116,7 @@ function holdMsFor(action: RuntimeAction): number | undefined {
   return holdMs !== undefined && holdMs > 0 ? holdMs : undefined;
 }
 
-function clickPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
+export function clickPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
   return pointFromInput(action.target?.point)
     ?? pointFromInput(action.input?.point)
     ?? target?.point
@@ -157,7 +157,7 @@ function blinkAppArgs(action: RuntimeAction, layer: AgentLayerRouting): string[]
 }
 
 /** A drag's start and end: from/source/start/fromX+fromY, and to/destination/end/toX+toY or the target's centre. */
-function dragPoints(action: RuntimeAction, target: ResolvedTarget | undefined): { from: { x: number; y: number }; to: { x: number; y: number } } | undefined {
+export function dragPoints(action: RuntimeAction, target: ResolvedTarget | undefined): { from: { x: number; y: number }; to: { x: number; y: number } } | undefined {
   const fromFromCoordinates = (() => {
     const x = numberFromInput(action.input?.fromX);
     const y = numberFromInput(action.input?.fromY);
@@ -197,7 +197,7 @@ function dragPoints(action: RuntimeAction, target: ResolvedTarget | undefined): 
 }
 
 /** Where a scroll lands: the target point, input.point or input.at, or the target's centre. */
-function scrollPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
+export function scrollPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
   return action.target?.point
     ?? pointFromInput(action.input?.point)
     ?? pointFromInput(action.input?.at)

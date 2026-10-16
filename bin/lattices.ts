@@ -4,7 +4,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
-import { loadDaemonClient, tryDaemon, withDaemon } from "./cli/daemon.ts";
+import { loadDaemonClient, tryDaemon, withDaemon, targetHost, isRemoteTarget } from "./cli/daemon.ts";
 import { printHome, printUsage } from "./cli/usage.ts";
 import {
   hasFlag,
@@ -18,8 +18,11 @@ import {
 import { searchCommand, placeCommand } from "./cli/search.ts";
 import { captureCommand } from "./cli/capture.ts";
 import { layerCommand } from "./cli/layer.ts";
+import { displayCommand } from "./cli/display.ts";
+import { stateCommand } from "./cli/state.ts";
 import { runsCommand } from "./cli/runs.ts";
 import { mapCommand, mapUsage } from "./cli/map.ts";
+import { hostsCommand } from "./cli/hosts.ts";
 import {
   esc,
   sessionExists,
@@ -28,7 +31,28 @@ import {
   toSessionName,
 } from "./cli/session.ts";
 
+import { supportsRemote } from "./cli/remote.ts";
+import { resolveDisplayNames } from "./cli/display-names.ts";
+
 const args: string[] = process.argv.slice(2);
+
+// `lats --host <name> ...` sends daemon calls to another lattices host, such as
+// a Linux machine running lattices-host on the tailnet (LAT-013).
+const hostFlag = args.indexOf("--host");
+if (hostFlag !== -1 && hostFlag < args.length - 1) {
+  const [, host] = args.splice(hostFlag, 2);
+  const [name, port] = host.split(":");
+  process.env.LATTICES_DAEMON_HOST = name;
+  if (port) process.env.LATTICES_DAEMON_PORT = port;
+}
+if (args[0]?.startsWith("@")) {
+  const host = args.shift()!.slice(1);
+  if (!host || (host !== "local" && !supportsRemote(args))) {
+    console.error(`${args[0] ?? "home screen"} is local-only. Use lats @${host || "host"} call <method> for daemon methods.`);
+    process.exit(1);
+  }
+  targetHost(host);
+}
 const command: string | undefined = args[0];
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -45,7 +69,7 @@ const tmuxRequiredCommands = new Set([
 ]);
 
 function requireTmux(command: string | undefined): void {
-  if (hasTmux()) return;
+  if (isRemoteTarget() || hasTmux()) return;
 
   if (!command) return;
 
@@ -858,14 +882,80 @@ function restartPane(target?: string): void {
 // ── Daemon-aware commands ────────────────────────────────────────────
 
 async function mouseCommand(sub?: string): Promise<void> {
+  if (sub && !["find", "summon", "home"].includes(sub)) throw new Error("Usage: lats mouse [find|summon|home]");
   await withDaemon(async ({ daemonCall }) => {
     if (sub === "summon") {
       const result = await daemonCall("mouse.summon") as any;
       console.log(`🎯 Mouse summoned to (${result.x}, ${result.y})`);
+    } else if (sub === "home") {
+      await daemonCall("mouse.home");
+      console.log("🏠 Pointer home");
     } else {
       // Default: find
       const result = await daemonCall("mouse.find") as any;
       console.log(`🔍 Mouse at (${result.x}, ${result.y})`);
+    }
+  });
+}
+
+async function visitCommand(sub?: string, rest: string[] = []): Promise<void> {
+  await withDaemon(async ({ daemonCall }) => {
+    if (sub === "pair") {
+      const [host, address, side] = rest;
+      if (!host) return console.log("Usage: lats visit pair <host> [host:port] [left|right|top|bottom]");
+      const result = await daemonCall("visit.pair", { host, ...(address ? { address } : {}), ...(side ? { side } : {}) }) as any;
+      console.log(`🔐 Approve ${result.code} on ${result.pairing}, then: lats visit status`);
+    } else if (sub === "main") {
+      const n = rest[0];
+      if (!n) throw new Error("Usage: lats visit main <n>");
+      await daemonCall("visit.main", { screen: n });
+      console.log(`Display ${n} is main. It reverts in 15s unless you run "lats visit arrangement keep".`);
+    } else if (sub === "arrangement") {
+      if (!["keep", "revert"].includes(rest[0])) throw new Error("Usage: lats visit arrangement <keep|revert>");
+      await daemonCall(`visit.arrangement.${rest[0]}`);
+      console.log(`Arrangement: ${rest[0]}`);
+    } else if (sub === "place") {
+      const [name, rawX, rawY] = rest;
+      const x = Number(rawX), y = Number(rawY);
+      if (!name || rawX === undefined || rawY === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error("Usage: lats visit place <name> <x> <y>");
+      }
+      await daemonCall("visit.place", { name, x, y });
+      console.log(`${name}: (${x}, ${y})`);
+    } else if (sub === "host") {
+      if (!["on", "off"].includes(rest[0])) throw new Error("Usage: lats visit host <on|off>");
+      await daemonCall("visit.host", { on: rest[0] === "on" });
+      console.log(`Receiving visits ${rest[0]}`);
+    } else if (sub === "forget" || sub === "side") {
+      const [host, side] = rest;
+      if (!host || (sub === "side" && !["left", "right", "top", "bottom"].includes(side))) {
+        return console.log(`Usage: lats visit ${sub} <host>${sub === "side" ? " <left|right|top|bottom>" : ""}`);
+      }
+      const result = await daemonCall(`visit.${sub}`, { host, ...(sub === "side" ? { side } : {}) }) as any;
+      console.log(result.ok ? (sub === "side" ? `${host}: ${side}` : `Forgot ${host}`) : `No paired host named ${host}`);
+    } else if (sub === "on" || sub === "off") {
+      const result = await daemonCall("visit.arm", { on: sub === "on" }) as any;
+      console.log(result.armed ? "🖱️ Visiting armed: push past an edge facing a paired host" : "Visiting off");
+    } else if (sub === "end") {
+      await daemonCall("visit.end");
+      console.log("🏠 Visit ended");
+    } else if (sub === "screens" || sub === "elsewhere" || sub === "here") {
+      const n = rest[0];
+      if (sub !== "screens") {
+        if (!n) return console.log(`Usage: lats visit ${sub} <display number>  (see: lats visit screens)`);
+        const result = await daemonCall("visit.elsewhere", { screen: n, on: sub === "elsewhere", ...(rest[1] ? { name: rest[1] === "--clear" ? "" : rest[1] } : {}) }) as any;
+        if (!result.ok) return console.log(`No display ${n}. See: lats visit screens`);
+      }
+      const screens = await daemonCall("visit.screens") as any[];
+      for (const d of screens) console.log(`  ${d.number}  ${d.name}  ${d.frame.w}×${d.frame.h}${d.main ? "  main" : ""}${d.elsewhere ? "  elsewhere" : ""}${d.machine ? ` · ${d.machine}` : ""}`);
+    } else if (sub && sub !== "status") {
+      const result = await daemonCall("visit.start", { host: sub });
+      console.log(JSON.stringify(result));
+    } else {
+      const s = await daemonCall("visit.status") as any;
+      for (const h of s.hosts) console.log(`  ${s.visiting === h.name ? "●" : "○"} ${h.name}  ${h.side ?? "unplaced"}  ${h.address}  ${h.fingerprint}`);
+      if (!s.hosts.length) console.log("No paired hosts. Pair with: lats visit pair <host>");
+      console.log(`${s.armed ? "Armed" : "Off"} · this Mac's code ${s.code}`);
     }
   });
 }
@@ -932,7 +1022,7 @@ async function focusCommand(session?: string): Promise<void> {
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
-    await daemonCall("window.focus", { session });
+    await daemonCall("windows.focus", { session });
     console.log(`Focused: ${session}`);
   });
 }
@@ -954,7 +1044,7 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
   await withDaemon(async ({ daemonCall }) => {
     let sessions = positional.slice(0, 2);
     if (sessions.length < 2) {
-      const tmuxSessions = await daemonCall("tmux.sessions") as any[];
+      const tmuxSessions = await daemonCall("tmux.list") as any[];
       sessions = tmuxSessions
         .map(s => s?.name)
         .filter((name: unknown): name is string => typeof name === "string" && name.startsWith("lattices-place-"))
@@ -971,7 +1061,7 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
     console.log(`Placement smoke: ${a} + ${b}`);
 
     for (const session of sessions) {
-      const resolved = await daemonCall("window.resolve", {
+      const resolved = await daemonCall("windows.resolve", {
         target: { kind: "session", session },
         placement: "left",
       }) as any;
@@ -1025,14 +1115,14 @@ async function placementSmokeCommand(rawArgs: string[] = []): Promise<void> {
       await pause(pauseMs);
     }
 
-    const focused = await daemonCall("window.focus", { session: a }, 5000) as any;
+    const focused = await daemonCall("windows.focus", { session: a }, 5000) as any;
     console.log(`\nfocus ${a}: ok=${focused.ok === true} wid=${focused.wid ?? "?"} raised=${focused.raised === true}`);
   });
 }
 
 async function sessionsCommand(jsonFlag: boolean): Promise<void> {
   await withDaemon(async ({ daemonCall }) => {
-    const sessions = await daemonCall("tmux.sessions") as any[];
+    const sessions = await daemonCall("tmux.list") as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(sessions, null, 2));
       return;
@@ -1599,12 +1689,15 @@ async function callCommand(method?: string, ...rest: string[]): Promise<void> {
     console.log("\nExamples:");
     console.log("  lats call daemon.status");
     console.log("  lats call api.schema");
-    console.log('  lats call window.place \'{"session":"vox","placement":"left"}\'');
+    console.log('  lats call windows.place \'{"session":"vox","placement":"left"}\'');
     return;
   }
   await withDaemon(async ({ daemonCall }) => {
     const params = rest[0] ? JSON.parse(rest[0]) : null;
-    const relocationMethods = new Set(["window.move", "window.place", "actions.execute", "actions.undo"]);
+    const relocationMethods = new Set([
+      "windows.move", "windows.place", "actions.execute", "history.undo",
+      "window.move", "window.place", "actions.undo",
+    ]);
     const result = await daemonCall(method, params, relocationMethods.has(method) ? 60_000 : 15_000);
     console.log(JSON.stringify(result, null, 2));
   });
@@ -2424,7 +2517,7 @@ async function tileFamilyCommand(rawArgs: string[]): Promise<void> {
 
 async function daemonLsCommand(): Promise<boolean> {
   const handled = await tryDaemon(async ({ daemonCall }) => {
-    const sessions = await daemonCall("tmux.sessions") as any[];
+    const sessions = await daemonCall("tmux.list") as any[];
     if (!sessions.length) {
       console.log("No active sessions.");
       return;
@@ -2459,7 +2552,7 @@ async function daemonLsCommand(): Promise<boolean> {
 
 async function daemonStatusInventory(): Promise<boolean> {
   const handled = await tryDaemon(async ({ daemonCall }) => {
-    const inv = await daemonCall("tmux.inventory") as any;
+    const inv = await daemonCall("tmux.list", { includeOrphans: true }) as any;
 
     // Build managed session name set
     const managed = new Map<string, string>();
@@ -2598,7 +2691,7 @@ async function scanCommand(sub?: string, ...rest: string[]): Promise<void> {
     const numArg = rest.find(a => !a.startsWith("-"));
     const limit = parseInt(numArg || "", 10) || 20;
     await withDaemon(async ({ daemonCall }) => {
-      const results = await daemonCall("ocr.recent", { limit }, 5000) as any[];
+      const results = await daemonCall("ocr.history", { limit }, 5000) as any[];
       if (!results.length) {
         console.log("No history yet. The first scan runs ~60s after launch.");
         return;
@@ -2862,7 +2955,7 @@ async function optimizeWindowsCommand(
     if (request.app) params.app = request.app;
     if (request.region) params.region = request.region;
 
-    const result = await daemonCall("space.optimize", params) as any;
+    const result = await daemonCall("spaces.optimize", params) as any;
     const count = result?.windowCount ?? 0;
     const target = formatOptimizeTarget(request);
     const regionSuffix = request.region ? ` in the ${request.region} region` : "";
@@ -2920,7 +3013,7 @@ function gridTileBounds(position: string, screen: ScreenBounds): number[] | null
 
 /**
  * Legacy `lats tile <position>`: prefer the canonical daemon placement
- * (window.place, frontmost target). Only when the daemon is down fall back to
+ * (windows.place, frontmost target). Only when the daemon is down fall back to
  * the AppleScript path — and say so, since that path is frontmost-app,
  * primary-display only.
  */
@@ -2935,7 +3028,7 @@ async function tileFrontmostCommand(position: string): Promise<void> {
   const client = await loadDaemonClient();
   if (await client.isDaemonRunning()) {
     try {
-      const receipt = await client.daemonCall("window.place", { placement });
+      const receipt = await client.daemonCall("windows.place", { placement });
       console.log(describeMoveReceipt(receipt));
     } catch (e: unknown) {
       console.error(`Daemon placement failed: ${(e as Error).message}`);
@@ -3107,6 +3200,8 @@ function statusInventory(): void {
 
 requireTmux(command);
 
+await resolveDisplayNames(args);
+
 switch (command) {
   case undefined:
     printHome(buildHomeContext());
@@ -3270,9 +3365,42 @@ switch (command) {
   case "call":
     await callCommand(args[1], ...args.slice(2));
     break;
+  case "hosts":
+    await hostsCommand(args.slice(1));
+    break;
+  case "pair":
+    await hostsCommand(args);
+    break;
   case "layer":
   case "layers":
     await layerCommand(args[1], ...args.slice(2));
+    break;
+  case "machines": {
+    const { machinesCommand } = await import("./cli/machines.ts");
+    await machinesCommand(args.includes("--json"));
+    break;
+  }
+  case "bring":
+  case "main":
+  case "elsewhere":
+  case "here":
+  case "home":
+    await withDaemon(async ({ daemonCall }) => {
+      if (command !== "home" && !args[1]) throw new Error(`Usage: lats ${command} <display>`);
+      const params = command === "home" ? {} : command === "bring" && args[1] === "--undo" ? { undo: true } : {
+        display: args[1], ...(command === "main" ? { keep: args.includes("--keep") } : {}),
+        ...(command === "elsewhere" && args[2] ? { name: args[2] } : {}),
+      };
+      console.log(JSON.stringify(await daemonCall(command, params), null, 2));
+    });
+    break;
+  case "display":
+  case "displays":
+    await displayCommand(args[1], ...args.slice(2));
+    break;
+  case "state":
+  case "states":
+    await stateCommand(args[1], ...args.slice(2));
     break;
   case "diag":
   case "diagnostics":
@@ -3287,6 +3415,15 @@ switch (command) {
     break;
   case "mouse":
     await mouseCommand(args[1]);
+    break;
+  case "visit":
+    await visitCommand(args[1], args.slice(2));
+    break;
+  case "long":
+    await withDaemon(async ({ daemonCall }) => {
+      const result = await daemonCall("long.show", { on: args[1] !== "hide" }) as any;
+      console.log(result.shown ? "Long's on the desktop" : "Long's hidden");
+    });
     break;
   case "daemon":
     if (args[1] === "status") {
@@ -3343,7 +3480,10 @@ switch (command) {
     const actionScript = resolve(import.meta.dir, "lattices-action.ts");
     try {
       execFileSync("bun", [actionScript, ...args.slice(1)], { stdio: "inherit" });
-    } catch { /* exit code forwarded */ }
+    } catch (error) {
+      process.exitCode = typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status: number }).status : 1;
+    }
     break;
   }
   case "-h":

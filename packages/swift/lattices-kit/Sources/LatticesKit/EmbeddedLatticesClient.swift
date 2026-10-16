@@ -135,31 +135,31 @@ public final class Lattices: Sendable {
                 throw EmbeddedLatticesError.windowNotFound("wid \(wid)")
             }
             return try JSONValue.encode(window)
-        case "window.resolve":
+        case "windows.resolve", "window.resolve":
             let target = try decodeTarget(params)
             guard let window = windows.resolve(target) else {
                 return .null
             }
             return try JSONValue.encode(window)
-        case "window.focus":
+        case "windows.focus", "window.focus":
             let target = try decodeTarget(params)
             return .object(["ok": .bool(try windows.focus(target))])
-        case "window.tile":
+        case "windows.place", "window.tile":
             let target = try decodeTarget(params)
             let position = try tilePosition(params)
             return .object(["ok": .bool(try windows.tile(target, position: position))])
-        case "tmux.sessions":
+        case "tmux.list", "tmux.sessions":
             return try JSONValue.encode(tmux.listSessions())
-        case "session.name":
+        case "sessions.name", "session.name":
             return .string(sessionName(for: try requiredString(params, "path")))
-        case "session.launch":
+        case "sessions.launch", "session.launch":
             let session = try sessions.launch(path: try requiredString(params, "path"))
             return .object(["ok": .bool(true), "session": .string(session)])
-        case "session.kill":
+        case "sessions.kill", "session.kill":
             return .object(["ok": .bool(try sessions.kill(name: try requiredString(params, "name")))])
-        case "session.detach":
+        case "sessions.detach", "session.detach":
             return .object(["ok": .bool(try sessions.detach(name: try requiredString(params, "name")))])
-        case "session.restart":
+        case "sessions.restart", "session.restart":
             return .object([
                 "ok": .bool(try sessions.restart(
                     path: try requiredString(params, "path"),

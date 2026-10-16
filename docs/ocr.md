@@ -10,7 +10,7 @@ the command palette and Omni search match windows by what they show.
 Agents can use this to "see" what's on screen.
 
 Bundle builds also store every scan in a local SQLite database with FTS5
-full-text search. `ocr.search`, `ocr.history` and `ocr.recent` read that
+full-text search. `ocr.search` and `ocr.history` read that
 history; the free build doesn't have them.
 
 ## Enabling OCR
@@ -97,7 +97,7 @@ Agents can query OCR data through four API methods:
 |--------|-------------|
 | `ocr.snapshot` | Current OCR results for all visible windows |
 | `ocr.search` | Full-text search across history (FTS5 syntax) |
-| `ocr.history` | Timeline of OCR results for a specific window |
+| `ocr.history` | Timeline of OCR results for one window, or all windows without `wid` |
 | `ocr.scan` | Trigger an immediate deep scan |
 
 #### `ocr.snapshot`
@@ -105,7 +105,7 @@ Agents can query OCR data through four API methods:
 Returns the latest OCR results for all on-screen windows.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 const snapshot = await daemonCall('ocr.snapshot')
 // [{ wid, app, title, frame, fullText, blocks, timestamp }, ...]
@@ -139,11 +139,12 @@ delimiters around matched terms.
 
 #### `ocr.history`
 
-Get the OCR content timeline for a specific window.
+Get the OCR content timeline for a specific window, or across every window
+when `wid` is omitted.
 
 ```js
 const history = await daemonCall('ocr.history', {
-  wid: 12345,  // window ID (required)
+  wid: 12345,  // window ID (optional; omit for every window)
   limit: 50    // max results (optional, default 50)
 })
 ```
@@ -175,7 +176,7 @@ Entries older than 3 days are automatically deleted.
 A typical agent workflow: trigger a scan, then search for relevant content.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Trigger a fresh scan
 await daemonCall('ocr.scan')

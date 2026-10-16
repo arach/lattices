@@ -49,6 +49,10 @@ struct OverviewView: View {
         VStack(spacing: 0) {
             scopeBar
             Divider().overlay(Palette.border)
+            if let error = model.actionError {
+                moveError(error)
+                Divider().overlay(Palette.border)
+            }
             VStack(spacing: 0) {
                 stage
                 Divider().overlay(Palette.border)
@@ -64,24 +68,6 @@ struct OverviewView: View {
                     .background(Palette.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(10)
-                } else if let error = model.actionError {
-                    Text(error)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.kill)
-                        .padding(10)
-                        .background(Palette.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding(10)
-                        .accessibilityLabel("Window move failed: \(error)")
-                }
-            }
-            .overlayPreferenceValue(OverviewCapsuleAnchorKey.self) { anchors in
-                GeometryReader { geo in
-                    if let anchor = anchors.first(where: { !$0.inTray }) ?? anchors.first {
-                        // Kept clear of the list when it's open.
-                        let room = CGSize(width: geo.size.width - (model.membershipShown ? 300 : 0), height: geo.size.height)
-                        OverviewCapsule(model: model, target: geo[anchor.bounds], inTray: anchor.inTray, room: room)
-                    }
                 }
             }
             // The list lies over the stage and tray, under the scope bar
@@ -119,6 +105,45 @@ struct OverviewView: View {
             model.detach(canvas: controller)
             model.stop()
         }
+    }
+
+    private func moveError(_ error: OverviewMoveError) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+                .font(.system(size: 16))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(error.title).font(.system(size: 13, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                if let destination = error.destination {
+                    Text("\(error.windowTitle.isEmpty ? error.app : error.windowTitle) → \(destination.title)")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textMuted)
+                        .lineLimit(2)
+                }
+                Text(error.destination == nil ? error.failure.details : error.failure.message)
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup("Technical details") {
+                    Text(error.failure.details)
+                        .font(Typo.mono(10))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Try Again") { model.retryMove() }
+                .disabled(!model.canRetryMove)
+            Button("Dismiss") { model.dismissActionError() }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .foregroundStyle(Palette.text)
+        .padding(14)
+        .background(Palette.surface)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: Scope bar
@@ -308,19 +333,16 @@ struct OverviewView: View {
     }
 }
 
-// MARK: - Capsule
+// MARK: - Selection bar
 
-/// The selected window's actions, riding it: just inside its lower edge on
-/// a map, or above the tray for a tray row. Focus; Show in scope when the
+/// The selected window's actions, in the row under the maps so it never
+/// covers a window. Focus; Show in scope when the
 /// scope hides it; tile it on its monitor or carry it to another Desktop,
 /// each saying why when it can't; and its layers. None of them saves a
 /// layer; many windows tile or distribute from the box below.
-private struct OverviewCapsule: View {
+struct OverviewSelectionBar: View {
     @ObservedObject var model: OverviewModel
-    let target: CGRect
-    let inTray: Bool
-    let room: CGSize
-    @State private var size: CGSize = .zero
+    let row: OverviewRow
 
     private static let placements: [(TilePosition, String)] = [
         (.left, "rectangle.lefthalf.filled"), (.right, "rectangle.righthalf.filled"),
@@ -328,21 +350,7 @@ private struct OverviewCapsule: View {
     ]
 
     var body: some View {
-        if let wid = model.focusedWid, let row = model.projection.all[wid] {
-            content(row)
-                .fixedSize()
-                .onGeometryChange(for: CGSize.self, of: \.size) { size = $0 }
-                .position(position)
-                .opacity(size == .zero ? 0 : 1)
-        }
-    }
-
-    private var position: CGPoint {
-        let top = inTray
-            ? room.height - OverviewTray.height - size.height - 4
-            : target.maxY - 8 - size.height
-        let x = min(max(target.midX, size.width / 2 + 8), room.width - size.width / 2 - 8)
-        return CGPoint(x: x, y: max(size.height / 2 + 4, top + size.height / 2))
+        content(row).fixedSize()
     }
 
     private func showReason(_ row: OverviewRow) -> Exclusion? {
@@ -417,19 +425,8 @@ private struct OverviewCapsule: View {
                 why("Can't place: \(placeBlock.label)")
             }
         }
-        .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(red: 30 / 255, green: 30 / 255, blue: 34 / 255).opacity(0.97))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(
-                            LinearGradient(colors: [Color.white.opacity(0.16), Color.white.opacity(0.08)], startPoint: .top, endPoint: .bottom),
-                            lineWidth: OverviewChrome.stroke
-                        )
-                )
-                .shadow(color: .black.opacity(0.55), radius: 16, y: 8)
-        )
+        .padding(3)
+        .overviewCard(radius: 8)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Actions for \(row.app)")
     }
@@ -933,13 +930,6 @@ private struct OverviewSelectionPanel: View {
                 focused(row)
             }
             bulkActions
-            if let error = model.actionError {
-                Text(error)
-                    .font(Typo.mono(8))
-                    .foregroundColor(Palette.kill)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

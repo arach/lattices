@@ -7,9 +7,24 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pairingHeaders } from "./host-pairing.ts";
 
-const DAEMON_HOST = "127.0.0.1";
-const DAEMON_PORT = 9399;
+const DEFAULT_DAEMON_HOST = "127.0.0.1";
+const DEFAULT_DAEMON_PORT = 9399;
+
+/**
+ * Where daemon calls go. Defaults to the local Mac daemon; set
+ * LATTICES_DAEMON_HOST (or pass `lats --host <name>`) to reach another
+ * lattices host, such as a Linux machine running lattices-host on the tailnet
+ * (LAT-013). Read per call so the CLI's --host flag can set it at startup.
+ */
+export function daemonEndpoint(
+  env: Record<string, string | undefined> = process.env
+): { host: string; port: number } {
+  const host = env.LATTICES_DAEMON_HOST?.trim() || DEFAULT_DAEMON_HOST;
+  const port = Number(env.LATTICES_DAEMON_PORT);
+  return { host, port: Number.isInteger(port) && port > 0 ? port : DEFAULT_DAEMON_PORT };
+}
 
 // The Voice helper (bundle dev.lattices.Speech) writes this capability when it
 // runs. The daemon forwards voice output verbs only for clients that present it.
@@ -61,6 +76,53 @@ interface ParsedFrame {
   rest: Buffer<ArrayBuffer>;
 }
 
+// LAT-012 renamed the daemon's methods into domains (window.place ->
+// windows.place). The daemon still accepts the old names, but a daemon from
+// before the rename does not know the new ones, so an `Unknown method` answer
+// for a new name is retried once under its old name.
+const LEGACY_METHOD_NAMES: Record<string, string> = {
+  "windows.focus": "window.focus",
+  "windows.move": "window.move",
+  "windows.place": "window.place",
+  "windows.present": "window.present",
+  "windows.resolve": "window.resolve",
+  "windows.pick": "window.pick.start",
+  "layers.activate": "layer.activate",
+  "layers.switch": "layer.switch",
+  "spaces.optimize": "space.optimize",
+  "sessions.launch": "session.launch",
+  "sessions.kill": "session.kill",
+  "sessions.detach": "session.detach",
+  "sessions.sync": "session.sync",
+  "sessions.restart": "session.restart",
+  "groups.launch": "group.launch",
+  "groups.kill": "group.kill",
+  "tabs.list": "tabStacks.list",
+  "tabs.stack": "tabStacks.create",
+  "tabs.add": "tabStacks.add",
+  "tabs.select": "tabStacks.select",
+  "tabs.layout": "tabStacks.layout",
+  "tabs.unstack": "tabStacks.delete",
+  "search.query": "lattices.search",
+  "solo.status": "focus.status",
+  "solo.enter": "focus.enter",
+  "solo.exit": "focus.exit",
+  "solo.toggle": "focus.toggle",
+  "intents.run": "intents.execute",
+  "history.list": "actions.history",
+  "history.undo": "actions.undo",
+};
+
+/** The pre-LAT-012 name to retry `method` under, or undefined. */
+export function legacyMethodName(
+  method: string,
+  params?: Record<string, unknown> | null
+): string | undefined {
+  if (method === "tmux.list") return params?.includeOrphans === true ? "tmux.inventory" : "tmux.sessions";
+  if (method === "ocr.history") return params?.wid == null ? "ocr.recent" : undefined;
+  return LEGACY_METHOD_NAMES[method];
+}
+
 /**
  * Send a JSON-RPC-style request to the daemon and return the response.
  */
@@ -69,11 +131,37 @@ export async function daemonCall(
   params?: Record<string, unknown> | null,
   timeoutMs = 3000
 ): Promise<unknown> {
+  return daemonCallTo(daemonEndpoint(), method, params, timeoutMs);
+}
+
+/** `daemonCall` against an explicit host, for clients that address several (LAT-013). */
+export async function daemonCallTo(
+  endpoint: { host: string; port: number },
+  method: string,
+  params?: Record<string, unknown> | null,
+  timeoutMs = 3000
+): Promise<unknown> {
+  try {
+    return await sendRequest(endpoint, method, params, timeoutMs);
+  } catch (err) {
+    const legacy = legacyMethodName(method, params);
+    if (!legacy || (err as Error).message !== `Unknown method: ${method}`) throw err;
+    return sendRequest(endpoint, legacy, params, timeoutMs);
+  }
+}
+
+async function sendRequest(
+  endpoint: { host: string; port: number },
+  method: string,
+  params: Record<string, unknown> | null | undefined,
+  timeoutMs: number
+): Promise<unknown> {
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host: DAEMON_HOST, port: DAEMON_PORT });
+    const { host, port } = endpoint;
+    const socket = createConnection({ host, port });
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
@@ -104,13 +192,16 @@ export async function daemonCall(
       const key = randomBytes(16).toString("base64");
       const upgrade = [
         `GET / HTTP/1.1`,
-        `Host: ${DAEMON_HOST}:${DAEMON_PORT}`,
+        `Host: ${host}:${port}`,
         `Upgrade: websocket`,
         `Connection: Upgrade`,
         `Sec-WebSocket-Key: ${key}`,
         `Sec-WebSocket-Version: 13`,
         ...voiceTokenHeader(method),
         ...callerHeader(),
+        // A paired remote host needs every connection signed (LAT-013). A
+        // pairing request goes unsigned so a host that forgot us can re-pair.
+        ...(method === "clients.pair" ? [] : pairingHeaders(endpoint)),
         ``,
         ``,
       ].join("\r\n");
@@ -127,7 +218,10 @@ export async function daemonCall(
         if (!header.includes("101")) {
           settled = true;
           cleanup();
-          reject(new Error("WebSocket upgrade failed"));
+          // lattices-host explains a 401/403 in the body (unpaired, revoked, bad signature).
+          const status = header.split("\r\n")[0]!.split(" ")[1];
+          const reason = (status === "401" || status === "403") ? buffer.subarray(headerEnd + 4).toString().trim() : "";
+          reject(new Error(reason ? `WebSocket upgrade failed (${status}): ${reason}` : "WebSocket upgrade failed"));
           return;
         }
         upgraded = true;
@@ -182,8 +276,10 @@ export async function isDaemonRunning(): Promise<boolean> {
   try {
     await daemonCall("daemon.status", null, 1000);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    // A lattices-host that answers but refuses this client (unpaired, revoked)
+    // is running; the caller's own request will surface why.
+    return /^(pairing_required|scope_denied|loopback_only)|upgrade failed \((401|403)\)/.test((err as Error).message);
   }
 }
 

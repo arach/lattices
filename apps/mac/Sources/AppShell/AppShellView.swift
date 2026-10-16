@@ -12,6 +12,8 @@ enum AppPage: String, CaseIterable {
     /// (`desktopInventory`).
     case overview
     case layers
+    /// Nearby machines, visiting cursor and display arrangement.
+    case machines
     case activity
     case runs
     case assistant
@@ -24,6 +26,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "Home"
         case .overview:         return "Overview"
         case .layers:           return "Layers"
+        case .machines:         return "Machines"
         case .activity:         return "Activity"
         case .runs:             return "Runs"
         case .assistant:        return "Assistant"
@@ -38,6 +41,7 @@ enum AppPage: String, CaseIterable {
         case .home:             return "house"
         case .overview:         return "rectangle.3.group"
         case .layers:           return "square.3.layers.3d"
+        case .machines:         return "display.2"
         case .activity:         return "list.bullet.rectangle"
         case .runs:             return "record.circle"
         case .assistant:        return "bubble.left.and.bubble.right"
@@ -51,7 +55,7 @@ enum AppPage: String, CaseIterable {
     /// places you work, agent surfaces, system state — so Runs and Activity stop
     /// reading as peers of Home.
     static let navigationGroups: [(title: String, pages: [AppPage])] = [
-        ("Workspace", [.home, .overview, .layers]),
+        ("Workspace", [.home, .overview, .layers, .machines]),
         ("Agents",    [.assistant, .runs]),
         ("System",    [.activity]),
     ]
@@ -64,6 +68,7 @@ enum AppPage: String, CaseIterable {
     static func named(_ raw: String) -> AppPage? {
         switch raw {
         case "screenMap", "desktopInventory": return .overview
+        case "hosts": return .machines
         default: return AppPage(rawValue: raw)
         }
     }
@@ -96,7 +101,7 @@ struct AppShellView: View {
     @ObservedObject private var desktop = DesktopModel.shared
 
     private var manifest: HudAppManifest {
-        HudAppManifest(name: "Lattices", accent: Palette.running, targetLabel: "Machine")
+        HudAppManifest(name: "Lattices", accent: Palette.textDim, targetLabel: "Machine")
     }
 
     /// Hudson rail ↔ our `activePage`. Selecting a rail item routes through the
@@ -156,7 +161,7 @@ struct AppShellView: View {
             .background(ShellGlassBackdrop())
         }
         .environment(\.hudTheme, .lattices)
-        .background(HudWindowChrome(colorScheme: .dark))
+        .background(HudWindowChrome(colorScheme: .dark, isMovableByWindowBackground: false))
         .hudsonAppManifest(manifest)
         .onChange(of: windowController.activePage) { page in
             clearRelevantDismissals(for: page)
@@ -182,7 +187,7 @@ struct AppShellView: View {
             selection: selection,
             entries: entries,
             isCompact: sidebarCompact,
-            accent: Palette.running,
+            accent: Palette.textDim,
             labelWidth: CGFloat(sidebarLabelWidth),
             onHeaderTap: nil
         ) {
@@ -224,7 +229,7 @@ struct AppShellView: View {
                     isActive: windowController.activePage == .settings,
                     isCompact: sidebarCompact,
                     labelWidth: CGFloat(sidebarLabelWidth),
-                    accent: Palette.running
+                    accent: Palette.textDim
                 ) {
                     windowController.showPage(.settings)
                 }
@@ -250,9 +255,14 @@ struct AppShellView: View {
         let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
         return VStack(spacing: wrap ? 5 : 0) {
             HStack(spacing: 8) {
-                Text(windowController.activePage.label)
-                    .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
-                Spacer(minLength: 8)
+                HStack {
+                    Text(windowController.activePage.label)
+                        .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
+                    Spacer(minLength: 8)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
                 }
@@ -312,7 +322,7 @@ struct AppShellView: View {
         // fixed 632pt minimum otherwise makes the whole shell clip at 600pt.
         let scale = min(1, max(0.1, (availableWidth - 2 * Chrome.inset) / 608))
         return HStack(spacing: 18 * scale) {
-            statusSlot(width: 132 * scale) {
+            statusSlot(width: 150 * scale) {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(runningSessionCount > 0 ? Palette.running : Palette.textMuted)
@@ -321,7 +331,7 @@ struct AppShellView: View {
                 }
             }
 
-            statusSlot(width: 260 * scale) {
+            statusSlot(width: 242 * scale) {
                 Text(desktopShapeText)
             }
 
@@ -442,6 +452,8 @@ struct AppShellView: View {
             OverviewView(model: overview, controller: controller)
         case .layers:
             LayersPage()
+        case .machines:
+            MachinesPageView()
         case .activity:
             ActivityPageView()
         case .runs:
@@ -554,7 +566,7 @@ private struct SidebarFooterButton: View {
                 .frame(width: HudSidebarLayout.railWidth, height: HudSidebarLayout.rowHeight)
 
             Text(label)
-                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .semibold : .medium))
+                .font(HudFont.ui(HudTextSize.base, weight: isActive ? .medium : .regular))
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)

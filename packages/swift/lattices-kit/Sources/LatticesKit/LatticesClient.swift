@@ -169,6 +169,18 @@ actor LatticesTransport {
     }
 
     func call(_ method: String, params: JSONValue?, timeout: TimeInterval?) async throws -> JSONValue {
+        do {
+            return try await send(method, params: params, timeout: timeout)
+        } catch {
+            guard LegacyMethodNames.isUnknownMethod(error, method: method),
+                  let legacy = LegacyMethodNames.fallback(for: method, params: params) else {
+                throw error
+            }
+            return try await send(legacy, params: params, timeout: timeout)
+        }
+    }
+
+    private func send(_ method: String, params: JSONValue?, timeout: TimeInterval?) async throws -> JSONValue {
         connect()
 
         guard let task else {

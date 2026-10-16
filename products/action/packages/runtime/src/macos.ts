@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { SurfaceEngine } from "./surface-engine.js";
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -204,7 +205,9 @@ export interface CurrentSurfaceAccessibilityResult {
   nodeCount: number;
 }
 
-export class MacOSCommandEngine implements CaptureEngine {
+export class MacOSCommandEngine implements SurfaceEngine {
+  readonly platform = "macos" as const;
+
   private readonly surfaces = new Map<string, TargetApp>();
   private activeCapturePath?: string;
   private activeCaptureStopPath?: string;

@@ -1,8 +1,8 @@
 // `lats window move` / `lats window place` — CLI front-ends for the
-// daemon's canonical window movement APIs (window.move / window.place).
+// daemon's canonical window movement APIs (windows.move / windows.place).
 //
 // The CLI exposes slots: named positions and grid placements. Fractional typed
-// placements stay available through the raw API (`lats call window.place`).
+// placements stay available through the raw API (`lats call windows.place`).
 
 /** Named placement slots, mirroring the daemon's TilePosition catalog. */
 export const NAMED_PLACEMENTS = [
@@ -53,7 +53,7 @@ export function placementSlotsHelp(): string {
           ${NAMED_PLACEMENTS.slice(22, 30).join(", ")},
           ${NAMED_PLACEMENTS.slice(30).join(", ")}
   Grid    grid:CxR:c,r (0-based)   CxR:c,r (1-based)   grid:CxR:c0,r0-c1,r1 (span)   grid:N.K (N×N cell K)
-  Fractional placements stay available via: lats call window.place '{"wid":123,"placement":{"kind":"fractions","x":0.5,"y":0,"w":0.5,"h":1}}'`;
+  Fractional placements stay available via: lats call windows.place '{"wid":123,"placement":{"kind":"fractions","x":0.5,"y":0,"w":0.5,"h":1}}'`;
 }
 
 export type WindowMoveArgs = {
@@ -198,7 +198,7 @@ function formatFrame(frame: FrameJSON | undefined): string {
   return `${round(frame.w)}×${round(frame.h)} @ ${round(frame.x)},${round(frame.y)}`;
 }
 
-/** Render an execution receipt from window.move / window.place for humans. */
+/** Render an execution receipt from windows.move / windows.place for humans. */
 export function describeMoveReceipt(receipt: any): string {
   const lines: string[] = [];
   const status = receipt?.status ?? (receipt?.ok ? "ok" : "failed");
@@ -240,7 +240,7 @@ export async function runWindowMovement(
   if (parsed.dryRun) params.dryRun = true;
   // A relocation can carry from an inactive source desktop, cross displays,
   // then carry to the destination. Wait for verification (and recovery).
-  const receipt = await daemonCall(method === "move" ? "window.move" : "window.place", params, 60_000);
+  const receipt = await daemonCall(method === "move" ? "windows.move" : "windows.place", params, 60_000);
   if (parsed.json) {
     console.log(JSON.stringify(receipt, null, 2));
     return;

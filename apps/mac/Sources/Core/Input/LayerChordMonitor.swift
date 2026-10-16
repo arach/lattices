@@ -2,12 +2,14 @@ import AppKit
 import Combine
 
 /// Shows the layer pad as soon as ⌘⌥ goes down, before any arrow, and keeps
-/// it up while the chord is held (`LayerBezel.hold`). A flip then lights its
-/// new slot in place, and letting go fades it.
+/// it up while the chord is held (`LayerBezel.hold`). An arrow or digit
+/// lights the slot it aims at (`LayerAim`), and letting go asks whether to
+/// switch there: Return switches, Escape stays. ⌘⌥ again browses on.
 ///
 /// Apps own plenty of ⌘⌥ shortcuts (⌘⌥I, ⌘⌥Esc), so the pad waits a beat
 /// before showing, and any key that isn't a layer key (arrows, 1–9, Space)
-/// takes it down. A read-only tap: nothing is consumed here.
+/// takes it down and drops the aim, Escape included. A read-only tap:
+/// nothing is consumed here.
 final class LayerChordMonitor {
     static let shared = LayerChordMonitor()
 
@@ -21,6 +23,8 @@ final class LayerChordMonitor {
         18, 19, 20, 21, 23, 22, 26, 28, 25,     // 1–9
         83, 84, 85, 86, 87, 88, 89, 91, 92,     // numpad 1–9
         49,                                     // Space, which freezes the preview
+        29, 82,                                 // 0 and numpad 0: Classic
+        6,                                      // Z: undo
     ]
     private static let arrowsAndDigits = layerKeys.subtracting([49])
 
@@ -50,6 +54,11 @@ final class LayerChordMonitor {
     private func pressed() {
         guard !holding else { return }
         holding = true
+        if LayerAim.shared.resume() {
+            flipped = true
+            LayerPreview.shared.arm()
+            return
+        }
         flipped = false
         LayerBezel.shared.hold()
         // Space works from the first moment, not once the pad shows.
@@ -67,6 +76,8 @@ final class LayerChordMonitor {
         holding = false
         pending?.cancel()
         pending = nil
+        // Asking keeps the pad up until Return or Escape.
+        if LayerAim.shared.letGo() { return }
         LayerBezel.shared.release(after: flipped ? Self.lingerAfterFlip : 0)
     }
 
@@ -77,7 +88,8 @@ final class LayerChordMonitor {
             flipped = true
             pending?.cancel()
         } else if !Self.layerKeys.contains(code) {
-            // Someone else's ⌘⌥ shortcut.
+            // Someone else's ⌘⌥ shortcut, or Escape: nothing moves.
+            LayerAim.shared.cancel()
             holding = false
             pending?.cancel()
             pending = nil

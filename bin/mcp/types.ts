@@ -12,7 +12,7 @@ export type JsonRpcRequest = {
 export type ToolResult = {
   content: Array<
     | { type: "text"; text: string }
-    | { type: "image"; data: string; mimeType: "image/png" }
+    | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
   >;
   structuredContent?: JsonObject;
   isError?: boolean;

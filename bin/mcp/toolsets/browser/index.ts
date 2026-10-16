@@ -406,7 +406,7 @@ export const tools = [
           type: "string",
           description: "Action mode only. Action browser identity to use, e.g. agent-browser (blank) or work (seeded from a regular Chrome profile). Created on first use.",
         },
-        background: { type: "boolean", default: true, description: "Action mode only: launch real headed Chrome on an Action virtual display (requires Action runtime and signed app). Set false to explicitly launch a visible window; close an already-running browser first. Regular mode is always visible." },
+        background: { type: "boolean", default: true, description: "Action mode only: launch real headed Chrome on an explicitly prepared Action workspace (requires Action runtime and signed app; ACTION_BROWSER_WORKSPACE selects a prepared workspace). Set false to explicitly launch a visible window; close an already-running browser first. Regular mode is always visible." },
         waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 15_000, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Zero fails immediately." },
         newTab: { type: "boolean", default: false, description: "Action mode only: create a separate tab instead of reusing this session's current tab." },
       },
@@ -1729,7 +1729,15 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
         reusedTab = Boolean(target);
       }
       if (!target) {
-        target = await fetchJson<ChromeTarget>("/json/new?about%3Ablank", { method: "PUT" });
+        const pid = chromeProcessId();
+        if (background || browserLayer().requiredFor(pid)) {
+          if (!pid) throw new Error("Could not identify the Action Chrome process.");
+          const targetId = await browserLayer().createWindow(pid, debugPort);
+          target = (await listTargets()).find(candidate => candidate.id === targetId);
+          if (!target) throw new Error("The Action layer browser window did not expose its target.");
+        } else {
+          target = await fetchJson<ChromeTarget>("/json/new?about%3Ablank", { method: "PUT" });
+        }
         if (!target.webSocketDebuggerUrl) {
           throw new Error("Chrome created a tab without a DevTools endpoint.");
         }

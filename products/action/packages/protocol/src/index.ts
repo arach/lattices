@@ -405,6 +405,12 @@ export interface EngineDiagnostics {
   accessibility: PermissionState;
   screenRecording: PermissionState;
   notes?: string[];
+  /** Set by engines that drive another machine (LAT-013), e.g. "linux". */
+  platform?: string;
+  /** The remote host's name, for remote engines. */
+  host?: string;
+  /** The remote host's advertised capabilities (host.describe). */
+  capabilities?: string[];
 }
 
 export const guidedSessionPhases = [
@@ -536,6 +542,9 @@ export interface AgentLayerWindow {
  * top-left origin, in points.
  */
 export interface AgentLayerState {
+  workspace?: string;
+  previewDisplayId?: number | null;
+  previewFull?: boolean;
   pid: number;
   displayId: number;
   bounds: Bounds;
@@ -549,6 +558,7 @@ export interface AgentLayerState {
 }
 
 export interface AgentLayerStatus {
+  workspace?: string;
   active: boolean;
   owner: AgentLayerOwner;
   ownerPid?: number;

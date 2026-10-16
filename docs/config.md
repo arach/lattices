@@ -164,6 +164,12 @@ Run `lats init` in your project directory to generate a starter
 | `lats place <query> [pos]` | Deep search + focus + tile (default: bottom-right)|
 | `lats focus <session>`   | Focus a session's window and switch Spaces        |
 | `lats scan search <query>` | Search indexed screen text                       |
+| `lats action`            | Action product status (install, agent, checkout)  |
+| `lats action install`    | Download the latest Action.app release to /Applications |
+| `lats action launch`     | Open Action.app (`--launch` also works on install) |
+| `lats action quit`       | Quit Action.app                                   |
+| `lats action call <m>`   | Raw Action agent call (ws://127.0.0.1:4319)       |
+| `lats action <cmd>`      | Forward to the Action CLI (monorepo checkout)     |
 | `lattices diag [limit]`       | Show recent diagnostic entries                   |
 | `lats app`               | Launch the menu bar companion app                 |
 | `lats app install`       | Register launch-at-login and start now            |
@@ -299,7 +305,7 @@ from the top-left, or canonical `grid:CxR:c,r` with 0-indexed coordinates.
 Example: `lats tile 4x4:1,2`.
 
 When the menu bar app is running, `lats tile` routes through the daemon's
-canonical `window.place` and reports a verified receipt. Without the daemon it
+canonical `windows.place` and reports a verified receipt. Without the daemon it
 falls back to AppleScript (frontmost app, primary display) and says so.
 
 ### Moving a specific window
@@ -317,7 +323,7 @@ lats window move 4182 --display 0 --dry-run --json       # plan without moving
 
 A malformed wid is an error; these commands never fall back to the frontmost
 window. Slots are the named positions above plus grid placements; fractional
-typed placements remain available via `lats call window.place`.
+typed placements remain available via `lats call windows.place`.
 
 ### Smart app tiling
 

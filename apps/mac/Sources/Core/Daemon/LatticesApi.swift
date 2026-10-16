@@ -165,10 +165,11 @@ final class LatticesApi {
     }
 
     func dispatch(method: String, params: JSON?) throws -> JSON {
-        guard let endpoint = endpoints[method] else {
+        let resolved = MethodAliases.resolve(method, params: params)
+        guard let endpoint = endpoints[resolved.method] else {
             throw RouterError.unknownMethod(method)
         }
-        return try endpoint.handler(params)
+        return try endpoint.handler(resolved.params)
     }
 
     func handle(_ request: DaemonRequest) -> DaemonResponse {
@@ -229,8 +230,29 @@ final class LatticesApi {
 
         return .object([
             "version": .string("1.0"),
+            "build": .object([
+                "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"),
+                "revision": .string(Bundle.main.object(forInfoDictionaryKey: "LatticesBuildRevision") as? String ?? "unknown"),
+                "builtAt": .string(Bundle.main.object(forInfoDictionaryKey: "LatticesBuildTimestamp") as? String ?? "unknown"),
+                "bundlePath": .string(Bundle.main.bundlePath)
+            ]),
+            // Product-family discovery, not a claim that these methods run on this daemon.
+            "relatedServices": .object([
+                "action": .object([
+                    "ownership": .string("Separate Action native host and MCP runtime; not Lattices workspace layers"),
+                    "discovery": .string("lats action capabilities"),
+                    "primaryTransport": .string("MCP"),
+                    "mcpDiscoveryTool": .string("action.capabilities"),
+                    "privateBrowserEntryPoint": .string("action.layer.open {browser:true,url:...}"),
+                    "rawWebSocketSupportsLayerOrchestration": .bool(false),
+                    "availability": .string("Verify the installed Action build and connected MCP tool list; daemon availability is not Action capability parity")
+                ])
+            ]),
             "models": .array(modelsList),
-            "methods": .array(methodsList)
+            "methods": .array(methodsList),
+            "aliases": .object(MethodAliases.table
+                .filter { endpoints[$0.value.method] != nil }
+                .mapValues { JSON.string($0.method) })
         ])
     }
 
@@ -443,8 +465,8 @@ final class LatticesApi {
             Field(name: "plan", type: "object", required: false, description: "Dry-run plan used before mutation"),
             Field(name: "mutations", type: "[object]", required: true, description: "Applied mutations and frame changes"),
             Field(name: "verified", type: "bool", required: true, description: "Whether the final state was verified"),
-            Field(name: "undoable", type: "bool", required: false, description: "Whether the receipt can be restored through actions.undo"),
-            Field(name: "undoOf", type: "[string]", required: false, description: "Receipt ids restored by an actions.undo receipt"),
+            Field(name: "undoable", type: "bool", required: false, description: "Whether the receipt can be restored through history.undo"),
+            Field(name: "undoOf", type: "[string]", required: false, description: "Receipt ids restored by a history.undo receipt"),
             Field(name: "trace", type: "[string]", required: true, description: "Human-readable execution trace"),
             Field(name: "events", type: "[object]", required: true, description: "Structured execution events"),
         ]))
@@ -675,7 +697,7 @@ final class LatticesApi {
         // MARK: - Unified Search
 
         api.register(Endpoint(
-            method: "lattices.search",
+            method: "search.query",
             description: "Unified search across windows, terminals, and OCR. Single entry point for all search surfaces.",
             access: .read,
             params: [
@@ -924,29 +946,24 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tmux.sessions",
-            description: "List all tmux sessions with child process enrichment",
+            method: "tmux.list",
+            description: "List tmux sessions with child process enrichment, or the full inventory including orphans",
             access: .read,
-            params: [],
-            returns: .array(model: "TmuxSession"),
-            handler: { _ in
+            params: [
+                Param(name: "includeOrphans", type: "bool", required: false,
+                      description: "Return the full inventory as {all, orphans} instead of the enriched session list"),
+            ],
+            returns: .custom("Array of TmuxSession; with includeOrphans, an object with 'all' and 'orphans' arrays of TmuxSession"),
+            handler: { params in
+                if params?["includeOrphans"]?.boolValue == true {
+                    let inv = InventoryManager.shared
+                    return .object([
+                        "all": .array(inv.allSessions.map { Encoders.session($0) }),
+                        "orphans": .array(inv.orphans.map { Encoders.session($0) })
+                    ])
+                }
                 let sessions = TmuxModel.shared.sessions
                 return .array(sessions.map { Encoders.enrichedSession($0) })
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "tmux.inventory",
-            description: "Get full tmux inventory including orphaned sessions",
-            access: .read,
-            params: [],
-            returns: .custom("Object with 'all' and 'orphans' arrays of TmuxSession"),
-            handler: { _ in
-                let inv = InventoryManager.shared
-                return .object([
-                    "all": .array(inv.allSessions.map { Encoders.session($0) }),
-                    "orphans": .array(inv.orphans.map { Encoders.session($0) })
-                ])
             }
         ))
 
@@ -978,15 +995,11 @@ final class LatticesApi {
             description: "List all workspace layers and the active index",
             access: .read,
             params: [],
-            returns: .custom("Object with 'layers' array (id, label, index, slot: the ⌘⌥ pad digit or null, projectCount) and 'active' index"),
+            returns: .custom("Object with 'layers' array (id, label, index, slot, projectCount), 'active' index or null when off, 'focusActive' and 'rememberedIndex'"),
             handler: { _ in
+                Self.onMain {
                 let wm = WorkspaceManager.shared
-                guard let config = wm.config, let layers = config.layers else {
-                    return .object([
-                        "layers": .array([]),
-                        "active": .int(0)
-                    ])
-                }
+                let layers = wm.layers
                 return .object([
                     "layers": .array(layers.enumerated().map { i, layer in
                         .object([
@@ -997,9 +1010,12 @@ final class LatticesApi {
                             "projectCount": .int(layer.projects.count)
                         ])
                     }),
-                    "active": .int(wm.activeLayerIndex),
+                    "active": wm.activeLayerSelection.map { .int($0) } ?? .null,
+                    "focusActive": .bool(wm.isLayerFocusActive),
+                    "rememberedIndex": .int(wm.activeLayerIndex),
                     "stage": Self.layerStageStatus()
                 ])
+                }
             }
         ))
 
@@ -1011,7 +1027,7 @@ final class LatticesApi {
                 Param(name: "layer", type: "string", required: false, description: "Layer id or label (default: every layer)"),
                 Param(name: "index", type: "int", required: false, description: "Layer index"),
             ],
-            returns: .custom("Object with 'active' index and 'layers': each with id, label, index, slot, active, layout and 'entries' {index, name, rule, pattern, missing, windows {wid, app, title, presence, where}}. presence is showing, elsewhere, parked or hidden"),
+            returns: .custom("Object with 'active' index or null when off, 'focusActive', 'rememberedIndex' and 'layers': each with id, label, index, slot, active, layout and 'entries' {index, name, rule, pattern, missing, windows {wid, app, title, presence, where}}. presence is showing, elsewhere, parked or hidden"),
             handler: { params in
                 try Self.onMain {
                     let wm = WorkspaceManager.shared
@@ -1022,7 +1038,9 @@ final class LatticesApi {
                     let overviews = wm.overviews(in: DesktopModel.shared.allWindows())
                         .filter { only == nil || $0.index == only }
                     return .object([
-                        "active": .int(wm.activeLayerIndex),
+                        "active": wm.activeLayerSelection.map { .int($0) } ?? .null,
+                        "focusActive": .bool(wm.isLayerFocusActive),
+                        "rememberedIndex": .int(wm.activeLayerIndex),
                         "layers": .array(overviews.map { wm.layerMembersJSON($0) }),
                     ])
                 }
@@ -1054,23 +1072,50 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "layers.reveal",
-            description: "Show All: put back every window a layer switch parked and unhide every app it hid",
+            method: "layers.undo",
+            description: "Take back the last layer edit or switch this launch. An edit (create, add, remove, move, rename, delete, layout) writes the layers as they were and moves no window; a switch goes back to the layer you were on and puts its windows where they sat",
             access: .mutate,
             params: [],
-            returns: .custom("Object with 'unparked', 'stillParked' and 'rescued' counts, 'unhidden' app names, and the resulting 'stage'"),
+            returns: .custom("Object with 'undone' (what it took back, or null with nothing to undo) and 'remaining'"),
             handler: { _ in
-                let outcome = LayerStage.shared.showAll()
+                try Self.onMain {
+                    let wm = WorkspaceManager.shared
+                    let undone = try wm.undoLayerEdit()
+                    return .object([
+                        "ok": .bool(true),
+                        "undone": undone.map { .string($0) } ?? .null,
+                        "remaining": .bool(wm.canUndoLayerEdit),
+                    ])
+                }
+            }
+        ))
+
+        for method in ["layers.exit", "layers.reveal"] {
+        api.register(Endpoint(
+            method: method,
+            description: "Exit Layers: turn layer focus off, restore parked windows and unhide apps; retry unavailable windows when their desktop is shown",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with 'focusActive': false, 'active': null, 'unparked', 'stillParked', 'rescued', 'unhidden', 'stillHidden', 'recoveryPending' and 'stage'"),
+            handler: { _ in
+                Self.onMain {
+                let outcome = WorkspaceManager.shared.exitLayers(showFeedback: false)
                 return .object([
                     "ok": .bool(true),
+                    "focusActive": .bool(false),
+                    "active": .null,
                     "unparked": .int(outcome.unparked.count),
                     "stillParked": .int(outcome.stillParked),
                     "rescued": .int(outcome.rescued),
                     "unhidden": .array(outcome.unhiddenApps.map { .string($0) }),
+                    "stillHidden": .array(outcome.stillHiddenApps.map { .string($0) }),
+                    "recoveryPending": .bool(outcome.remainingToRestore > 0),
                     "stage": Self.layerStageStatus()
                 ])
+                }
             }
         ))
+        }
 
         api.register(Endpoint(
             method: "overlay.publish",
@@ -1221,7 +1266,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.status",
+            method: "solo.status",
             description: "Check whether Focus Mode is active",
             access: .read,
             params: [],
@@ -1234,7 +1279,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.enter",
+            method: "solo.enter",
             description: "Enter Focus Mode for the frontmost window",
             access: .mutate,
             params: [],
@@ -1250,7 +1295,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.exit",
+            method: "solo.exit",
             description: "Exit Focus Mode and restore the original window frame",
             access: .mutate,
             params: [],
@@ -1262,7 +1307,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "focus.toggle",
+            method: "solo.toggle",
             description: "Toggle Focus Mode for the frontmost window",
             access: .mutate,
             params: [],
@@ -1451,7 +1496,7 @@ final class LatticesApi {
         // ── Endpoints: Mutations ────────────────────────────────
 
         api.register(Endpoint(
-            method: "window.resolve",
+            method: "windows.resolve",
             description: "Resolve a window target and optional placement plan without moving anything",
             access: .read,
             params: [
@@ -1490,7 +1535,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "actions.history",
+            method: "history.list",
             description: "Return recent action execution receipts.",
             access: .read,
             params: [
@@ -1510,7 +1555,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "actions.undo",
+            method: "history.undo",
             description: "Restore the latest undoable window placement receipt, or a specific receipt/request group.",
             access: .mutate,
             params: [
@@ -2408,29 +2453,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.tile",
-            description: "Tile a session's terminal window to a position",
-            access: .mutate,
-            params: [
-                Param(name: "session", type: "string", required: true, description: "Tmux session name"),
-                Param(name: "position", type: "string", required: true,
-                      description: "Placement shorthand or grid syntax"),
-            ],
-            returns: .ok,
-            handler: { params in
-                guard case .object(var dict) = params else {
-                    throw RouterError.missingParam("session")
-                }
-                guard dict["session"]?.stringValue != nil else {
-                    throw RouterError.missingParam("session")
-                }
-                dict["placement"] = dict["placement"] ?? dict["position"]
-                return try Self.executeWindowPlacement(params: .object(dict))
-            }
-        ))
-
-        api.register(Endpoint(
-            method: "window.focus",
+            method: "windows.focus",
             description: "Focus a window by wid or session name",
             access: .mutate,
             params: [
@@ -2525,7 +2548,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.place",
+            method: "windows.place",
             description: "Place a window or session using a typed placement spec",
             access: .mutate,
             params: [
@@ -2544,7 +2567,7 @@ final class LatticesApi {
 
         // ── Present Window ────────────────────────────────────────────
         api.register(Endpoint(
-            method: "window.present",
+            method: "windows.present",
             description: "Present a window: move to current space, bring to front, optionally position it",
             access: .mutate,
             params: [
@@ -2616,7 +2639,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.pick.start",
+            method: "windows.pick",
             description: "Open Lattices Hyperspace in read-only single-window grab mode and return the selected window",
             access: .read,
             params: [
@@ -2635,7 +2658,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "window.move",
+            method: "windows.move",
             description: "Move a window to another display, placement slot, or Space",
             access: .mutate,
             params: [
@@ -2665,7 +2688,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.launch",
+            method: "sessions.launch",
             description: "Launch a project's tmux session",
             access: .mutate,
             params: [Param(name: "path", type: "string", required: true, description: "Absolute project path")],
@@ -2693,7 +2716,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.kill",
+            method: "sessions.kill",
             description: "Kill a tmux session by name",
             access: .mutate,
             params: [Param(name: "name", type: "string", required: true, description: "Session name")],
@@ -2713,7 +2736,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.detach",
+            method: "sessions.detach",
             description: "Detach all clients from a tmux session",
             access: .mutate,
             params: [Param(name: "name", type: "string", required: true, description: "Session name")],
@@ -2728,7 +2751,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.sync",
+            method: "sessions.sync",
             description: "Sync a project's tmux session panes to match config",
             access: .mutate,
             params: [Param(name: "path", type: "string", required: true, description: "Absolute project path")],
@@ -2746,7 +2769,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "session.restart",
+            method: "sessions.restart",
             description: "Restart a project session or specific pane",
             access: .mutate,
             params: [
@@ -2768,7 +2791,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "layer.switch",
+            method: "layers.switch",
             description: "Switch to a workspace layer by index or name, as ⌘⌥ does (mode focus unless given)",
             access: .mutate,
             params: [
@@ -2786,7 +2809,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "layer.activate",
+            method: "layers.activate",
             description: "Activate a workspace layer using an explicit activation mode",
             access: .mutate,
             params: [
@@ -2801,7 +2824,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "group.launch",
+            method: "groups.launch",
             description: "Launch all sessions in a project group",
             access: .mutate,
             params: [Param(name: "id", type: "string", required: true, description: "Group identifier")],
@@ -2821,7 +2844,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "group.kill",
+            method: "groups.kill",
             description: "Kill all sessions in a project group",
             access: .mutate,
             params: [Param(name: "id", type: "string", required: true, description: "Group identifier")],
@@ -2839,7 +2862,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.list",
+            method: "tabs.list",
             description: "List runtime cross-app tab stacks",
             access: .read,
             params: [],
@@ -2850,7 +2873,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.create",
+            method: "tabs.stack",
             description: "Stack selected or explicit windows as live cross-app tabs",
             access: .mutate,
             params: [
@@ -2878,7 +2901,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.add",
+            method: "tabs.add",
             description: "Add selected or explicit windows to a live tab stack",
             access: .mutate,
             params: [
@@ -2898,7 +2921,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.select",
+            method: "tabs.select",
             description: "Select a tab by member index or window id",
             access: .mutate,
             params: [
@@ -2925,7 +2948,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.layout",
+            method: "tabs.layout",
             description: "Switch a live tab stack between collapsed tabs and an expanded grid",
             access: .mutate,
             params: [
@@ -2951,7 +2974,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "tabStacks.delete",
+            method: "tabs.unstack",
             description: "Remove a runtime tab stack without closing its windows",
             access: .mutate,
             params: [Param(name: "id", type: "string", required: false, description: "Group id; defaults to the active group")],
@@ -3010,7 +3033,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "space.optimize",
+            method: "spaces.optimize",
             description: "Optimize a set of windows using an explicit scope and strategy",
             access: .mutate,
             params: [
@@ -3197,7 +3220,7 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
-            method: "intents.execute",
+            method: "intents.run",
             description: "Execute a structured intent (from voice, agent, or script)",
             access: .mutate,
             params: [
@@ -3285,6 +3308,7 @@ final class LatticesApi {
 
         // Speaking: forwarded to the Voice helper by DaemonServer.
         VoiceHelperRouting.registerSchema(on: api)
+        EventSubscriptions.registerSchema(on: api)
 
         api.register(Endpoint(
             method: "voice.simulate",
@@ -3564,6 +3588,267 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "mouse.home",
+            description: "End the current visit and return the cursor to the centre of this Mac's main display",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                PointerHome.bringHome()
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "long.show",
+            description: "Show or hide Long, Lattices' desktop character; a click on him opens the controls",
+            access: .mutate,
+            params: [Param(name: "on", type: "bool", required: false, description: "Default true")],
+            returns: .custom("Object with 'shown'"),
+            handler: { params in
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in
+                    MainActor.assumeIsolated {
+                        on ? DesktopLong.shared.show() : DesktopLong.shared.hide()
+                        return DesktopLong.shared.shown
+                    }
+                }
+                let shown = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["shown": .bool(shown)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.pair",
+            description: "Pair this Mac with a host's companion bridge so it can visit it (docs/visit.md). Returns at once with the code to check on the host; approve it there within two minutes",
+            access: .mutate,
+            params: [
+                Param(name: "host", type: "string", required: true, description: "Name, e.g. archie"),
+                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:5287)"),
+                Param(name: "side", type: "string", required: false, description: "Side of this Mac's screens the host sits on: left, right, top, bottom (default right)"),
+            ],
+            returns: .custom("Object with 'pairing' and 'code'"),
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                let address = params?["address"]?.stringValue ?? "\(name):5287"
+                guard let side = VisitTrust.Side(rawValue: params?["side"]?.stringValue ?? "right") else {
+                    throw RouterError.custom("side: expected left, right, top or bottom")
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if case .failure(let error) = VisitTrust.shared.pair(name: name, address: address, side: side) {
+                        DiagnosticLog.shared.warn("Visit: pairing with \(name) failed: \(error)")
+                    }
+                    DispatchQueue.main.async { VisitController.shared.refreshLayout() }
+                }
+                return .object(["pairing": .string(name), "code": .string(VisitTrust.shared.fingerprint)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.forget",
+            description: "Forget a visit pairing and end any visit to it",
+            access: .mutate,
+            params: [Param(name: "host", type: "string", required: true, description: "Paired host name")],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                let work = { () -> Bool in
+                    if VisitController.shared.status().visiting?.caseInsensitiveCompare(name) == .orderedSame {
+                        VisitController.shared.end(because: "forgotten")
+                    }
+                    return VisitTrust.shared.forget(name)
+                }
+                let removed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["ok": .bool(removed)])
+            }
+        ))
+
+        for action in ["keep", "revert"] {
+            api.register(Endpoint(
+                method: "visit.arrangement.\(action)", description: "\(action.capitalized) the pending display trial",
+                access: .mutate, params: [], returns: .ok,
+                handler: { _ in
+                    let work: @MainActor () -> Void = {
+                        if action == "keep" { DisplayArrangement.shared.keep() } else { DisplayArrangement.shared.revert() }
+                    }
+                    if Thread.isMainThread { MainActor.assumeIsolated { work() } }
+                    else { DispatchQueue.main.sync { work() } }
+                    return .object(["ok": .bool(true)])
+                }
+            ))
+        }
+
+        api.register(Endpoint(
+            method: "visit.main",
+            description: "Make a display the main one (the menu bar's), keeping the arrangement; reverts after 15 s unless visit.arrangement.keep",
+            access: .mutate,
+            params: [Param(name: "screen", type: "int|string", required: true, description: "Display number or name fragment")],
+            returns: .ok,
+            handler: { params in
+                let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
+                let work: @MainActor () throws -> Void = { try DisplayArrangement.shared.makeMain(number) }
+                if Thread.isMainThread { try MainActor.assumeIsolated { try work() } }
+                else { try DispatchQueue.main.sync { try MainActor.assumeIsolated { try work() } } }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.place",
+            description: "Place a machine in global display coordinates",
+            access: .mutate,
+            params: [Param(name: "name", type: "string", required: true, description: "Machine name"),
+                     Param(name: "x", type: "number", required: true, description: "Global X"),
+                     Param(name: "y", type: "number", required: true, description: "Global Y")],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["name"]?.stringValue, !name.isEmpty,
+                      let x = params?["x"]?.numericDouble, let y = params?["y"]?.numericDouble,
+                      x.isFinite, y.isFinite else { throw RouterError.custom("name, x and y are required") }
+                let old = VisitTrust.shared.host(named: name)?.placement ?? MachineArrangementStore.placement(name)
+                let monitors = MachineArrangementStore.monitors(name)
+                let size = monitors.isEmpty ? (old?.rect.size ?? CGSize(width: 1920, height: 1080)) : monitors.reduce(CGRect.null) { $0.union($1.frame.rect) }.size
+                try MachineArrangementStore.place(name, CGRect(x: x, y: y, width: size.width, height: size.height))
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        api.register(Endpoint(
+            method: "hosts.add", description: "Add a Lattices host to hosts.json", access: .mutate,
+            params: [Param(name: "name", type: "string", required: true, description: "Name"),
+                     Param(name: "address", type: "string", required: true, description: "Hostname or IP"),
+                     Param(name: "port", type: "int", required: false, description: "Default 9399")],
+            returns: .ok, handler: { params in
+                guard let name = params?["name"]?.stringValue, let address = params?["address"]?.stringValue,
+                      let port = UInt16(exactly: params?["port"]?.intValue ?? 9399) else { throw RouterError.custom("name, address and valid port required") }
+                try MachineArrangementStore.addHost(name: name, address: address, port: port)
+                DispatchQueue.main.async { RemoteHostsModel.shared.reload() }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        #if LATTICES_BUNDLE
+        api.register(Endpoint(
+            method: "visit.host", description: "Enable or disable receiving visits on this Mac", access: .mutate,
+            params: [Param(name: "on", type: "bool", required: true, description: "Allow visits")], returns: .ok,
+            handler: { params in
+                guard let on = params?["on"]?.boolValue else { throw RouterError.missingParam("on") }
+                MacVisitHost.setEnabled(on)
+                return .object(["ok": .bool(true)])
+            }
+        ))
+        #endif
+
+        api.register(Endpoint(
+            method: "visit.side",
+            description: "Place a paired machine beside the outermost display on a side",
+            access: .mutate,
+            params: [
+                Param(name: "host", type: "string", required: true, description: "Paired host name"),
+                Param(name: "side", type: "string", required: true, description: "left, right, top or bottom"),
+            ],
+            returns: .ok,
+            handler: { params in
+                guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
+                guard let raw = params?["side"]?.stringValue, let side = VisitTrust.Side(rawValue: raw) else {
+                    throw RouterError.custom("side: expected left, right, top or bottom")
+                }
+                do { try VisitTrust.shared.setSide(name, side) }
+                catch { throw RouterError.custom(String(describing: error)) }
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.status",
+            description: "Paired hosts, whether crossing an edge into them is armed, and the host being visited",
+            access: .read,
+            params: [],
+            returns: .custom("Object with 'armed', 'visiting', 'code' and 'hosts' (name, address, side, fingerprint)"),
+            handler: { _ in
+                let status = Thread.isMainThread ? VisitController.shared.status() : DispatchQueue.main.sync { VisitController.shared.status() }
+                let screenFrames = Thread.isMainThread ? VisitController.screens().map(\.frame) : DispatchQueue.main.sync { VisitController.screens().map(\.frame) }
+                return .object([
+                    "armed": .bool(status.armed),
+                    "visiting": status.visiting.map { .string($0) } ?? .null,
+                    "code": .string(VisitTrust.shared.fingerprint),
+                    "placements": .object(Dictionary(uniqueKeysWithValues: RemoteHostsModel.configuredHosts().compactMap { host -> (String, JSON)? in
+                        guard let p = MachineArrangementStore.placement(host.name) else { return nil }
+                        return (host.name, .object(["x": .double(p.x), "y": .double(p.y), "width": .double(p.width), "height": .double(p.height)]))
+                    })),
+                    "hosts": .array(status.hosts.map {
+                        .object(["name": .string($0.name), "address": .string($0.address), "side": MachineArrangementStore.side(for: $0, displays: screenFrames).map { .string($0.rawValue) } ?? .null, "fingerprint": .string($0.bridgeFingerprint),
+                                 "placement": $0.placement.map { .object(["x": .double($0.x), "y": .double($0.y), "width": .double($0.width), "height": .double($0.height)]) } ?? .null])
+                    }),
+                ])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.arm",
+            description: "Arm or disarm visiting: while armed, pushing the pointer past an edge that faces a paired host starts a visit",
+            access: .mutate,
+            params: [Param(name: "on", type: "bool", required: false, description: "Default true")],
+            returns: .custom("Object with 'armed'"),
+            handler: { params in
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in VisitController.shared.arm(on); return VisitController.shared.armed }
+                let armed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["armed": .bool(armed)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.screens",
+            description: "This Mac's displays, using display.gather indices, and which are marked elsewhere (plugged into another machine)",
+            access: .read,
+            params: [],
+            returns: .custom("Array of objects with 'number', 'name', 'frame', 'main' and 'elsewhere'"),
+            handler: { _ in
+                let screens = Thread.isMainThread ? VisitController.screens() : DispatchQueue.main.sync { VisitController.screens() }
+                return .array(screens.map {
+                    .object([
+                        "number": .int($0.number), "machine": $0.machine.map { .string($0) } ?? .null, "name": .string($0.name), "main": .bool($0.main), "elsewhere": .bool($0.elsewhere),
+                        "frame": .object(["x": .double($0.frame.minX), "y": .double($0.frame.minY), "w": .double($0.frame.width), "h": .double($0.frame.height)]),
+                    ])
+                })
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.elsewhere",
+            description: "Mark a display as elsewhere (plugged into another machine): the pointer is kept off it, and sliding into it toward a paired host starts a visit",
+            access: .mutate,
+            params: [
+                Param(name: "screen", type: "int|string", required: true, description: "Display number or name fragment"),
+                Param(name: "on", type: "bool", required: false, description: "Default true; false brings it back"),
+                Param(name: "name", type: "string", required: false, description: "Machine shown on this display; empty clears"),
+            ],
+            returns: .custom("Object with 'ok'"),
+            handler: { params in
+                let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
+                let on = params?["on"]?.boolValue ?? true
+                let work = { () -> Bool in
+                    guard VisitController.shared.setElsewhere(number, on) else { return false }
+                    if let name = params?["name"]?.stringValue { return VisitController.shared.setDisplayMachine(number, name: name.isEmpty ? nil : name) }
+                    return true
+                }
+                let ok = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                return .object(["ok": .bool(ok)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "visit.end",
+            description: "End the current visit; the cursor stays where it was parked",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in
+                VisitController.shared.end(because: "ended")
+                return .object(["ok": .bool(true)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "mouse.summon",
             description: "Warp the mouse cursor to screen center (or a given point) and show a sonar pulse",
             access: .mutate,
@@ -3691,6 +3976,9 @@ final class LatticesApi {
             }
         ))
 
+        DisplayGather.registerEndpoints(api)
+        ClusterVerbs.register(api)
+        StateHistory.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
 
         api.register(Endpoint(
