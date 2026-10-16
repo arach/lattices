@@ -428,11 +428,11 @@ async function runSearchApiTests() {
     }
   }
 
-  // Also test lattices.search (unified search) with a single query
-  const unifiedLabel = `lattices.search("Safari") returns valid shape`;
+  // Also test search.query (unified search) with a single query
+  const unifiedLabel = `search.query("Safari") returns valid shape`;
   try {
     const result = await daemonCall(
-      "lattices.search",
+      "search.query",
       { query: "Safari", mode: "quick" },
       5000
     );

@@ -522,7 +522,7 @@ private final class MotionPanel: NSPanel {
     // be staged across three orthogonal axes; nothing real moves until the gather
     // commit. Populated by the drag UI (Phase 1+); committed in gatherInPlace().
     struct StagedIntent {
-        var layers: Set<String> = []        // StudioLayer ids — multi-membership (Phase 2)
+        var layers: Set<String> = []        // ⌘⌥ layer ids — multi-membership (Phase 2)
         var newLayer: Bool = false          // stage a fresh layer seeded from this window (＋ pile)
         var location: PlacementSpec?         // where on the active screen (Phase 1)
         var space: Int?                      // target macOS Space (Phase 3)
@@ -1165,16 +1165,16 @@ private final class MotionPanel: NSPanel {
         orderedGroup().filter { stagedIntents[$0.wid]?.location == nil }
     }
 
-    /// ⌘L — remember the current plucked set as a rule-backed Studio layer. The
-    /// rule is inferred from the plucked windows' apps, so it survives restarts
-    /// and auto-includes future matching windows. Nothing moves — this only
-    /// records the selection — and we stay in the mode so you can keep arranging.
+    /// ⌘L — save the plucked windows as a new ⌘⌥ layer. Nothing moves — this
+    /// only records the selection — and we stay in the mode so you can keep
+    /// arranging.
     private func saveGroupAsLayer() {
         let picked = orderedGroup()
         guard !picked.isEmpty else { NSSound.beep(); return }
-        let layer = StudioLayerStore.shared.saveFromPluck(picked)
-        DiagnosticLog.shared.info("Motion — saved \(picked.count) selected windows as layer '\(layer.name)' [\(layer.summary)]")
-        LayerBezel.shared.show(label: "Saved · \(layer.name)", index: 0, total: 1, allLabels: ["Saved · \(layer.name)"])
+        let name = Self.defaultLayerName(forApps: Self.orderedApps(picked))
+        guard editLayers("save '\(name)'", { try $0.createLayer(label: name, windows: picked) }) else { return }
+        DiagnosticLog.shared.info("Motion — saved \(picked.count) selected windows as layer '\(name)'")
+        LayerBezel.shared.acknowledge("Saved · \(name)")
     }
 
     /// Turn the current per-display pluck into an ephemeral tab stack. The same
@@ -1197,12 +1197,7 @@ private final class MotionPanel: NSPanel {
             screen: targetScreen ?? activeSurveyScreen ?? screen(for: picked[0])
         ) else { NSSound.beep(); return }
         AppFeedback.shared.commitTactile()
-        LayerBezel.shared.show(
-            label: "Tabs · \(tabs.name)",
-            index: 0,
-            total: 1,
-            allLabels: ["Tabs · \(tabs.name)"]
-        )
+        LayerBezel.shared.acknowledge("Tabs · \(tabs.name)")
         onExit?()
     }
 
@@ -1669,7 +1664,7 @@ private final class MotionPanel: NSPanel {
 
     /// A tile was dropped on a Layers pile. The ＋ pile stages a brand-new layer; any
     /// other pile toggles a staged join (multi-membership). Only *stages* — nothing is
-    /// written to StudioLayerStore until gather, so Esc still discards cleanly.
+    /// written to workspace.json until gather, so Esc still discards cleanly.
     private func handleLayerDrop(_ wid: UInt32, _ layerKey: String) {
         stageLayerDrop(wid, layerKey)
         DiagnosticLog.shared.info("Hyperspace stage — wid=\(wid) layer \(layerKey)")
@@ -1700,45 +1695,38 @@ private final class MotionPanel: NSPanel {
         }
     }
 
-    /// Edit mode: drop one rule clause from a layer (the ✕ on a pile's rule chip).
-    /// Writes straight through to StudioLayerStore — these are committed rules, not
-    /// staged intents. A layer whose last rule is removed is deleted (a ruleless
-    /// layer matches nothing). The band rebuilds so the pile preview re-resolves.
+    /// Edit mode: drop one rule from a layer (the ✕ on a pile's rule chip).
+    /// Writes straight through to workspace.json — these are committed rules,
+    /// not staged intents. A layer keeps going when its last rule goes. The
+    /// band rebuilds so the pile preview re-resolves.
     private func removeLayerClause(_ layerId: String, _ clauseIndex: Int) {
-        let store = StudioLayerStore.shared
-        guard var layer = store.layers.first(where: { $0.id == layerId }),
-              layer.match.indices.contains(clauseIndex) else { return }
-        layer.match.remove(at: clauseIndex)
-        if layer.match.isEmpty {
-            store.delete(id: layerId)
-        } else {
-            store.update(layer)
+        guard let (index, layer) = workspaceLayer(layerId) else { return }
+        let rules = Self.ruleEntries(layer)
+        guard rules.indices.contains(clauseIndex) else { return }
+        if editLayers("drop a rule", { try $0.removeEntry(at: rules[clauseIndex].index, fromLayer: index) }) {
+            DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.label) dropped rule \(clauseIndex)")
         }
-        DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.name) dropped clause \(clauseIndex)")
         rebuildExposeView()
     }
 
-    /// Edit mode: write a new or edited rule clause from the Hyperspace inspector.
+    /// Edit mode: write a new or edited rule from the Hyperspace inspector.
     private func saveLayerClause(_ layerId: String, _ clauseIndex: Int?, _ clause: StudioLayerClause) {
-        let store = StudioLayerStore.shared
-        guard var layer = store.layers.first(where: { $0.id == layerId }) else { return }
-        if let clauseIndex, layer.match.indices.contains(clauseIndex) {
-            layer.match[clauseIndex] = clause
-            DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.name) updated clause \(clauseIndex)")
-        } else {
-            layer.match.append(clause)
-            DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.name) added clause [\(clause.summary)]")
+        guard let (index, layer) = workspaceLayer(layerId) else { return }
+        let rules = Self.ruleEntries(layer)
+        let entry = clauseIndex.flatMap { rules.indices.contains($0) ? rules[$0].index : nil }
+        var project = entry.map { layer.projects[$0] } ?? LayerProject(clause: clause)
+        project.setClause(clause)
+        if editLayers("save a rule", { try $0.setEntry(project, at: entry, inLayer: index) }) {
+            DiagnosticLog.shared.info("Hyperspace edit — layer \(layer.label) \(entry == nil ? "added" : "updated") rule [\(clause.summary)]")
         }
-        store.update(layer)
         rebuildExposeView()
     }
 
     private func presentLayerRuleEditor(_ layerId: String, _ clauseIndex: Int?, _ clause: StudioLayerClause, on screen: NSScreen) {
-        guard exposed, rulePanel == nil,
-              let layer = StudioLayerStore.shared.layers.first(where: { $0.id == layerId }) else { return }
+        guard exposed, rulePanel == nil, let (_, layer) = workspaceLayer(layerId) else { return }
         ignoreResign = true
         let panel = LayerRulePanel(
-            layerName: layer.name,
+            layerName: layer.label,
             clauseIndex: clauseIndex,
             clause: clause,
             onSave: { [weak self] saved in
@@ -1760,15 +1748,16 @@ private final class MotionPanel: NSPanel {
 
     /// Edit mode: delete a whole layer (the "Delete layer" item in a pile's right-click menu).
     private func deleteLayer(_ layerId: String) {
-        let name = StudioLayerStore.shared.layers.first(where: { $0.id == layerId })?.name ?? layerId
-        StudioLayerStore.shared.delete(id: layerId)
-        DiagnosticLog.shared.info("Hyperspace edit — deleted layer \(name)")
+        guard let (index, layer) = workspaceLayer(layerId) else { return }
+        if editLayers("delete '\(layer.label)'", { try $0.deleteLayer(index) }) {
+            DiagnosticLog.shared.info("Hyperspace edit — deleted layer \(layer.label)")
+        }
         rebuildExposeView()
     }
 
     /// The ＋ pile's authoring flow: open the New Layer panel seeded with the apps on the active
     /// display (the plucked apps preselected, if any), let the user name it and pick which apps
-    /// define it, then write a rule-backed StudioLayer. A real flow vs the drag-onto-＋ quick path.
+    /// define it, then save a ⌘⌥ layer of those app rules. A real flow vs the drag-onto-＋ quick path.
     private func presentNewLayer() {
         guard exposed, newLayerPanel == nil,
               let screen = validSurveyScreen(activeSurveyScreen) ?? surveyScreens().first else { return }
@@ -1794,11 +1783,11 @@ private final class MotionPanel: NSPanel {
             candidates: candidates, preselected: pluckedApps, defaultName: defaultName,
             onCreate: { [weak self] name, apps in
                 guard let self else { return }
-                let clauses = apps.map { StudioLayerClause(appEquals: $0) }
-                let layer = StudioLayerStore.shared.add(
-                    name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Layer" : name,
-                    match: clauses.isEmpty ? [StudioLayerClause()] : clauses)
-                DiagnosticLog.shared.info("Hyperspace — created layer '\(layer.name)' from \(apps.count) app(s)")
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let label = trimmed.isEmpty ? "Layer" : trimmed
+                let rules = apps.map { LayerProject(clause: StudioLayerClause(appEquals: $0)) }
+                self.editLayers("create '\(label)'") { try $0.createLayer(label: label, windows: [], entries: rules) }
+                DiagnosticLog.shared.info("Hyperspace — created layer '\(label)' from \(apps.count) app(s)")
                 self.finishNewLayer()
                 self.rebuildExposeView()            // the new pile appears in the band
             },
@@ -1813,7 +1802,7 @@ private final class MotionPanel: NSPanel {
         makeKey()                                   // reclaim key so the survey keeps responding
     }
 
-    /// A friendly default name from the apps that seed the layer (mirrors StudioLayerStore's).
+    /// A friendly default name from the apps that seed the layer.
     private static func defaultLayerName(forApps apps: [String]) -> String {
         switch apps.count {
         case 0:  return "Layer"
@@ -1823,16 +1812,66 @@ private final class MotionPanel: NSPanel {
         }
     }
 
-    /// Build the Layers section view-models for a screen: each rule-backed layer as a
+    // MARK: ⌘⌥ layers
+
+    /// A ⌘⌥ layer by id, with its index.
+    private func workspaceLayer(_ id: String) -> (Int, Layer)? {
+        let layers = WorkspaceManager.shared.layers
+        guard let index = layers.firstIndex(where: { $0.id == id }) else { return nil }
+        return (index, layers[index])
+    }
+
+    /// The windows a layer holds, on any display.
+    private func layerMembers(_ layer: Layer) -> [WindowEntry] {
+        WorkspaceManager.shared.memberWindows(of: layer, in: DesktopModel.shared.allWindows()).map(\.entry)
+    }
+
+    /// Every ⌘⌥ layer with the windows it holds, on any display, from one
+    /// resolution (`LayerMembership`).
+    private func resolvedLayers() -> [(layer: Layer, members: [LayerMembership.Member])] {
+        let workspace = WorkspaceManager.shared
+        let layers = workspace.layers
+        let resolution = workspace.layerMembership(in: DesktopModel.shared.allWindows())
+        return layers.enumerated().map { index, layer in
+            (layer, resolution.layers.indices.contains(index) ? resolution.layers[index] : [])
+        }
+    }
+
+    /// The entries a pile shows as rules, with each one's index in the layer.
+    /// Tab groups and project folders aren't rules and stay out of it.
+    private static func ruleEntries(_ layer: Layer) -> [(index: Int, clause: StudioLayerClause)] {
+        layer.projects.enumerated().compactMap { index, project in
+            project.clause.map { (index, $0) }
+        }
+    }
+
+    private static func orderedApps(_ windows: [WindowEntry]) -> [String] {
+        var seen = Set<String>()
+        return windows.map(\.app).filter { seen.insert($0).inserted }
+    }
+
+    /// Runs a layer edit, logging and beeping when it can't save.
+    @discardableResult
+    private func editLayers(_ what: String, _ edit: (WorkspaceManager) throws -> Void) -> Bool {
+        do {
+            try edit(WorkspaceManager.shared)
+            return true
+        } catch {
+            DiagnosticLog.shared.error("Hyperspace — couldn't \(what): \(error.localizedDescription)")
+            NSSound.beep()
+            return false
+        }
+    }
+
+    /// Build the Layers section view-models for a screen: each ⌘⌥ layer as a
     /// pile whose preview is a *screen-map* of its member windows on this display (cheap
     /// per-monitor scoping — same layer can appear on both displays, each showing its
     /// local slice), plus a trailing ＋ pile. A pile reads as "staged" while any window
     /// holds a pending join to it.
     private func layerPiles(on screen: NSScreen) -> [ExposeView.LayerPile] {
-        let store = StudioLayerStore.shared
         let screenAX = MotionPanel.axRect(of: screen)
-        var piles = store.layers.map { layer -> ExposeView.LayerPile in
-            let onScreen = store.resolve(layer).filter { entry($0, isOn: screen) }
+        var piles = resolvedLayers().map { layer, held -> ExposeView.LayerPile in
+            let onScreen = held.map(\.entry).filter { entry($0, isOn: screen) }
             let members = onScreen.map { w -> ExposeView.LayerMember in
                 ExposeView.LayerMember(
                     id: w.wid,
@@ -1841,8 +1880,15 @@ private final class MotionPanel: NSPanel {
                     image: inPlaceMode ? nil : thumbs[w.wid])
             }
             let stagedCount = stagedIntents.values.filter { $0.layers.contains(layer.id) }.count
-            return ExposeView.LayerPile(id: layer.id, name: layer.name, count: onScreen.count,
-                                        members: members, rule: layer.summary, clauses: layer.match,
+            let ruleEntries = Self.ruleEntries(layer)
+            let rules = ruleEntries.map(\.clause)
+            return ExposeView.LayerPile(id: layer.id, name: layer.label, count: onScreen.count,
+                                        members: members, rule: rules.map(\.summary).joined(separator: " + "),
+                                        clauses: rules,
+                                        held: held.map(\.entry),
+                                        ruleWindows: ruleEntries.map { rule in
+                                            held.filter { $0.project == rule.index }.map(\.entry)
+                                        },
                                         isNew: false, staged: stagedCount > 0, stagedCount: stagedCount)
         }
         let newCount = stagedIntents.values.filter { $0.newLayer }.count
@@ -2026,7 +2072,7 @@ private final class MotionPanel: NSPanel {
     }
 
     /// Commit the drag & drop intent plan (design/hyperspace-drag-drop.md). Location
-    /// moves the window; layer joins are written to StudioLayerStore; ＋ piles seed a
+    /// moves the window; layer joins add the window to the ⌘⌥ layer; ＋ piles seed a
     /// fresh layer. (Space axis is Phase 3.) No-op until `stagedIntents` is populated,
     /// so it's safe to call on every gather.
     private func commitStagedIntents(on screen: NSScreen) {
@@ -2042,41 +2088,17 @@ private final class MotionPanel: NSPanel {
                 didMoveWindows = true        // a real move → Esc must restore
             }
             for layerID in intent.layers {
-                addAppToLayer(entry.app, layerID: layerID)
+                guard let (index, layer) = workspaceLayer(layerID) else { continue }
+                editLayers("add to '\(layer.label)'") { try $0.addWindows([entry], toLayer: index) }
             }
             if intent.newLayer { newLayerSeeds.append(entry) }
             // Phase 3: intent.space → WindowTiler.moveViaCGS
         }
         if !newLayerSeeds.isEmpty {
-            let layer = StudioLayerStore.shared.saveFromPluck(newLayerSeeds)
-            DiagnosticLog.shared.info("Hyperspace commit — new layer '\(layer.name)' from \(newLayerSeeds.count) window(s)")
+            let name = Self.defaultLayerName(forApps: Self.orderedApps(newLayerSeeds))
+            editLayers("create '\(name)'") { try $0.createLayer(label: name, windows: newLayerSeeds) }
+            DiagnosticLog.shared.info("Hyperspace commit — new layer '\(name)' from \(newLayerSeeds.count) window(s)")
         }
-    }
-
-    /// Add an exact app clause to a layer's rule so it (and future windows of that
-    /// app) join the layer.
-    /// No-op if the layer already matches the app.
-    private func addAppToLayer(_ app: String, layerID: String) {
-        let store = StudioLayerStore.shared
-        guard var layer = store.layers.first(where: { $0.id == layerID }) else { return }
-        let already = layer.match.contains { clause in
-            let appOnly = clause.titleContains == nil
-                && clause.titleEquals == nil
-                && clause.titleRegex == nil
-                && clause.session == nil
-                && clause.sessionContains == nil
-                && clause.isOnScreen == nil
-                && clause.spaceId == nil
-                && (clause.not?.isEmpty ?? true)
-            let sameExactApp = clause.appEquals?.localizedCaseInsensitiveCompare(app) == .orderedSame
-            let sameLegacyApp = clause.app?.localizedCaseInsensitiveCompare(app) == .orderedSame
-                && clause.appRegex == nil
-            return appOnly && (sameExactApp || sameLegacyApp)
-        }
-        guard !already else { return }
-        layer.match.append(StudioLayerClause(appEquals: app))
-        store.update(layer)
-        DiagnosticLog.shared.info("Hyperspace commit — layer '\(layer.name)' += app '\(app)'")
     }
 
     /// Gather the picked set into a balanced grid on the active display (the only
@@ -2709,9 +2731,9 @@ private final class MotionPanel: NSPanel {
     /// shown as labels along the tile's bottom. Empty when nothing layer-ish is staged.
     private func layerTags(for wid: UInt32) -> [String] {
         guard let intent = stagedIntents[wid] else { return [] }
-        let names = StudioLayerStore.shared.layers
+        let names = WorkspaceManager.shared.layers
             .filter { intent.layers.contains($0.id) }
-            .map(\.name)
+            .map(\.label)
         return intent.newLayer ? names + ["new"] : names
     }
 
@@ -2998,10 +3020,9 @@ private final class MotionPanel: NSPanel {
             HyperspaceCommandModel.GroupItem(cid: cluster.id, name: cluster.name,
                                              hint: hintFor[cluster.id] ?? "", members: cluster.members.map(\.wid))
         }
-        let store = StudioLayerStore.shared
-        let layers = store.layers.map { layer in
-            HyperspaceCommandModel.LayerItem(lid: layer.id, name: layer.name,
-                                             members: store.resolve(layer).filter { self.entry($0, isOn: screen) }.map(\.wid))
+        let layers = resolvedLayers().map { layer, held in
+            HyperspaceCommandModel.LayerItem(lid: layer.id, name: layer.label,
+                                             members: held.map(\.entry).filter { self.entry($0, isOn: screen) }.map(\.wid))
         }
         let model = HyperspaceCommandModel(windows: windows, groups: groups, layers: layers)
         model.onPluckWindow = { [weak self] wid in self?.exposeToggle(wid, on: screen) }
@@ -3027,9 +3048,8 @@ private final class MotionPanel: NSPanel {
     /// read of "recall this layer": it builds the selection (nothing raises), and
     /// gather (⏎/G) is still the only real move.
     private func pluckLayer(_ layerID: String, on screen: NSScreen) {
-        let store = StudioLayerStore.shared
-        guard let layer = store.layers.first(where: { $0.id == layerID }) else { NSSound.beep(); return }
-        let members = store.resolve(layer).filter { entry($0, isOn: screen) }
+        guard let (_, layer) = workspaceLayer(layerID) else { NSSound.beep(); return }
+        let members = layerMembers(layer).filter { entry($0, isOn: screen) }
         guard !members.isEmpty else { NSSound.beep(); return }
         let id = MotionPanel.screenID(screen)
         var order = pickOrderByScreen[id] ?? []
@@ -4306,6 +4326,8 @@ struct ExposeView: View {
         var members: [LayerMember] = []      // for the screen-map preview
         var rule: String = ""                // human-readable match rule, e.g. "Chrome · ~dev"
         var clauses: [StudioLayerClause] = []// structured rules, for edit-mode removal
+        var held: [WindowEntry] = []         // every window the layer holds, on any display
+        var ruleWindows: [[WindowEntry]] = []// each rule's windows, beside `clauses`
         var isNew: Bool = false
         var staged: Bool = false
         var stagedCount: Int = 0             // how many windows are staged to join this pile
@@ -5932,7 +5954,7 @@ struct ExposeView: View {
     // The Layers section (Phase 2): rule-backed layers as drop "piles" — drag a window
     // onto a pile to stage a join (multi-membership; drop again to un-stage), or onto
     // the ＋ pile to stage a brand-new layer seeded from it. Drops only *stage* (badge
-    // the tile); StudioLayerStore is written on gather. design/hyperspace-drag-drop.md
+    // the tile); workspace.json is written on gather. design/hyperspace-drag-drop.md
     private var layersSection: some View {
         sectionCard(title: "Layers", icon: "square.stack.3d.up", sub: "tag · piles",
                     live: true, armed: dragOnThisScreen && drag.hoverLayer != nil) {
@@ -6052,8 +6074,8 @@ struct ExposeView: View {
     }
 
     // Right-click menu for a layer pile: see each rule, what it currently matches, and
-    // remove it — plus delete the whole layer. The rules are the committed StudioLayer
-    // clauses (the same ones the Studio panel and, later, the agent edit). Empty for the
+    // remove it — plus delete the whole layer. The rules are the committed ⌘⌥ layer
+    // entries, as rules. Empty for the
     // ＋ pile (it has no layer yet).
     @ViewBuilder
     private func layerPileMenu(_ pile: LayerPile) -> some View {
@@ -6068,7 +6090,7 @@ struct ExposeView: View {
                 Text("No rules")
             } else {
                 ForEach(Array(pile.clauses.enumerated()), id: \.offset) { idx, clause in
-                    let matches = DesktopModel.shared.allWindows().filter { clause.matches($0) }
+                    let matches = pile.ruleWindows.indices.contains(idx) ? pile.ruleWindows[idx] : []
                     Menu("\(clauseTitle(clause))  ·  \(matches.count)") {
                         if matches.isEmpty {
                             Text("No live windows match")
@@ -6117,11 +6139,10 @@ struct ExposeView: View {
     //
     // A top-area modal: the layer's match rules on the left, the windows they currently
     // resolve to on the right (a table). Backdrop tap / ✕ / esc closes it. Rules are the
-    // committed StudioLayer clauses — editable in place (remove), the live source of truth.
+    // committed ⌘⌥ layer rules — editable in place (remove), the live source of truth.
     @ViewBuilder
     private func layerInspector(_ pile: LayerPile) -> some View {
-        let allWindows = DesktopModel.shared.allWindows()
-        let windows = allWindows.filter { w in pile.clauses.contains { $0.matches(w) } }
+        let windows = pile.held
         GeometryReader { geo in
             let panelW = min(760, max(440, geo.size.width * 0.55))
             let panelH = min(440, max(260, geo.size.height * 0.52))
@@ -6130,7 +6151,7 @@ struct ExposeView: View {
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { drag.selectedLayer = nil }
-                inspectorPanel(pile, windows: windows, allWindows: allWindows)
+                inspectorPanel(pile, windows: windows)
                     .frame(width: panelW, height: panelH)
                     .padding(.top, max(24, geo.size.height * 0.12))
             }
@@ -6138,7 +6159,7 @@ struct ExposeView: View {
         }
     }
 
-    private func inspectorPanel(_ pile: LayerPile, windows: [WindowEntry], allWindows: [WindowEntry]) -> some View {
+    private func inspectorPanel(_ pile: LayerPile, windows: [WindowEntry]) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "square.stack.3d.up")
@@ -6176,7 +6197,7 @@ struct ExposeView: View {
             inspectorSummary(pile, windows: windows)
             Rectangle().fill(Palette.border).frame(height: 0.5)
             HStack(alignment: .top, spacing: 0) {
-                inspectorRules(pile, allWindows: allWindows).frame(width: 240)
+                inspectorRules(pile).frame(width: 240)
                 Rectangle().fill(Palette.border).frame(width: 0.5)
                 inspectorWindows(windows).frame(maxWidth: .infinity)
             }
@@ -6222,7 +6243,7 @@ struct ExposeView: View {
     }
 
     // Left column: the layer's match rules, each removable.
-    private func inspectorRules(_ pile: LayerPile, allWindows: [WindowEntry]) -> some View {
+    private func inspectorRules(_ pile: LayerPile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text("RULES").font(Typo.monoBold(9)).foregroundColor(.white.opacity(0.4)).tracking(0.5)
@@ -6247,7 +6268,7 @@ struct ExposeView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(pile.clauses.enumerated()), id: \.offset) { idx, clause in
-                        inspectorRuleRow(clause, count: allWindows.filter { clause.matches($0) }.count) {
+                        inspectorRuleRow(clause, count: pile.ruleWindows.indices.contains(idx) ? pile.ruleWindows[idx].count : 0) {
                             onEditClause(pile.id, idx, clause)
                         } remove: {
                             onRemoveClause(pile.id, idx)

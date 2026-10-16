@@ -16,27 +16,55 @@ first, then choose the transport that fits the environment.
 
 ## Install the skills
 
-`arach/lattices` is the [skills.sh](https://skills.sh) catalog for the product
-family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/main/skills).
+`lattices-dev/lattices` is the [skills.sh](https://skills.sh) catalog for the product
+family. Skills live under [`skills/`](https://github.com/lattices-dev/lattices/tree/main/skills).
 
 | Skill | Product |
 | --- | --- |
-| `lattices` | Workspace control, tiling, sessions, screen text |
+| `lats` | Workspace control, tiling, sessions, screen text |
 | `action` | Native observe / resolve / act / record |
 | `speech` | Spoken commands and voice intents |
 | `blink` | Spatial notes through the `blink` CLI |
 
 ```bash
-npx skills add arach/lattices --list
-npx skills add arach/lattices --all --global --yes
-npx skills add arach/lattices --skill lattices --global --yes
-npx skills add arach/lattices --skill action --global --yes
-npx skills add arach/lattices --skill speech --global --yes
-npx skills add arach/lattices --skill blink --global --yes
+npx skills add lattices-dev/lattices --list
+npx skills add lattices-dev/lattices --all --global --yes
+npx skills add lattices-dev/lattices --skill lattices --global --yes
+npx skills add lattices-dev/lattices --skill action --global --yes
+npx skills add lattices-dev/lattices --skill speech --global --yes
+npx skills add lattices-dev/lattices --skill blink --global --yes
 ```
 
 Action Browser also remains a standalone plugin. Install it with
 `action-browser@action` from the Action marketplace.
+
+To install the Action product itself, run `lattices action install` — it
+downloads the latest signed `Action.app` release to `/Applications`.
+`lattices action status` reports install, runtime, and agent state;
+`lattices action call <method>` talks to the Action agent on
+ws://127.0.0.1:4319 without a monorepo checkout.
+
+## Action private layers
+
+Action private layers create virtual displays. Lattices workspace layers group
+windows and use `layer.activate`; they do not create Action's private surface.
+For private browser work, use Action MCP `layer_open { browser: true }`,
+`layer_snapshot`, `layer_click/type/js`, and `layer_close`.
+
+First run `lats action capabilities` and query `capabilities` plus `tools/list`
+on the active Action MCP connection. Compare source/native fingerprints, check
+`safety.privateLayer`, and require host acceptance for desktop preservation.
+Stop on quarantine; do not rebuild an installation target or fall back to a
+regular browser. A missing block is not proof of isolation. Reconnect MCP after
+updates and repeat discovery. Matching a published version does not verify
+MCP or native feature parity.
+
+The CLI offers layer lifecycle, snapshot, PiP, and recording. Browser flags,
+input, navigation, and JavaScript require MCP. Raw Action WebSocket and the
+Lattices daemon do not provide that orchestration. Follow the
+[Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md)
+and [layer reference](https://github.com/lattices-dev/lattices/blob/main/products/action/docs/agent-layer.md)
+for leases, operator takeover, cleanup, and acceptance requirements.
 
 ## Canonical mutations
 
@@ -44,26 +72,26 @@ These are the preferred action identifiers:
 
 | Action | Purpose | Preferred surface |
 |--------|---------|-------------------|
-| `window.place` | Place a window or session using a typed placement spec | `actions.execute` |
-| `layer.activate` | Bring up a workspace layer with explicit activation mode | Daemon API |
-| `space.optimize` | Rebalance a set of windows using an explicit scope and strategy | Daemon API |
-| `tabStacks.create` | Turn explicit or Hyperspace-selected windows into ephemeral cross-app tabs | Daemon API |
-| `tabStacks.layout` | Expand a live tab stack to grid or collapse it back to tabs | Daemon API |
+| `windows.place` | Place a window or session using a typed placement spec | `actions.execute` |
+| `layers.activate` | Bring up a workspace layer with explicit activation mode | Daemon API |
+| `spaces.optimize` | Rebalance a set of windows using an explicit scope and strategy | Daemon API |
+| `tabs.stack` | Turn explicit or Hyperspace-selected windows into ephemeral cross-app tabs | Daemon API |
+| `tabs.layout` | Expand a live tab stack to grid or collapse it back to tabs | Daemon API |
 
 Compatibility wrappers still exist:
 
 | Legacy method | Canonical equivalent |
 |---------------|----------------------|
-| `window.place` | `actions.execute` with `type=window.place` |
-| `window.tile` | `window.place` |
-| `layer.switch` | `layer.activate` with `mode=launch` |
-| `layout.distribute` | `space.optimize` with `scope=visible`, `strategy=balanced` |
+| `windows.place` | `actions.execute` with `type=windows.place` |
+| `window.tile` | `windows.place` |
+| `layers.switch` | `layers.activate` |
+| `layout.distribute` | `spaces.optimize` with `scope=visible`, `strategy=balanced` |
 
 ## Discoverability
 
 Agents should use these paths in order:
 
-1. **API schema**: `lattices call api.schema`
+1. **API schema**: `lats call api.schema`
 2. **Read-only workspace map and UI hygiene**: [/docs/workspace-map](/docs/workspace-map)
 3. **Daemon reference**: [/docs/api](/docs/api)
 4. **Agent guide**: [/docs/agents](/docs/agents)
@@ -73,37 +101,37 @@ Agents should use these paths in order:
 Useful CLI discovery commands:
 
 ```bash
-lattices help
-lattices call api.schema
-lattices call desktop.snapshot
-lattices map
-lattices call terminals.capture '{"session":"<live-session>","lines":40}'
-lattices voice intents
+lats help
+lats call api.schema
+lats call desktop.snapshot
+lats map
+lats call terminals.capture '{"session":"<live-session>","lines":40}'
+lats voice intents
 ```
 
 `desktop.snapshot` is the structured “what is in front of the user?” read.
-`lattices map` draws that same current-space view as ASCII. `terminals.capture`
+`lats map` draws that same current-space view as ASCII. `terminals.capture`
 is exact tmux pane text — not OCR.
 
 For window actions, resolve before mutating when target identity matters:
 
 ```bash
-lattices call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
-lattices call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
+lats call windows.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call actions.execute '{"type":"window.place","target":{"kind":"session","session":"frontend-a1b2c3"},"args":{"placement":"left"},"dryRun":true}'
 ```
 
-`window.resolve` and `dryRun` return the resolved `wid`, app/title,
+`windows.resolve` and `dryRun` return the resolved `wid`, app/title,
 target resolution path, display, and planned frame without moving the
 window.
 
-Verified `window.place` receipts include `undoable: true` when Lattices
+Verified `windows.place` receipts include `undoable: true` when Lattices
 captured a concrete window id and previous frame. Agents can restore the
 latest undoable placement, or an entire request batch, through:
 
 ```bash
-lattices call actions.undo '{}'
-lattices call actions.undo '{"requestId":"req_..."}'
-lattices call actions.undo '{"receiptId":"exec_...","dryRun":true}'
+lats call history.undo '{}'
+lats call history.undo '{"requestId":"req_..."}'
+lats call history.undo '{"receiptId":"exec_...","dryRun":true}'
 ```
 
 Undo checks that the window is still where the original receipt left it
@@ -186,7 +214,7 @@ Use the **CLI** when you need:
 
 - one-shot shell execution
 - quick discovery from inside an agent terminal
-- compatibility with environments that already have `lattices`
+- compatibility with environments that already have `lats`
 
 Use **docs URLs** when an agent needs:
 
@@ -199,10 +227,10 @@ Use **docs URLs** when an agent needs:
 Node.js:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
-await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('window.resolve', {
+await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
+await daemonCall('windows.resolve', {
   target: { kind: 'session', session: 'frontend-a1b2c3' },
   placement: 'left'
 })
@@ -211,19 +239,19 @@ await daemonCall('actions.execute', {
   target: { kind: 'session', session: 'frontend-a1b2c3' },
   args: { placement: { kind: 'tile', value: 'left' } }
 })
-await daemonCall('layer.activate', { name: 'review', mode: 'launch' })
-await daemonCall('space.optimize', { scope: 'visible', strategy: 'balanced' })
+await daemonCall('layers.activate', { name: 'review', mode: 'launch' })
+await daemonCall('spaces.optimize', { scope: 'visible', strategy: 'balanced' })
 ```
 
 CLI:
 
 ```bash
-lattices call api.schema
-lattices call window.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
-lattices call actions.execute '{"type":"window.place","target":{"kind":"frontmost"},"args":{"placement":"left"}}'
-lattices call window.place '{"session":"frontend-a1b2c3","placement":"left"}'
-lattices call layer.activate '{"name":"review","mode":"launch"}'
-lattices call space.optimize '{"scope":"visible","strategy":"balanced"}'
+lats call api.schema
+lats call windows.resolve '{"target":{"kind":"session","session":"frontend-a1b2c3"},"placement":"left"}'
+lats call actions.execute '{"type":"window.place","target":{"kind":"frontmost"},"args":{"placement":"left"}}'
+lats call windows.place '{"session":"frontend-a1b2c3","placement":"left"}'
+lats call layers.activate '{"name":"review","mode":"launch"}'
+lats call spaces.optimize '{"scope":"visible","strategy":"balanced"}'
 ```
 
 ## Receipts and traceability
@@ -245,9 +273,9 @@ This is what keeps voice, hands-off, and scripted execution scrutable.
 Voice is not a separate execution system. It should compile into the
 same canonical actions:
 
-- "put Terminal in the upper third" → `window.place`
-- "bring up review" → `layer.activate`
-- "make this nice" → `space.optimize`
+- "put Terminal in the upper third" → `windows.place`
+- "bring up review" → `layers.activate`
+- "make this nice" → `spaces.optimize`
 
 That keeps the interaction layer flexible while the executor stays
 predictable.
@@ -263,5 +291,5 @@ Assistant planning lives in TypeScript where possible:
 - Swift should remain the macOS execution layer: hotkeys, windows, AX/CG,
   SkyLight, panels, and visual feedback.
 
-Use `lattices assistant plan <text> --json` to inspect the TS planner without
+Use `lats assistant plan <text> --json` to inspect the TS planner without
 launching the app or mutating the desktop.

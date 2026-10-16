@@ -190,6 +190,7 @@ struct ActionLauncherRootView: View {
     @State private var hoveredDestinationID: String?
     @State private var hoveredLibrarySessionID: String?
     @State private var sessionPendingDelete: ActionSessionSummary?
+    @State private var confirmingClearRuns = false
     @State private var showKeyboardCheatSheet = false
     @ObservedObject private var themeStore = ActionThemeStore.shared
     @State private var showThemeNotes = false
@@ -546,6 +547,18 @@ struct ActionLauncherRootView: View {
             }
         )
         .confirmationDialog(
+            "Clear all runs?",
+            isPresented: $confirmingClearRuns,
+            titleVisibility: .visible
+        ) {
+            Button("Clear", role: .destructive) {
+                Task { await model.clearSessions() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every finished run in the ledger and its files will be removed from disk. Runs still driving are kept.")
+        }
+        .confirmationDialog(
             "Delete this take?",
             isPresented: Binding(
                 get: { sessionPendingDelete != nil },
@@ -850,6 +863,10 @@ struct ActionLauncherRootView: View {
                     .frame(maxWidth: 240)
 
                 libraryLayoutPicker
+            }
+
+            if activeSection == .runs, !model.recentSessions.isEmpty {
+                launcherButton("Clear", tone: .secondary, action: { confirmingClearRuns = true })
             }
 
             if showsHeaderNewScenario {
@@ -1643,6 +1660,7 @@ struct ActionLauncherRootView: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                                 .frame(maxWidth: 190, alignment: .leading)
+                                .help(session.client.isEmpty ? session.agent : "via \(session.client)")
                         }
 
                         Spacer(minLength: 8)

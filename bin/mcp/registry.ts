@@ -2,12 +2,13 @@ import type { Toolset } from "./types.ts";
 
 /**
  * Every toolset the lattices MCP can serve. Toolsets are loaded lazily so that
- * `lattices mcp --toolsets browser` does not pay the import cost of the ones it
+ * `lats mcp --toolsets browser` does not pay the import cost of the ones it
  * was not asked for -- and, more importantly, so a toolset that owns a resource
  * never gets a chance to touch it when it is switched off.
  */
 export const TOOLSET_LOADERS: Record<string, () => Promise<Toolset>> = {
   browser: async () => (await import("./toolsets/browser/index.ts")).browserToolset,
+  hosts: async () => (await import("./toolsets/hosts/index.ts")).hostsToolset,
 };
 
 export const TOOLSET_NAMES = Object.keys(TOOLSET_LOADERS);

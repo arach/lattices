@@ -34,6 +34,8 @@ enum ActionHostCommand: String {
     case guidedCalculatorDemo = "guided-calculator-demo"
     case quitApp = "quit-app"
     case status
+    case capabilities
+    case isolationContext = "isolation-context"
     case request
     case openAccessibilitySettings = "open-accessibility-settings"
     case openScreenRecordingSettings = "open-screen-recording-settings"
@@ -42,6 +44,13 @@ enum ActionHostCommand: String {
     case supervisorStop = "supervisor-stop"
     case stageOverlay = "stage-overlay"
     case drape
+    case agentLayer = "agent-layer"
+    case agentDisplay = "agent-display"
+    case blinkClick = "blink-click"
+    case blinkType = "blink-type"
+    case blinkKey = "blink-key"
+    case blinkDrag = "blink-drag"
+    case blinkScroll = "blink-scroll"
     case raiseWindow = "raise-window"
     case windowOrder = "window-order"
     case demoCursorOverlay = "demo-cursor-overlay"
@@ -537,6 +546,9 @@ let keyCodes: [String: UInt16] = [
     "return": 0x24, "enter": 0x24, "tab": 0x30, "space": 0x31, "delete": 0x33, "backspace": 0x33,
     "escape": 0x35, "esc": 0x35,
     "up": 0x7E, "down": 0x7D, "left": 0x7B, "right": 0x7C,
+    "home": 0x73, "end": 0x77, "pageup": 0x74, "pagedown": 0x79, "forwarddelete": 0x75,
+    "f1": 0x7A, "f2": 0x78, "f3": 0x63, "f4": 0x76, "f5": 0x60, "f6": 0x61,
+    "f7": 0x62, "f8": 0x64, "f9": 0x65, "f10": 0x6D, "f11": 0x67, "f12": 0x6F,
 ]
 
 let keySymbols: [String: String] = [
@@ -551,6 +563,7 @@ let keySymbols: [String: String] = [
     "delete": "⌫", "backspace": "⌫",
     "escape": "⎋", "esc": "⎋",
     "up": "↑", "down": "↓", "left": "←", "right": "→",
+    "home": "↖", "end": "↘", "pageup": "⇞", "pagedown": "⇟", "forwarddelete": "⌦",
 ]
 
 func keyOverlayLabel(_ key: String) -> String {
@@ -599,7 +612,15 @@ func postKeyPress(_ key: String, modifiers: [String] = []) throws {
 }
 
 func postKeyPressToApp(bundleId: String, key: String, modifiers: [String] = []) throws {
-    let app = try runningApplication(bundleId: bundleId)
+    try postKeyPressToApp(app: try runningApplication(bundleId: bundleId), key: key, modifiers: modifiers)
+}
+
+func postKeyPressToApp(
+    app: NSRunningApplication,
+    key: String,
+    modifiers: [String] = [],
+    holdMicroseconds: useconds_t = 50_000
+) throws {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         throw ActionHostError.accessibilityActionFailed("Unable to create event source")
     }
@@ -618,7 +639,7 @@ func postKeyPressToApp(bundleId: String, key: String, modifiers: [String] = []) 
     keyDown.flags = flags
     keyUp.flags = flags
     keyDown.postToPid(app.processIdentifier)
-    usleep(50000)
+    usleep(holdMicroseconds)
     keyUp.postToPid(app.processIdentifier)
 }
 
@@ -673,7 +694,10 @@ func postText(_ text: String, delayMs: Int?) throws {
 }
 
 func postTextToApp(bundleId: String, text: String, delayMs: Int?) throws {
-    let app = try runningApplication(bundleId: bundleId)
+    try postTextToApp(app: try runningApplication(bundleId: bundleId), text: text, delayMs: delayMs)
+}
+
+func postTextToApp(app: NSRunningApplication, text: String, delayMs: Int?) throws {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         throw ActionHostError.accessibilityActionFailed("Unable to create event source")
     }
@@ -3818,14 +3842,14 @@ func waitForFinishedSignal(at path: String) throws {
     }
 }
 
-/// Quit every running copy of Action and wait for it to actually be gone.
+/// Quit the launcher without disconnecting persistent monitors or stopping independent tasks.
 ///
 /// Asks first with `terminate()` — the quit Apple Event, which lets the app run
 /// `applicationWillTerminate` and stop its agent child — and escalates to
 /// `forceTerminate()` only for whatever is still standing when the grace period
 /// runs out. A single healthy instance answers in about 0.15s; the long tail is
 /// an instance that is wedged, and forcing that one is the point.
-func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
+func terminateRunningActionApps(timeout: TimeInterval = 6, logger: DebugLogger) -> Bool {
     let bundleId = ActionAppIdentity.mainBundleIdentifier
 
     // Everything except this process. `bun run native:host -- quit-app` runs the same
@@ -3834,10 +3858,17 @@ func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
     // before it can write its reply, and the caller sees a hang followed by
     // "ActionHost did not write a reply file".
     let selfPid = ProcessInfo.processInfo.processIdentifier
-    func running() -> [NSRunningApplication] {
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
-            .filter { $0.processIdentifier != selfPid }
-    }
+    // Snapshot only positively identified launchers. Unknown processes are preserved;
+    // a shared bundle ID is not ownership of a display, recording, or another task.
+    let launchers = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+        .filter { $0.processIdentifier != selfPid }
+        .filter { app in
+            let args = ActionProcessRole.arguments(pid: app.processIdentifier)
+            let quit = ActionProcessRole.isLauncher(args)
+            logger.log("quit-app: pid=\(app.processIdentifier) role=\(args?.dropFirst().first ?? "unknown") action=\(quit ? "quit-launcher" : "preserve-helper")")
+            return quit
+        }
+    func running() -> [NSRunningApplication] { launchers.filter { !$0.isTerminated } }
 
     guard !running().isEmpty else {
         return true
@@ -3882,6 +3913,10 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         throw ActionHostError.unsupportedOS("stage-overlay should be started via runUICommand")
     case .drape:
         throw ActionHostError.unsupportedOS("drape should be started via runUICommand")
+    case .agentLayer:
+        throw ActionHostError.unsupportedOS("agent-layer should be started via runUICommand")
+    case .agentDisplay:
+        throw ActionHostError.unsupportedOS("agent-display should be started via runUICommand")
     case .demoCursorOverlay:
         throw ActionHostError.unsupportedOS("demo-cursor-overlay should be started via runUICommand")
     case .agentCursorOverlay:
@@ -3894,16 +3929,20 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         let runner = GuidedCaptureSessionRunner(writer: writer, logger: logger, options: options)
         try await runner.run()
     case .quitApp:
-        let didQuit = terminateRunningActionApps()
+        let didQuit = terminateRunningActionApps(logger: logger)
         try writer.write(
             ActionHostResponse(
                 status: didQuit ? "quit" : "error",
                 outputPath: nil,
                 detail: didQuit
-                    ? "terminated-running-action-apps"
+                    ? "terminated-action-launchers-preserved-independent-helpers"
                     : "action-still-running-after-force-terminate"
             )
         )
+    case .capabilities:
+        try writer.write(ActionBuildProvenance.current)
+    case .isolationContext:
+        try writer.write(ActionIsolationContext.capture())
     case .status:
         try writer.write(snapshot(promptAccessibility: false))
     case .request:
@@ -4169,6 +4208,21 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
     case .launchApp:
         let bundleId = try options.required("bundle-id")
         let timeoutMilliseconds = options.double("timeout-ms", default: 10_000)
+        // Background: launch or reopen without activating, so an agent layer can take
+        // the window. No wait for frontmost, since nothing comes to the front.
+        let url = ActionBackgroundOpen.url(from: options.options["url"])
+        if options.bool("background", default: false) || url != nil {
+            let app = try await ActionBackgroundOpen.open(bundleId: bundleId, url: url)
+            if !options.bool("background", default: false) {
+                try await activateApplicationAndWait(
+                    bundleId: bundleId,
+                    timeoutMilliseconds: timeoutMilliseconds,
+                    logger: logger
+                )
+            }
+            try writer.write(ActionHostResponse(status: "launched", outputPath: nil, detail: "\(bundleId) pid \(app.processIdentifier)"))
+            break
+        }
         if NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty {
             try await MainActor.run {
                 try ActionNativeAutomation.launchApplication(bundleId: bundleId)
@@ -4247,6 +4301,83 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         try postKeyPressToApp(bundleId: bundleId, key: key, modifiers: modifiers)
         let detail = modifiers.isEmpty ? "\(bundleId) \(key)" : "\(bundleId) \(modifiers.joined(separator: "+"))+\(key)"
         try writer.write(ActionHostResponse(status: "pressed-app-key", outputPath: nil, detail: detail))
+    case .blinkClick:
+        let x = options.double("x", default: .nan)
+        let y = options.double("y", default: .nan)
+        guard x.isFinite, y.isFinite else {
+            throw ActionHostError.missingOption("--x/--y")
+        }
+        // A requested hold is a HID gesture AXPress can't express; `--pointer` forces the
+        // pointer for elements whose press action misbehaves.
+        let wantsPointer = options.options["hold-ms"] != nil || options.bool("pointer", default: false)
+        ActionAgentLayerDisplay.announceAim(at: CGPoint(x: x, y: y))
+        let detail = try ActionBlinkInput.click(
+            at: CGPoint(x: x, y: y),
+            holdMs: Int(options.double("hold-ms", default: Double(ActionBlinkInput.clickHoldMilliseconds))),
+            accessibilityFirst: !wantsPointer,
+            anyDisplay: options.bool("any-display", default: false),
+            pointerEventLogPath: options.options["pointer-event-log"]
+        )
+        ActionAgentLayerDisplay.announceAct(at: CGPoint(x: x, y: y))
+        try writer.write(ActionHostResponse(status: "blink-clicked", outputPath: nil, detail: detail))
+    case .blinkType:
+        let app = try resolveTargetApplication(from: options)
+        let delayMs = Int(options.double("delay-ms", default: 0))
+        let detail = try ActionBlinkInput.type(
+            try options.required("text"),
+            into: app,
+            delayMs: delayMs > 0 ? delayMs : nil,
+            // A typing cadence is a keystroke thing; `--keys` forces keystrokes outright.
+            accessibilityFirst: delayMs <= 0 && !options.bool("keys", default: false),
+            anyDisplay: options.bool("any-display", default: false)
+        )
+        ActionAgentLayerDisplay.announceAct(focusedIn: app)
+        try writer.write(ActionHostResponse(status: "blink-typed", outputPath: nil, detail: detail))
+    case .blinkKey:
+        let app = try resolveTargetApplication(from: options)
+        let modifiers = options.options["modifiers"]?
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+        let detail = try ActionBlinkInput.press(
+            try options.required("key"),
+            modifiers: modifiers,
+            into: app,
+            anyDisplay: options.bool("any-display", default: false)
+        )
+        ActionAgentLayerDisplay.announceAct(focusedIn: app)
+        try writer.write(ActionHostResponse(status: "blink-key-pressed", outputPath: nil, detail: detail))
+    case .blinkDrag:
+        let from = CGPoint(x: options.double("from-x", default: .nan), y: options.double("from-y", default: .nan))
+        let to = CGPoint(x: options.double("to-x", default: .nan), y: options.double("to-y", default: .nan))
+        guard from.x.isFinite, from.y.isFinite, to.x.isFinite, to.y.isFinite else {
+            throw ActionHostError.missingOption("--from-x --from-y --to-x --to-y")
+        }
+        ActionAgentLayerDisplay.announceAim(at: from)
+        let detail = try ActionBlinkInput.drag(
+            from: from,
+            to: to,
+            durationMs: Int(options.double("duration-ms", default: 200)),
+            anyDisplay: options.bool("any-display", default: false),
+            pointerEventLogPath: options.options["pointer-event-log"]
+        )
+        ActionAgentLayerDisplay.announceAct("drag", at: to, from: from)
+        try writer.write(ActionHostResponse(status: "blink-dragged", outputPath: nil, detail: detail))
+    case .blinkScroll:
+        let point = CGPoint(x: options.double("x", default: .nan), y: options.double("y", default: .nan))
+        guard point.x.isFinite, point.y.isFinite else {
+            throw ActionHostError.missingOption("--x/--y")
+        }
+        ActionAgentLayerDisplay.announceAim(at: point)
+        let detail = try ActionBlinkInput.scroll(
+            at: point,
+            deltaX: options.double("delta-x", default: 0),
+            deltaY: options.double("delta-y", default: 0),
+            durationMs: Int(options.double("duration-ms", default: 0)),
+            anyDisplay: options.bool("any-display", default: false)
+        )
+        ActionAgentLayerDisplay.announceAct("scroll", at: point, deltaY: options.double("delta-y", default: 0))
+        try writer.write(ActionHostResponse(status: "blink-scrolled", outputPath: nil, detail: detail))
     case .pointerEventLogInit:
         // Written natively so the header's monotonic reference comes from the same clock the
         // click processes will stamp against. A JS caller cannot produce a comparable reading.
@@ -4514,11 +4645,11 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
 @main
 struct ActionHostMain {
     static func main() {
-        if Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
+        let options = CommandOptions(arguments: CommandLine.arguments)
+        if options.command != .isolationContext, Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
             ActionPreferenceMigration.migrateIfNeeded()
         }
 
-        let options = CommandOptions(arguments: CommandLine.arguments)
         let writer = ResponseWriter(replyFile: options.options["reply-file"])
         let logger = DebugLogger(path: options.options["debug-log"])
         let command = options.command ?? .launcher
@@ -4592,6 +4723,32 @@ struct ActionHostMain {
                     let controller = try ActionDrapeController(options: options)
                     try controller.run()
                 } catch {
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
+        case .agentDisplay:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionAgentDisplayController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionHostResponse(status: "error", outputPath: nil, detail: error.localizedDescription))
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
+        case .agentLayer:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionAgentLayerController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionHostResponse(status: "error", outputPath: nil, detail: error.localizedDescription))
                     FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
                     Darwin.exit(1)
                 }

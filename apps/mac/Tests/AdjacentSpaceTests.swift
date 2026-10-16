@@ -12,6 +12,45 @@ import XCTest
 /// (would move the real desktop).
 final class AdjacentSpaceTests: XCTestCase {
 
+    func testLateDockLandingDoesNotDiscardTheRemainingBurst() {
+        var time: TimeInterval = 0
+        var current = 1
+        // Replay a fast first landing followed by commits beyond the old
+        // 250ms cutoff. Each confirmed step permits the next swipe.
+        for target in 2...18 {
+            let departure = current
+            let landsAt = time + (target == 2 ? 0.02 : 0.45)
+            current = WindowTiler.waitForSpaceChange(from: departure, read: {
+                time >= landsAt ? target : departure
+            }, now: { time }, pause: { time += 0.01 })
+            XCTAssertEqual(current, target)
+            XCTAssertLessThan(time - landsAt, 0.011)
+        }
+    }
+
+    func testLandingPollReturnsImmediatelyAndIgnoresUnreadableState() {
+        var time: TimeInterval = 0
+        var reads = 0
+        let landed = WindowTiler.waitForSpaceChange(from: 5, read: {
+            reads += 1
+            return reads == 1 ? 0 : 6
+        }, now: { time }, pause: { time += 0.01 })
+        XCTAssertEqual(landed, 6)
+        XCTAssertEqual(time, 0.01, accuracy: 0.0001)
+        let immediate = WindowTiler.waitForSpaceChange(from: 5, read: { 6 },
+            now: { time }, pause: { XCTFail("Already landed; must not sleep") })
+        XCTAssertEqual(immediate, 6)
+    }
+
+    func testLandingPollBoundsANonResponsiveDock() {
+        var time: TimeInterval = 0
+        let result = WindowTiler.waitForSpaceChange(from: 5, read: { 5 },
+            now: { time }, pause: { time += 0.01 })
+        XCTAssertEqual(result, 5)
+        XCTAssertGreaterThanOrEqual(time, 1)
+        XCTAssertLessThan(time, 1.011)
+    }
+
     // MARK: - Gesture / tiler adjacent target (space.previous / space.next)
 
     /// Same resolution used by mouse-gesture `space.previous` (−1) / `space.next` (+1).
@@ -81,9 +120,9 @@ final class AdjacentSpaceTests: XCTestCase {
             currentSpaceId: 11
         )
 
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: display, direction: -1)?.id, 10)
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: display, direction: 1)?.id, 12)
-        XCTAssertNil(LatticesDeckHost.relativeSpaceTarget(in: display, direction: 2))
+        XCTAssertEqual(display.relativeSpace(direction: -1)?.id, 10)
+        XCTAssertEqual(display.relativeSpace(direction: 1)?.id, 12)
+        XCTAssertNil(display.relativeSpace(direction: 2))
     }
 
     func testRelativeSpaceTargetAtEnds() {
@@ -96,8 +135,8 @@ final class AdjacentSpaceTests: XCTestCase {
             ],
             currentSpaceId: 10
         )
-        XCTAssertNil(LatticesDeckHost.relativeSpaceTarget(in: firstCurrent, direction: -1))
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: firstCurrent, direction: 1)?.id, 11)
+        XCTAssertNil(firstCurrent.relativeSpace(direction: -1))
+        XCTAssertEqual(firstCurrent.relativeSpace(direction: 1)?.id, 11)
 
         let lastCurrent = DisplaySpaces(
             displayIndex: 0,
@@ -108,27 +147,9 @@ final class AdjacentSpaceTests: XCTestCase {
             ],
             currentSpaceId: 11
         )
-        XCTAssertNil(LatticesDeckHost.relativeSpaceTarget(in: lastCurrent, direction: 1))
-        XCTAssertEqual(LatticesDeckHost.relativeSpaceTarget(in: lastCurrent, direction: -1)?.id, 10)
+        XCTAssertNil(lastCurrent.relativeSpace(direction: 1))
+        XCTAssertEqual(lastCurrent.relativeSpace(direction: -1)?.id, 10)
     }
-
-    /// Deck may receive Control+arrow key events from the phone, but Lattices
-    /// must map them to relative Space targets (SkyLight), not synthesize the
-    /// system Mission Control shortcut.
-    func testCompanionKeyChordMapsToRelativeDirectionNotSystemShortcut() {
-        let host = LatticesDeckHost.shared
-
-        XCTAssertEqual(host.spaceSwitchDirection(key: "left", modifiers: ["control"]), -1)
-        XCTAssertEqual(host.spaceSwitchDirection(key: "right", modifiers: ["ctrl"]), 1)
-        XCTAssertEqual(host.spaceSwitchDirection(key: "←", modifiers: ["⌃"]), -1)
-        XCTAssertEqual(host.spaceSwitchDirection(key: "→", modifiers: ["Control"]), 1)
-
-        // Without Control, leave the chord alone (not a space switch).
-        XCTAssertNil(host.spaceSwitchDirection(key: "left", modifiers: ["command"]))
-        XCTAssertNil(host.spaceSwitchDirection(key: "up", modifiers: ["control"]))
-        XCTAssertNil(host.spaceSwitchDirection(key: "right", modifiers: []))
-    }
-
     // MARK: - Mouse gesture defaults → Lattices actions
 
     func testDefaultMouseShortcutsWireSpacePreviousAndNextActions() {
@@ -178,4 +199,20 @@ final class AdjacentSpaceTests: XCTestCase {
         XCTAssertNil(WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: 99, offset: 1))
         XCTAssertNil(WindowTiler.adjacentSpaceId(in: [], currentSpaceId: 10, offset: 1))
     }
+    /// Regression: the old eight-attempt loop stranded a merged 17-key
+    /// burst on desktop 10 even though its planned destination was 18.
+    func testLongMergedBurstHasEnoughAttemptsInBothDirections() {
+        let ordered = Array(1...18)
+        for (start, offset, expected) in [(1, 17, 18), (18, -17, 1)] {
+            let target = WindowTiler.adjacentSpaceId(in: ordered, currentSpaceId: start, offset: offset)
+            XCTAssertEqual(target, expected)
+            var current = start
+            for _ in 0..<WindowTiler.spaceSwitchAttemptLimit(distance: offset) {
+                if current == target { break }
+                current += offset > 0 ? 1 : -1
+            }
+            XCTAssertEqual(current, target, "A long burst must not stop halfway")
+        }
+    }
+
 }

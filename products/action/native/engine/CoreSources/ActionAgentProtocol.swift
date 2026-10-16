@@ -49,6 +49,8 @@ public enum ActionAgentMethod: String, CaseIterable, Sendable {
     case driveTouch = "drive.touch"
     case driveRelease = "drive.release"
     case driveStatus = "drive.status"
+    case sessionsPrune = "sessions.prune"
+    case sessionsClear = "sessions.clear"
     case workspaceDragFile = "workspace.dragFile"
     case workspaceCancelOperation = "workspace.cancelOperation"
     case recordAppWindow = "capture.recordAppWindow"

@@ -12,16 +12,17 @@
 //   lattices action call <m> [j] Raw Action agent call (params as JSON)
 //   lattices action <cmd> [args] Forward to the Action CLI in a monorepo checkout
 
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, createWriteStream } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { actionAgentCall, isActionAgentRunning } from "./action-agent-client";
+import { distribution } from "./distribution";
 
 const __dirname = import.meta.dir;
-const REPO = "arach/lattices";
+const REPO = distribution.repository;
 const ACTION_TAG_PREFIX = "action-v";
 const ACTION_DMG_ASSET = "Action.dmg";
 const ACTION_APP_NAME = "Action.app";
@@ -41,7 +42,7 @@ type Release = {
 
 function isRunning(): boolean {
   try {
-    execSync("pgrep -x Action", { stdio: "pipe" });
+    execFileSync("pgrep", ["-x", "Action"], { stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -52,10 +53,10 @@ function installedPath(): string | null {
   if (existsSync(INSTALL_PATH)) return INSTALL_PATH;
   // Respect LaunchServices registration outside /Applications (e.g. ~/Applications)
   try {
-    const url = execSync(
-      `mdfind "kMDItemCFBundleIdentifier == '${ACTION_BUNDLE_ID}'" | head -1`,
+    const url = execFileSync(
+      "mdfind", ["kMDItemCFBundleIdentifier == '" + ACTION_BUNDLE_ID + "'"],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
-    ).trim();
+    ).trim().split("\n")[0];
     if (url && existsSync(url)) return url;
   } catch {}
   return null;
@@ -64,8 +65,8 @@ function installedPath(): string | null {
 function installedVersion(appPath: string): string | null {
   try {
     const plist = resolve(appPath, "Contents/Info.plist");
-    const out = execSync(
-      `/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' '${plist}'`,
+    const out = execFileSync(
+      "/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", plist],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
     ).trim();
     return out || null;
@@ -75,19 +76,26 @@ function installedVersion(appPath: string): string | null {
 }
 
 function quitApp(): boolean {
-  if (!isRunning()) return false;
+  const appPath = installedPath();
+  if (!appPath) return false;
+  const directory = mkdtempSync(join(tmpdir(), "action-quit-"));
+  const reply = join(directory, "reply.json");
   try {
-    execFileSync(
-      "/usr/bin/osascript",
-      ["-e", `tell application id "${ACTION_BUNDLE_ID}" to quit`],
-      { stdio: "ignore" }
-    );
-  } catch {}
-  const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline && isRunning()) {
-    execFileSync("/bin/sleep", ["0.1"], { stdio: "ignore" });
+    // The native command distinguishes launchers from persistent display owners.
+    // A bundle-wide Apple Event or pgrep cannot make that distinction.
+    execFileSync("/usr/bin/open", ["-n", "-g", appPath, "--args", "quit-app", "--reply-file", reply], { stdio: "ignore" });
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (existsSync(reply)) {
+        try { return JSON.parse(readFileSync(reply, "utf8")).status === "quit"; }
+        catch { /* The helper may still be writing its reply. */ }
+      }
+      execFileSync("/bin/sleep", ["0.1"], { stdio: "ignore" });
+    }
+    return false;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
-  return !isRunning();
 }
 
 /**
@@ -98,8 +106,9 @@ function findCheckout(): string | null {
   const candidates: string[] = [];
   if (process.env.ACTION_ROOT) candidates.push(process.env.ACTION_ROOT);
   candidates.push(resolve(__dirname, "../products/action"));
+  candidates.push(join(homedir(), "Library/Application Support/Lattices/runtime/current/products/action"));
   try {
-    const top = execSync("git rev-parse --show-toplevel", {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
@@ -159,8 +168,8 @@ async function latestActionRelease(): Promise<Release | null> {
 function installAppFromDmg(dmgPath: string): void {
   const mountPoint = mkdtempSync(join(tmpdir(), "action-mount-"));
   try {
-    execSync(
-      `hdiutil attach -nobrowse -readonly -mountpoint '${mountPoint}' '${dmgPath}'`,
+    execFileSync(
+      "hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint, dmgPath],
       { stdio: "pipe" }
     );
     const mountedApp = resolve(mountPoint, ACTION_APP_NAME);
@@ -168,10 +177,10 @@ function installAppFromDmg(dmgPath: string): void {
       throw new Error(`${ACTION_APP_NAME} not found in mounted disk image`);
     }
     rmSync(INSTALL_PATH, { recursive: true, force: true });
-    execSync(`cp -R '${mountedApp}' '${INSTALL_PATH}'`);
+    execFileSync("cp", ["-R", mountedApp, INSTALL_PATH]);
   } finally {
     try {
-      execSync(`hdiutil detach '${mountPoint}' -quiet`, { stdio: "pipe" });
+      execFileSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" });
     } catch {}
     rmSync(mountPoint, { recursive: true, force: true });
   }
@@ -195,7 +204,8 @@ async function install(shouldLaunch: boolean): Promise<void> {
   const version = release.tag_name.slice(ACTION_TAG_PREFIX.length);
   const existing = installedPath();
   if (existing && installedVersion(existing) === version) {
-    console.log(`Action ${version} is already installed at ${existing}.`);
+    console.log(`Action ${version} is already installed at ${existing} (matches published release version).`);
+    console.log("This does not verify source-build or MCP parity. Run `lats action capabilities` and reconnect MCP after runtime updates.");
     if (shouldLaunch) launchApp();
     return;
   }
@@ -261,6 +271,7 @@ async function status(json: boolean): Promise<void> {
   console.log(`  running     ${running ? "yes" : "no"}`);
   console.log(`  agent       ${agent ? "reachable (ws://127.0.0.1:4319)" : "not reachable"}`);
   console.log(`  checkout    ${checkout ?? "none (products/action not found)"}`);
+  console.log("  capability  Run `lats action capabilities`; version alone does not prove layer support.");
   if (!appPath) {
     console.log(`\nInstall with: lattices action install`);
   }
@@ -307,11 +318,15 @@ Usage:
   lattices action launch       Open Action.app (use --launch with install)
   lattices action quit         Quit Action.app
   lattices action call <m> [j] Raw Action agent call (ws://127.0.0.1:4319)
+  lattices action mcp          Start the installed Action MCP server over stdio
+  lattices action capabilities Read-only build fingerprints, native capability manifest, and MCP routing
+  lattices action layer <verb> Private Action display lifecycle (requires runtime checkout/install)
   lattices action status --json
   lattices action <cmd> [args] Forward to the Action CLI (monorepo checkout)
 
-Without a checkout, install gives you the signed Action.app; the agent API
-stays reachable via \`lattices action call\`. Docs: ${ACTION_SITE_URL}
+Runtime lookup: ACTION_ROOT, a checkout, or the managed runtime install.
+The published app-only installer does not include MCP orchestration.
+Raw agent RPC stays available via \`lattices action call\`. Docs: ${ACTION_SITE_URL}
 `);
 }
 
@@ -341,8 +356,23 @@ switch (first) {
     break;
   case "quit":
   case "stop":
-    console.log(quitApp() ? "Action stopped." : "Action is not running.");
+    console.log(quitApp() ? "Action launcher stopped; prepared workspaces remain available." : "Could not confirm Action launcher quit.");
     break;
+  case "mcp": {
+    const checkout = findCheckout();
+    if (!checkout) {
+      console.error("Action MCP runtime not installed. A native app alone does not include MCP orchestration; install a matching runtime bundle or set ACTION_ROOT.");
+      process.exit(1);
+    }
+    try {
+      execFileSync("bun", [resolve(checkout, "packages/mcp/src/index.ts")], {
+        stdio: "inherit", env: { ...process.env, ACTION_ROOT: checkout },
+      });
+    } catch {
+      process.exit(1);
+    }
+    break;
+  }
   case "call":
     await callAgent(rest[0], rest[1]);
     break;

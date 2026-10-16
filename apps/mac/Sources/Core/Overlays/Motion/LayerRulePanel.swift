@@ -61,8 +61,12 @@ private struct LayerRuleForm: View {
         var app = ""
         var name = ""
         var nameMode: NameMatchMode = .direct
+        /// The rule as it came in: what the panel doesn't show (session,
+        /// Space, exclusions) and how each field matched carry over.
+        private let original: StudioLayerClause
 
         init(_ clause: StudioLayerClause) {
+            original = clause
             app = clause.appEquals ?? clause.app ?? clause.appRegex ?? ""
             if let titleRegex = clause.titleRegex {
                 name = titleRegex
@@ -74,12 +78,25 @@ private struct LayerRuleForm: View {
         }
 
         var clause: StudioLayerClause {
+            var c = original
+            let app = clean(app), name = clean(name)
+            if original.appEquals != nil { c.appEquals = app }
+            else if original.app != nil { c.app = app }
+            else if original.appRegex != nil { c.appRegex = app }
+            else { c.appEquals = app }
             switch nameMode {
-            case .direct:
-                StudioLayerClause(appEquals: clean(app), titleContains: clean(name))
             case .regex:
-                StudioLayerClause(appEquals: clean(app), titleRegex: clean(name))
+                if original.titleRegex == nil { c.titleContains = nil; c.titleEquals = nil }
+                c.titleRegex = name
+            case .direct:
+                c.titleRegex = nil
+                if original.titleRegex == nil, original.titleContains == nil, original.titleEquals != nil {
+                    c.titleEquals = name
+                } else {
+                    c.titleContains = name
+                }
             }
+            return c
         }
 
         var canSave: Bool {

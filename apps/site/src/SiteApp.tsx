@@ -7,10 +7,12 @@ import ProductsPage from './components/ProductsPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
-import FamilyPage from './components/FamilyPage'
+import LearnPage from './components/LearnPage'
+import { getLearningRoute, LEARNING_SITE_URL } from './lib/learning'
 import BrandPage from './components/BrandPage'
 import { SiteFooter, SiteHeader } from './components/SiteChrome'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
+import FamilyPage from './components/FamilyPage'
 import { routeBrand } from './lib/brand'
 import { routeMeta } from './seo/routes'
 
@@ -21,7 +23,15 @@ export default function SiteApp() {
   useEffect(() => {
     document.title = route.title
     setMeta('description', route.description)
-  }, [route.description, route.title])
+    // Keep metadata correct when entering or leaving a lesson through client navigation.
+    const canonicalPath = routeMeta(path)?.canonicalPath ?? (path === '/docs' ? `/docs/${defaultDoc().slug}` : path.replace(/^\/docs\/blog/, '/blog'))
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${LEARNING_SITE_URL}${canonicalPath}`)
+    for (const prefix of ['og', 'twitter']) {
+      document.querySelector(`meta[property="${prefix}:title"]`)?.setAttribute('content', route.title)
+      document.querySelector(`meta[property="${prefix}:description"]`)?.setAttribute('content', route.description)
+    }
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', `${LEARNING_SITE_URL}${canonicalPath}`)
+  }, [path, route.description, route.title])
 
   useEffect(() => {
     const brand = routeBrand(path)
@@ -61,6 +71,7 @@ export default function SiteApp() {
   }, [])
 
   if (route.kind === 'home') return <LandingPage />
+  if (route.kind === 'learning') return <LearnPage path={path} />
   if (route.kind === 'experiment') return <ConceptExperimentPage />
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
@@ -99,7 +110,7 @@ export default function SiteApp() {
               <a href="/blog">Blog</a> — release notes and engineering write-ups
             </li>
             <li>
-              <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/lattices-dev/lattices" target="_blank" rel="noopener noreferrer">
                 GitHub
               </a>{' '}
               — open an issue if the link should work
@@ -113,6 +124,7 @@ export default function SiteApp() {
 }
 
 type Route =
+  | { kind: 'learning'; title: string; description: string }
   | { kind: 'home'; title: string; description: string }
   | { kind: 'experiment'; title: string; description: string }
   | { kind: 'action'; title: string; description: string }
@@ -133,6 +145,8 @@ function copyFor(path: string): { title: string; description: string } {
 }
 
 function resolveRoute(path: string): Route {
+  const learning = getLearningRoute(path)
+  if (learning) return { kind: 'learning', title: `${learning.title} — Lattices`, description: learning.description }
   if (path === '/experiment' || path === '/concept') {
     return { kind: 'experiment', ...copyFor('/experiment') }
   }

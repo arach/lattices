@@ -1,7 +1,7 @@
 import { SiteFooter, SiteHeader } from './SiteChrome'
 import { SpeechMark } from './SpeechMark'
 import { speechDownloadUrl as downloadUrl } from '../seo/routes'
-const sourceUrl = 'https://github.com/arach/lattices/tree/main/products/voice'
+const sourceUrl = 'https://github.com/lattices-dev/lattices/tree/main/products/voice'
 
 const features = [
   {

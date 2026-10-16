@@ -864,8 +864,24 @@ private struct MiniHomeHomePane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let layers = workspace.config?.layers, !layers.isEmpty {
-                layerChips(layers)
+            if !workspace.layers.isEmpty || workspace.isLayerFocusActive || workspace.layerFocus.needsRecovery {
+                let layers = workspace.layers
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        layerChips(layers)
+                        Button("Exit Layers") { workspace.exitLayers() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .fixedSize()
+                            .help("Restore windows and leave layer focus. Saved layers stay available.")
+                    }
+                    if let message = workspace.layerRecoveryMessage {
+                        Text(message)
+                            .font(Typo.caption())
+                            .foregroundColor(Palette.textDim)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
@@ -878,8 +894,8 @@ private struct MiniHomeHomePane: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
-        .onAppear { selectedLayer = workspace.activeLayerIndex }
-        .onChange(of: workspace.activeLayerIndex) { _, newIndex in
+        .onAppear { selectedLayer = workspace.activeLayerSelection }
+        .onChange(of: workspace.activeLayerSelection) { _, newIndex in
             selectedLayer = newIndex
         }
     }
@@ -887,11 +903,16 @@ private struct MiniHomeHomePane: View {
     private func layerChips(_ layers: [Layer]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
+                let windowCounts = workspace.layerWindowCounts()
                 ForEach(Array(layers.enumerated()), id: \.offset) { index, layer in
                     let isActive = index == selectedLayer
-                    let counts = workspace.layerRunningCount(index: index)
+                    let count = windowCounts.indices.contains(index) ? windowCounts[index] : 0
+                    let verb = isActive ? "Exit" : "Focus"
+                    let facts: [String?] = ["\(verb) \(layer.label)", LayerOverview.chord(forIndex: index), LayerOverview.countNote(count)]
+                    let hint = facts.compactMap { $0 }.joined(separator: " · ")
                     Button {
                         if selectedLayer == index {
+                            workspace.exitLayers()
                             selectedLayer = nil
                         } else {
                             selectedLayer = index
@@ -901,11 +922,9 @@ private struct MiniHomeHomePane: View {
                         HStack(spacing: 4) {
                             Text(layer.label)
                                 .font(Typo.mono(9))
-                            if counts.total > 0 {
-                                Text("\(counts.running)/\(counts.total)")
-                                    .font(Typo.monoBold(8))
-                                    .foregroundColor(isActive ? Palette.bg.opacity(0.8) : Palette.textMuted)
-                            }
+                            Text("\(count)")
+                                .font(Typo.monoBold(8))
+                                .foregroundColor(isActive ? Palette.bg.opacity(0.8) : Palette.textMuted)
                         }
                         .foregroundColor(isActive ? Palette.bg : Palette.textDim)
                         .padding(.horizontal, 8)
@@ -919,7 +938,12 @@ private struct MiniHomeHomePane: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help(isActive ? "Release \(layer.label)" : "Focus \(layer.label)")
+                    .help(hint)
+                    .contextMenu {
+                        Button("Exit Layers") {
+                            workspace.exitLayers()
+                        }
+                    }
                 }
             }
         }
@@ -1206,7 +1230,7 @@ private struct MiniHomeCommandJumps: View {
     var body: some View {
         HStack(spacing: 10) {
             jump("magnifyingglass", "Inventory") {
-                ScreenMapWindowController.shared.showPage(.desktopInventory)
+                ScreenMapWindowController.shared.showPage(.overview)
             }
             jump("list.bullet.rectangle", "Activity") {
                 ScreenMapWindowController.shared.showPage(.activity)

@@ -14,6 +14,20 @@ struct WindowMoveMenuModel: Equatable {
         let name: String
         /// True when this is the clicked window's display.
         let isCurrent: Bool
+        var desktops: [Desktop] = []
+    }
+
+    struct Desktop: Equatable {
+        let displayIndex: Int
+        let displayName: String
+        let spaceId: Int
+        let number: Int
+        /// Whether the anchor window actually belongs to this Space.
+        var isCurrent = false
+        /// Whether this Desktop is currently showing on its display.
+        var isShowing = false
+
+        var title: String { "\(displayName) · Desktop \(number)" }
     }
 
     struct Target: Equatable {
@@ -23,6 +37,8 @@ struct WindowMoveMenuModel: Equatable {
 
     let displays: [Display]
     let targets: [Target]
+    /// Captured from the UI host screen, never from the window being moved.
+    var here: Desktop? = nil
 
     /// Slot presets offered by Move & Place: the canonical named
     /// `PlacementSpec` positions kept to a scannable set (maximize, center,
@@ -43,9 +59,10 @@ struct WindowMoveMenuModel: Equatable {
         return [clicked]
     }
 
-    /// Cross-monitor movement only exists with two or more displays; callers
-    /// render nothing (no orphan separators) when this is false.
-    var isAvailable: Bool { displays.count > 1 && !targets.isEmpty }
+    /// Desktop movement is available on one-display systems too.
+    var isAvailable: Bool {
+        !targets.isEmpty && (displays.count > 1 || displays.contains { !$0.desktops.isEmpty })
+    }
 
     var targetCount: Int { targets.count }
 
@@ -55,7 +72,7 @@ struct WindowMoveMenuModel: Equatable {
     /// the clicked window's display, wrapping at the end. When the anchor
     /// display cannot be resolved, cycling starts from the first display.
     var nextDisplay: Display? {
-        guard isAvailable else { return nil }
+        guard isAvailable, displays.count > 1 else { return nil }
         guard let position = displays.firstIndex(where: \.isCurrent) else {
             return displays.first
         }
@@ -72,7 +89,22 @@ struct WindowMoveMenuModel: Equatable {
 
     /// Move & Place is single-window only: several windows sent to the same
     /// slot would stack into one overlapping pile.
-    var includesPlacement: Bool { isAvailable && targetCount == 1 }
+    var includesPlacement: Bool { isAvailable && displays.count > 1 && targetCount == 1 }
+
+    var bringHereTitle: String {
+        let prefix = targetCount > 1 ? "Bring \(targetCount) Windows Here" : "Bring Here"
+        return here.map { "\(prefix) — \($0.title)" } ?? prefix
+    }
+
+    func isDisabled(_ desktop: Desktop) -> Bool {
+        desktop.isCurrent && targetCount == 1
+    }
+
+    func moveAccessibilityLabel(to desktop: Desktop) -> String {
+        targetCount > 1
+            ? "Move \(targetCount) windows to \(desktop.title)"
+            : "Move window to \(desktop.title)"
+    }
 
     /// The anchor display is unpickable only for a single-window menu. A
     /// multi-selection can span monitors, so its members may legitimately
@@ -125,11 +157,76 @@ enum WindowMovementService {
     }
 
     /// Menu model anchored on a window's global top-left frame (Inventory).
-    static func menuModel(windowFrame: WindowFrame, targets: [WindowMoveMenuModel.Target]) -> WindowMoveMenuModel {
-        WindowMoveMenuModel(
-            displays: displays(anchorScreen: WindowTiler.screenForWindowFrame(windowFrame)),
-            targets: targets
+    static func menuModel(
+        windowFrame: WindowFrame,
+        targets: [WindowMoveMenuModel.Target],
+        anchorWid: UInt32? = nil,
+        hostScreen: NSScreen? = nil
+    ) -> WindowMoveMenuModel {
+        let spaces = WindowTiler.getDisplaySpaces()
+        let memberships = anchorWid.map { WindowTiler.getSpacesForWindow($0) } ?? []
+        let hostId = hostScreen.map(ScreenOverlayCanvasController.screenID(for:))
+        let hostIndex = DisplayTopology.live().displays.first { $0.id == hostId }?.apiIndex
+        var displayModels = displays(anchorScreen: WindowTiler.screenForWindowFrame(windowFrame))
+        for index in displayModels.indices {
+            let display = displayModels[index]
+            let owned = spaces.first { $0.displayIndex == display.index }
+            displayModels[index].desktops = (owned?.spaces ?? []).map { space in
+                WindowMoveMenuModel.Desktop(
+                    displayIndex: display.index, displayName: display.name,
+                    spaceId: space.id, number: space.index,
+                    isCurrent: memberships.contains(space.id),
+                    isShowing: owned?.currentSpaceId == space.id
+                )
+            }
+        }
+        return WindowMoveMenuModel(
+            displays: displayModels, targets: targets,
+            here: displayModels.first { $0.index == hostIndex }?.desktops.first(where: \.isShowing)
         )
+    }
+
+    /// Used by Overview and both context-menu surfaces. A success requires
+    /// the runtime's verification, never an AX call merely returning success.
+    static func failureMessage(for receipt: JSON) -> String? {
+        if receipt["status"]?.stringValue == "ok", receipt["verified"]?.boolValue == true { return nil }
+        if receipt["status"]?.stringValue == "blocked" {
+            return receipt["blockedReason"]?.stringValue ?? "Grant Accessibility to move windows"
+        }
+        return receipt["failureReason"]?.stringValue
+            ?? receipt["message"]?.stringValue
+            ?? "Move not verified; the window did not reach the requested display and Desktop"
+    }
+
+    static func moveTargets(
+        _ targets: [WindowMoveMenuModel.Target],
+        to desktop: WindowMoveMenuModel.Desktop,
+        completion: @escaping (Outcome) -> Void
+    ) {
+        run(completion: completion) {
+            var moved: [UInt32] = []
+            var failures: [String] = []
+            for target in targets {
+                do {
+                    let receipt = try ActionRuntime.shared.executeWindowMove(
+                        params: .object([
+                            "wid": .int(Int(target.wid)),
+                            "display": .int(desktop.displayIndex),
+                            "spaceId": .int(desktop.spaceId),
+                        ]), source: "app.context-menu"
+                    )
+                    if let failure = failureMessage(for: receipt) { failures.append(failure) }
+                    else { moved.append(target.wid) }
+                } catch {
+                    failures.append(error.localizedDescription)
+                }
+            }
+            if let failure = failures.first {
+                let prefix = moved.isEmpty ? "" : "Moved \(moved.count)/\(targets.count) windows. "
+                return Outcome(ok: false, message: prefix + failure, movedWids: moved)
+            }
+            return moveOutcome(okWids: moved, total: targets.count, blocked: false, displayName: desktop.title)
+        }
     }
 
     /// Move each target to `display`, preserving each window's own normalized
@@ -151,7 +248,7 @@ enum WindowMovementService {
                 do {
                     let receipt = try ActionRuntime.shared.executeWindowMove(params: params, source: "app.context-menu")
                     switch receipt["status"]?.stringValue {
-                    case "ok": okWids.append(target.wid)
+                    case "ok" where receipt["verified"]?.boolValue == true: okWids.append(target.wid)
                     case "blocked": blocked = true
                     default: break
                     }
@@ -253,15 +350,38 @@ enum WindowMovementService {
 // MARK: - SwiftUI menu section
 
 /// The shared movement section rendered inside a SwiftUI `contextMenu`.
-/// Renders nothing on a single-display machine; callers gate their own
-/// dividers on `model.isAvailable` so no orphan separators remain.
+/// Includes absolute Desktop destinations on every attached display. Callers
+/// gate their dividers on `model.isAvailable` so no orphan separators remain.
 struct WindowMovementMenuSection: View {
     let model: WindowMoveMenuModel
     let onMove: (WindowMoveMenuModel.Display) -> Void
+    var onMoveDesktop: ((WindowMoveMenuModel.Desktop) -> Void)? = nil
     var onPlace: ((WindowMoveMenuModel.Display, TilePosition) -> Void)? = nil
 
     var body: some View {
         if model.isAvailable {
+            if let onMoveDesktop {
+                if let here = model.here, !model.isDisabled(here) {
+                    Button(model.bringHereTitle) { onMoveDesktop(here) }
+                        .accessibilityLabel(model.bringHereTitle)
+                }
+                Menu("Move to Desktop") {
+                    ForEach(model.displays, id: \.index) { display in
+                        Section(display.name) {
+                            ForEach(display.desktops, id: \.spaceId) { desktop in
+                                Button {
+                                    onMoveDesktop(desktop)
+                                } label: {
+                                    if desktop.isCurrent { Label(desktop.title, systemImage: "checkmark") }
+                                    else { Text(desktop.title) }
+                                }
+                                .disabled(model.isDisabled(desktop))
+                                .accessibilityLabel(model.moveAccessibilityLabel(to: desktop))
+                            }
+                        }
+                    }
+                }
+            }
             if let next = model.nextDisplay {
                 Button {
                     onMove(next)
@@ -271,22 +391,24 @@ struct WindowMovementMenuSection: View {
                 .accessibilityLabel(model.moveAccessibilityLabel(to: next))
             }
 
-            Menu(model.moveToMonitorTitle) {
-                ForEach(model.displays, id: \.index) { display in
-                    Button {
-                        onMove(display)
-                    } label: {
-                        if display.isCurrent {
-                            Label(display.name, systemImage: "checkmark")
-                        } else {
-                            Text(display.name)
+            if model.displays.count > 1 {
+                Menu(model.moveToMonitorTitle) {
+                    ForEach(model.displays, id: \.index) { display in
+                        Button {
+                            onMove(display)
+                        } label: {
+                            if display.isCurrent {
+                                Label(display.name, systemImage: "checkmark")
+                            } else {
+                                Text(display.name)
+                            }
                         }
+                        .disabled(model.isDisabled(display))
+                        .accessibilityLabel(model.moveAccessibilityLabel(to: display))
                     }
-                    .disabled(model.isDisabled(display))
-                    .accessibilityLabel(model.moveAccessibilityLabel(to: display))
                 }
-            }
 
+            }
             if model.includesPlacement, let onPlace, let target = model.targets.first {
                 Menu(model.movePlaceTitle) {
                     ForEach(model.displays, id: \.index) { display in
@@ -331,10 +453,37 @@ enum WindowMovementMenuBuilder {
         to menu: NSMenu,
         model: WindowMoveMenuModel,
         onMove: @escaping (WindowMoveMenuModel.Display) -> Void,
+        onMoveDesktop: ((WindowMoveMenuModel.Desktop) -> Void)? = nil,
         onPlace: ((WindowMoveMenuModel.Display, TilePosition) -> Void)? = nil
     ) {
         guard model.isAvailable else { return }
 
+        if let onMoveDesktop {
+            if let here = model.here, !model.isDisabled(here) {
+                menu.addItem(actionItem(title: model.bringHereTitle, accessibilityLabel: model.bringHereTitle) {
+                    onMoveDesktop(here)
+                })
+            }
+            let desktopsItem = NSMenuItem(title: "Move to Desktop", action: nil, keyEquivalent: "")
+            let desktopsMenu = NSMenu()
+            for display in model.displays {
+                if !desktopsMenu.items.isEmpty { desktopsMenu.addItem(.separator()) }
+                for desktop in display.desktops {
+                    let item: NSMenuItem
+                    if model.isDisabled(desktop) {
+                        item = NSMenuItem(title: desktop.title, action: nil, keyEquivalent: "")
+                    } else {
+                        item = actionItem(title: desktop.title, accessibilityLabel: model.moveAccessibilityLabel(to: desktop)) {
+                            onMoveDesktop(desktop)
+                        }
+                    }
+                    if desktop.isCurrent { item.state = .on }
+                    desktopsMenu.addItem(item)
+                }
+            }
+            desktopsItem.submenu = desktopsMenu
+            menu.addItem(desktopsItem)
+        }
         if let next = model.nextDisplay {
             menu.addItem(actionItem(
                 title: model.nextMonitorTitle,
@@ -342,27 +491,28 @@ enum WindowMovementMenuBuilder {
             ) { onMove(next) })
         }
 
-        let moveItem = NSMenuItem(title: model.moveToMonitorTitle, action: nil, keyEquivalent: "")
-        let moveSubmenu = NSMenu()
-        for display in model.displays {
-            if model.isDisabled(display) {
-                // No action → auto-disabled; checkmark marks the current display.
-                let item = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
-                item.state = .on
-                item.setAccessibilityLabel("\(display.name), current display")
-                moveSubmenu.addItem(item)
-            } else {
-                let item = actionItem(
-                    title: display.name,
-                    accessibilityLabel: model.moveAccessibilityLabel(to: display)
-                ) { onMove(display) }
-                if display.isCurrent { item.state = .on }
-                moveSubmenu.addItem(item)
+        if model.displays.count > 1 {
+            let moveItem = NSMenuItem(title: model.moveToMonitorTitle, action: nil, keyEquivalent: "")
+            let moveSubmenu = NSMenu()
+            for display in model.displays {
+                if model.isDisabled(display) {
+                    // No action → auto-disabled; checkmark marks the current display.
+                    let item = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                    item.state = .on
+                    item.setAccessibilityLabel("\(display.name), current display")
+                    moveSubmenu.addItem(item)
+                } else {
+                    let item = actionItem(
+                        title: display.name,
+                        accessibilityLabel: model.moveAccessibilityLabel(to: display)
+                    ) { onMove(display) }
+                    if display.isCurrent { item.state = .on }
+                    moveSubmenu.addItem(item)
+                }
             }
+            moveItem.submenu = moveSubmenu
+            menu.addItem(moveItem)
         }
-        moveItem.submenu = moveSubmenu
-        menu.addItem(moveItem)
-
         guard model.includesPlacement, let onPlace else { return }
         let placeItem = NSMenuItem(title: model.movePlaceTitle, action: nil, keyEquivalent: "")
         let placeSubmenu = NSMenu()

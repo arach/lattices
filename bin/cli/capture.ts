@@ -4,23 +4,112 @@ import {
   parseFlagValue,
   parseOptionalNumber,
 } from "./helpers.ts";
-import { withDaemon } from "./daemon.ts";
+import { remoteHostName, withDaemon } from "./daemon.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, extname, join, resolve } from "node:path";
+
+const CAPTURE_AUDIT_FILE = join(homedir(), ".lattices/audit/captures.jsonl");
+
+/** Print the screenshots agents took over the daemon socket, newest last. */
+function captureLog(args: string[]): void {
+  const limit = Number(parseFlagValue(args, "limit") || 20) || 20;
+  const lines = existsSync(CAPTURE_AUDIT_FILE)
+    ? readFileSync(CAPTURE_AUDIT_FILE, "utf8").split("\n").filter(Boolean)
+    : [];
+  const entries = lines.slice(-Math.max(1, limit)).flatMap((line) => {
+    try { return [JSON.parse(line)]; } catch { return []; }
+  });
+  if (hasFlag(args, "json")) {
+    console.log(JSON.stringify(entries, null, 2));
+    return;
+  }
+  if (entries.length === 0) {
+    console.log(`No agent screenshots logged yet (${CAPTURE_AUDIT_FILE}).`);
+    return;
+  }
+  for (const e of entries) {
+    const caller = e.caller ?? {};
+    const when = new Date(e.ts).toLocaleString();
+    const who = caller.agent || caller.client || "unknown";
+    const from = !caller.origin || caller.origin === "local" ? "local" : caller.origin;
+    const project = caller.cwd ? basename(caller.cwd) : "";
+    const what = [e.kind, e.target?.app, e.display].filter(Boolean).join(" · ");
+    console.log(`${when}  ${who}  ${from}${project ? `  ${project}` : ""}  ${what}`);
+    if (e.artifact) console.log(`  ${e.artifact}`);
+  }
+}
 
 export type CaptureDisplayArgs = {
   display?: number;
   clipboard: boolean;
   delaySeconds: number;
   filename?: string;
+  out?: string;
   runId?: string;
   json: boolean;
 };
 
-/** Parse `lattices capture display` without the loose shared positional parser. */
+/** Where a capture from another host lands on this Mac. */
+export function remoteCapturePath(
+  host: string,
+  kind: string,
+  format: string,
+  options: { out?: string; filename?: string; now?: Date } = {},
+): string {
+  if (options.out) return resolve(options.out);
+  const ext = format === "jpeg" || format === "jpg" ? "jpg" : "png";
+  const stamp = (options.now ?? new Date()).toISOString().replace(/[:.]/gu, "-").replace(/Z$/u, "");
+  const name = options.filename ? basename(options.filename) : `${host}-${kind}-${stamp}.${ext}`;
+  return join(homedir(), ".lattices/captures", host, extname(name) ? name : `${name}.${ext}`);
+}
+
+/**
+ * Save an inline capture from another host here. A host that can't return the
+ * image (a Mac daemon writes its captures to its own disk) keeps the remote path.
+ */
+async function saveRemoteCapture(
+  host: string,
+  kind: string,
+  result: any,
+  options: { out?: string; filename?: string; clipboard?: boolean; json?: boolean },
+): Promise<void> {
+  const remotePath = result.path ?? result.artifact?.path;
+  if (typeof result.data !== "string") {
+    if (options.json) { console.log(JSON.stringify(result, null, 2)); return; }
+    console.log(`Captured ${kind.replace("-", " ")} on ${host}; ${host} kept the image.`);
+    console.log(`  ${host}: ${remotePath ?? "?"}`);
+    return;
+  }
+  const format = result.format ?? "png";
+  const path = remoteCapturePath(host, kind, format, options);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, Buffer.from(result.data, "base64"));
+
+  let copied: boolean | undefined;
+  if (options.clipboard) {
+    const cls = format === "jpeg" || format === "jpg" ? "JPEG" : "PNGf";
+    const proc = Bun.spawnSync(["osascript", "-e", `set the clipboard to (read (POSIX file ${JSON.stringify(path)}) as «class ${cls}»)`]);
+    copied = proc.exitCode === 0;
+  }
+
+  const { data: _data, ...rest } = result;
+  if (options.json) {
+    console.log(JSON.stringify({ ...rest, host, path, remotePath, clipboard: copied === undefined ? undefined : { copied } }, null, 2));
+    return;
+  }
+  const size = result.width && result.height ? ` ${result.width}×${result.height}` : "";
+  console.log(`Captured ${kind.replace("-", " ")} on ${host}${size}`);
+  console.log(`  saved: ${path}`);
+  if (copied !== undefined) console.log(`  clipboard: ${copied ? "copied" : "not copied"}`);
+}
+
+/** Parse `lats capture display` without the loose shared positional parser. */
 export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
   const flags = new Map<string, string | true>();
   const positional: string[] = [];
   const booleanFlags = new Set(["clipboard", "json"]);
-  const valueFlags = new Set(["delay", "filename", "run-id", "runId"]);
+  const valueFlags = new Set(["delay", "filename", "out", "run-id", "runId"]);
 
   for (let index = 0; index < args.length; index++) {
     const argument = args[index]!;
@@ -81,6 +170,7 @@ export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
   }
 
   const filename = flags.get("filename");
+  const out = flags.get("out");
   const runId = flags.get("run-id") ?? flags.get("runId");
   return {
     display,
@@ -89,20 +179,24 @@ export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
     filename: typeof filename === "string" ? filename : undefined,
     runId: typeof runId === "string" ? runId : undefined,
     json: flags.get("json") === true,
+    ...(typeof out === "string" ? { out } : {}),
   };
 }
 
 export function captureUsage(): string {
-  return `lattices capture — capture run artifacts
+  return `lats capture — capture run artifacts
 
 Usage:
-  lattices capture window [wid] [--json]
-  lattices capture screenshot [wid] [--session name] [--app name]
-  lattices capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
-  lattices capture record window [wid] [--app name] [--duration-ms 5000] [--json]
-  lattices capture record region --x N --y N --width N --height N [--duration-ms 5000]
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
-  lattices capture stop <run-id>`;
+  lats capture window [wid] [--json]
+  lats capture screenshot [wid] [--session name] [--app name]
+  lats capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
+  lats --host <name> capture display [index] [--out path]   saved on this Mac, ~/.lattices/captures/<name>/
+  lats --host <name> capture window [wid] [--app name] [--out path]
+  lats capture record window [wid] [--app name] [--duration-ms 5000] [--json]
+  lats capture record region --x N --y N --width N --height N [--duration-ms 5000]
+  lats capture record-command --app Scout --filename demo.mov -- <command> [...args]
+  lats capture stop <run-id>
+  lats capture log [--limit 20] [--json]   screenshots agents took (~/.lattices/audit)`;
 }
 
 export async function captureCommand(subcommand?: string, ...rawArgs: string[]): Promise<void> {
@@ -112,6 +206,11 @@ export async function captureCommand(subcommand?: string, ...rawArgs: string[]):
   const childArgs = dashIndex >= 0 ? rawArgs.slice(dashIndex + 1) : [];
   const jsonFlag = hasFlag(commandArgs, "json");
   const positional = nonFlagArgs(commandArgs);
+
+  if (sub === "log" || sub === "audit") {
+    captureLog(commandArgs);
+    return;
+  }
 
   if (["stop", "stop-recording", "stopRecording"].includes(sub)) {
     const params: Record<string, unknown> = {};
@@ -149,10 +248,10 @@ export async function captureCommand(subcommand?: string, ...rawArgs: string[]):
 
   if (isRecordCommand) {
     if (!childArgs.length) {
-      console.log(`lattices capture record-command — record while running a command
+      console.log(`lats capture record-command — record while running a command
 
 Usage:
-  lattices capture record-command --app Scout --filename demo.mov -- <command> [...args]
+  lats capture record-command --app Scout --filename demo.mov -- <command> [...args]
 `);
       return;
     }
@@ -301,7 +400,7 @@ Usage:
       console.log(`  run: ${run.id || result.run?.id || "?"}`);
       console.log(`  artifact: ${artifact.path || "?"}`);
       if (!result.stopResult) {
-        console.log(`  stop: lattices capture stop ${result.run?.id || ""}`);
+        console.log(`  stop: lats capture stop ${result.run?.id || ""}`);
       }
     });
     return;
@@ -317,12 +416,25 @@ Usage:
     if (options.filename) params.filename = options.filename;
     if (options.runId) params.runId = options.runId;
 
+    const host = remoteHostName();
+    if (host) {
+      // The Linux host reads `displayIndex`; `inline` brings the image back.
+      if (options.display !== undefined) params.displayIndex = options.display;
+      params.inline = true;
+      params.clipboard = false;
+    }
+
     await withDaemon(async ({ daemonCall }) => {
       if (options.delaySeconds > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.delaySeconds * 1000));
       }
 
       const result = await daemonCall("capture.screenshotDisplay", params, 20000) as any;
+      if (host) {
+        const kind = `display-${result.displayIndex ?? options.display ?? 0}`;
+        await saveRemoteCapture(host, kind, result, options);
+        return;
+      }
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
@@ -363,9 +475,18 @@ Usage:
   if (title) params.title = title;
   if (filename) params.filename = filename;
   if (runId) params.runId = runId;
+  const host = remoteHostName();
+  if (host) params.inline = true;
 
   await withDaemon(async ({ daemonCall }) => {
     const result = await daemonCall("capture.screenshotWindow", params, 20000) as any;
+    if (host) {
+      const out = parseFlagValue(commandArgs, "out");
+      await saveRemoteCapture(host, `window-${result.wid ?? params.wid ?? "front"}`, result, {
+        out: out || undefined, filename: filename || undefined, clipboard: hasFlag(commandArgs, "clipboard"), json: jsonFlag,
+      });
+      return;
+    }
     if (jsonFlag) {
       console.log(JSON.stringify(result, null, 2));
       return;

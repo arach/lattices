@@ -8,11 +8,16 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { DriverIdentityContext } from "./driver-identity.js";
+import { canRollbackLayerOpen, completeLayerOpen } from "./layer-open-transaction.js";
 import { DriveCursorPresenter, parseDriveCursorStyle } from "./drive-cursor-presenter.js";
+import { type LayerView } from "./layer-primitives.js";
+import { LayerWorkspaces } from "./layer-workspaces.js";
+import { LayerDriver, guardLayerDispatch, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { exitWithParent } from "./lifecycle.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -20,6 +25,7 @@ import {
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type {
   AxActionTier,
+  AgentLayerStatus,
   Bounds,
   DriveLease,
   DriveMode,
@@ -32,15 +38,29 @@ import type {
   TraceEvent,
 } from "@action/protocol";
 import {
+  actionCapabilities,
+  refreshActionCapabilities,
   analyzeScreenshotVision,
+  ensureLayerBrowser,
+  spacesBinding,
+  openBrowserWindow,
   CompanionClient,
   DriveAgentClient,
   inferAxTier,
   inspectCurrentSurface,
   MacOSCommandEngine,
+  remoteEngineFromEnv,
+  type SurfaceEngine,
   ocrScreenshot,
   StageDirector,
+  AgentLayerDirector,
+  agentLayerStateDir,
+  parseAgentWorkspace,
+  agentLayerRouting,
   StageSceneError,
+  agentCursorIsLive,
+  notePointerFocusAct,
+  pointerFocusWarningDue,
   pointFromBounds,
   publishPointerEventLog,
   readPointerEventLog,
@@ -60,6 +80,8 @@ import {
 } from "@action/runtime";
 
 export const toolFamilies = [
+  "capabilities",
+  "layer",
   "driver",
   "session",
   "drive",
@@ -110,13 +132,32 @@ const actionRoot = resolve(process.env.ACTION_ROOT ?? defaultActionRoot);
 const nativeHostPath = resolve(
   process.env.ACTION_NATIVE_HOST ?? resolve(actionRoot, "native/engine/scripts/run-app-host.sh"),
 );
-const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath });
+const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath, clientName: "Action MCP" });
 const stageDirector = new StageDirector(nativeHostPath);
+interface LayerContext {
+  workspace: string;
+  director: AgentLayerDirector;
+  driver: LayerDriver;
+  view?: LayerView;
+  lease?: { leaseId: string; owned: boolean };
+  ownedLayer?: AgentLayerStatus;
+}
+
+const layerWorkspaces = new LayerWorkspaces<LayerContext>((workspace) => ({
+  workspace,
+  director: new AgentLayerDirector(nativeHostPath, { workspace }),
+  driver: createLayerDriver(),
+}));
+
+function layerContext(): LayerContext {
+  return layerWorkspaces.current();
+}
 const driverIdentity = new DriverIdentityContext();
 const cursorPresenter = new DriveCursorPresenter({
-  start: async ({ lease, label }) => startAgentCursor({ nativeHostPath, lease, label }),
+  start: async ({ lease, label, point }) => startAgentCursor({ nativeHostPath, lease, label, point }),
   update: updateAgentCursor,
   stop: stopAgentCursor,
+  isLive: agentCursorIsLive,
 });
 const activeRecordings = new Map<string, RecordingEntry>();
 const activePointerEventLogs = new Map<string, PointerEventLogHandle>();
@@ -148,6 +189,15 @@ function tool(
   inputSchema: JsonSchemaObject = objectSchema(),
   annotations: Tool["annotations"] = {},
 ): Tool {
+  if (name.startsWith("action.layer.")) {
+    inputSchema = {
+      ...inputSchema,
+      properties: {
+        ...inputSchema.properties,
+        workspace: { type: "string", description: "Named virtual workspace. Defaults to default; every layer operation targets only this workspace." },
+      },
+    };
+  }
   return {
     name,
     title,
@@ -279,8 +329,14 @@ function parseRuntimeAction(value: unknown): RuntimeAction {
   };
 }
 
+// The agent keeps the run ledger here (session.json, drive trace); what the
+// MCP captures for a session lands beside it, so a run is one folder.
+const sessionsRoot = resolve(
+  process.env.ACTION_SESSIONS_DIR ?? join(homedir(), "Library/Application Support/Action/sessions"),
+);
+
 function sessionOutputDir(sessionId: string): string {
-  return resolve(actionRoot, "artifacts", "sessions", sessionId);
+  return resolve(sessionsRoot, sessionId);
 }
 
 function defaultSessionId(mode: SessionMode): string {
@@ -350,45 +406,6 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function persistDriveSession(lease: DriveLease, events: TraceEvent[]): Promise<void> {
-  const outputDir = sessionOutputDir(lease.sessionId);
-  await writeJson(resolve(outputDir, "drive-lease.json"), lease);
-
-  if (events.length > 0) {
-    const tracePath = resolve(outputDir, "drive-trace.json");
-    const rawTrace = await readTextIfExists(tracePath);
-    let trace: TraceEvent[] = [];
-    try {
-      const parsed = rawTrace ? JSON.parse(rawTrace) : [];
-      trace = Array.isArray(parsed) ? parsed as TraceEvent[] : [];
-    } catch {
-      trace = [];
-    }
-    await writeJson(tracePath, [...trace, ...events]);
-  }
-
-  const sessionPath = resolve(outputDir, "session.json");
-  const rawSession = await readTextIfExists(sessionPath);
-  let session: JsonObject = {};
-  try {
-    session = rawSession ? JSON.parse(rawSession) as JsonObject : {};
-  } catch {
-    session = {};
-  }
-  await writeJson(sessionPath, {
-    ...session,
-    id: session.id ?? lease.sessionId,
-    mode: session.mode ?? "hybrid",
-    state: lease.status === "driving" ? "running" : "completed",
-    phase: lease.status === "driving" ? "acting" : "completed",
-    createdAt: session.createdAt ?? lease.startedAt,
-    outputDir: session.outputDir ?? outputDir,
-    updatedAt: lease.releasedAt ?? lease.lastActAt,
-    driveLeaseId: lease.leaseId,
-    drive: lease,
-  });
-}
-
 async function heartbeatDrive(input: {
   leaseId?: string;
   axTier: AxActionTier;
@@ -400,17 +417,11 @@ async function heartbeatDrive(input: {
   const lease = await driveClient.touch({
     leaseId: input.leaseId,
     axTier: input.axTier,
+    actionKind: input.actionKind,
   });
   if (!lease) {
     return undefined;
   }
-  await persistDriveSession(lease, [{
-    type: "drive.act_tier",
-    at: lease.lastActAt,
-    leaseId: lease.leaseId,
-    axTier: input.axTier,
-    actionKind: input.actionKind,
-  }]);
   await cursorPresenter.renew(lease);
   return lease;
 }
@@ -420,10 +431,13 @@ async function ensureDriveLeaseForAct(input: {
   axTier: AxActionTier;
   actionKind: string;
   description: string;
+  /** False for a blink act on the agent layer: nothing of it shows on the operator's screen. */
+  presentCursor?: boolean;
 }): Promise<DriveLease> {
   let lease = await driveClient.touch({
     leaseId: input.leaseId,
     axTier: input.axTier,
+    actionKind: input.actionKind,
   });
 
   if (!lease) {
@@ -440,44 +454,28 @@ async function ensureDriveLeaseForAct(input: {
     lease = await driveClient.touch({
       leaseId: begun.lease.leaseId,
       axTier: input.axTier,
+      actionKind: input.actionKind,
     }) ?? begun.lease;
-    await persistDriveSession(lease, [{
-      type: "drive.lease_began",
-      at: lease.startedAt,
-      leaseId: lease.leaseId,
-      agent: lease.agent,
-      task: lease.task,
-      mode: lease.mode,
-      sessionId: lease.sessionId,
-      implicit: true,
-    }]);
   }
 
-  await persistDriveSession(lease, [{
-    type: "drive.act_tier",
-    at: lease.lastActAt,
-    leaseId: lease.leaseId,
-    axTier: input.axTier,
-    actionKind: input.actionKind,
-  }]);
-  await cursorPresenter.ensure(lease);
+  if (input.presentCursor === false) {
+    await cursorPresenter.suspend(lease.leaseId);
+  } else {
+    await cursorPresenter.ensure(lease);
+  }
   return lease;
 }
 
 function actPoint(action: RuntimeAction, target: ResolvedTarget | undefined): { x: number; y: number } | undefined {
-  const bounds = target?.bounds;
-  const point = bounds
-    ? pointFromBounds(bounds)
-    : action.target?.point
-      ? {
-          x: Number((action.target.point as { x?: number }).x),
-          y: Number((action.target.point as { y?: number }).y),
-        }
-      : undefined;
+  const inputPoint = action.input?.point as { x?: number; y?: number } | undefined;
+  const point = action.target?.point
+    ?? inputPoint
+    ?? target?.point
+    ?? (target?.bounds ? pointFromBounds(target.bounds) : undefined);
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
     return undefined;
   }
-  return point;
+  return { x: Number(point.x), y: Number(point.y) };
 }
 
 function actHighlight(target: ResolvedTarget | undefined): {
@@ -504,19 +502,21 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function publishDriveNote(line: string, leaseId?: string): Promise<JsonObject> {
+async function publishDriveNote(line: string, leaseId?: string, workspace?: string): Promise<JsonObject> {
   const note = {
     at: now(),
     leaseId,
     line: line.slice(0, 120),
   };
-  const supervisionDir = resolve(
+  const supervisionDir = workspace !== undefined ? agentLayerStateDir(workspace) : resolve(
     homedir(),
     "Library/Application Support/Action/runtime/supervision",
   );
   const notesPath = resolve(supervisionDir, "notes.jsonl");
   await mkdir(supervisionDir, { recursive: true });
   await appendFile(notesPath, `${JSON.stringify(note)}\n`);
+
+  if (workspace !== undefined) return { note, notesPath, workspace };
 
   const registrationsDir = resolve(supervisionDir, "registrations");
   if (await pathExists(registrationsDir)) {
@@ -558,7 +558,9 @@ async function stageCursor(input: {
     leaseId: input.lease.leaseId,
     agent: input.lease.agent,
     point: input.point,
-    label: input.label ?? "looking",
+    label: cursorPresenter.presentsCues(input.lease.leaseId)
+      ? (input.label ?? "looking")
+      : null,
     phase: "idle",
     highlight: input.highlight,
   });
@@ -574,6 +576,9 @@ async function presentActCue(input: {
   target: ResolvedTarget | undefined;
 }): Promise<void> {
   try {
+    if (!cursorPresenter.presentsCues(input.lease.leaseId)) {
+      return;
+    }
     const kind = input.action.kind;
     const cueId = `${input.action.id}_${Date.now()}`;
     const safePoint = actPoint(input.action, input.target);
@@ -598,7 +603,7 @@ async function presentActCue(input: {
           leaseId: input.lease.leaseId,
           agent: input.lease.agent,
           phase: "idle",
-          label: "driving",
+          label: null,
           highlight: null,
         });
       }, holdMs);
@@ -626,7 +631,7 @@ async function presentActCue(input: {
           leaseId: input.lease.leaseId,
           agent: input.lease.agent,
           phase: "idle",
-          label: "driving",
+          label: null,
           highlight: null,
         });
       }, 700);
@@ -648,7 +653,7 @@ async function presentActCue(input: {
           leaseId: input.lease.leaseId,
           agent: input.lease.agent,
           phase: "idle",
-          label: "driving",
+          label: null,
           highlight: null,
         });
       }, 480);
@@ -670,8 +675,21 @@ async function runHost(command: string, ...args: string[]): Promise<JsonObject> 
   return JSON.parse(text) as JsonObject;
 }
 
-function newEngine(): MacOSCommandEngine {
-  return new MacOSCommandEngine(nativeHostPath);
+/**
+ * The native engine, or a remote lattices host (LAT-013) when
+ * ACTION_REMOTE_HOST names one. Tools that need macOS-only features check
+ * `isRemote` and say so instead of failing inside the native host.
+ */
+function newEngine(): SurfaceEngine {
+  return remoteEngineFromEnv() ?? new MacOSCommandEngine(nativeHostPath);
+}
+
+function isRemote(): boolean {
+  return Boolean(process.env.ACTION_REMOTE_HOST?.trim() || process.env.LATTICES_REMOTE_HOST?.trim());
+}
+
+function nativeOnly(tool: string): never {
+  throw new Error(`${tool} needs the native macOS engine; it is not available while ACTION_REMOTE_HOST points at a remote host.`);
 }
 
 function recordingMetadataPath(entry: RecordingEntry): string | undefined {
@@ -815,6 +833,7 @@ async function listFiles(root: string): Promise<JsonObject[]> {
 }
 
 const tools: Tool[] = [
+  tool("action.capabilities", "Action Capabilities", "Discover private-layer tools, transport routing, source fingerprints and native build provenance. Read-only; does not open apps or compile. Version alone is not proof of support.", objectSchema(), { readOnlyHint: true, idempotentHint: true }),
   tool(
     "action.driver.identify",
     "Identify Driver",
@@ -855,6 +874,7 @@ const tools: Tool[] = [
       showSupervisionLabel: booleanProperty("Show the driver identity label to the operator. Defaults to true."),
       pointerControl: booleanProperty("Allow pointer drags and coordinate targeting on this background lease. Some work has no accessibility element to aim at \u2014 dragging a selection rectangle is coordinate-only by nature. Defaults to false; the lease records the grant so supervision can show it."),
       cursorStyle: enumProperty(["synthetic", "system"], "Cursor presentation. Defaults to synthetic; system uses the normal macOS cursor."),
+      cursorCues: booleanProperty("Draw action cues on the synthetic cursor \u2014 act labels, click flashes, typing captions, and the pointer-focus countdown. Defaults to true; false keeps the cursor following silently, which suits long computer-use sessions."),
     }, ["agent", "task"]),
     { readOnlyHint: false, idempotentHint: false },
   ),
@@ -959,7 +979,7 @@ const tools: Tool[] = [
   tool(
     "action.observe.ax",
     "Observe Accessibility",
-    "Capture an accessibility snapshot for the current focused surface.",
+    "Capture an accessibility snapshot for the current focused surface. Chrome may expose only window chrome (toolbar and tab strip), not web content, without AXManualAccessibility. For page content, use the Chrome companion DOM surface or observe_ocr and coordinate targets.",
     objectSchema({
       sessionId: textProperty("Optional session id used to choose the artifact directory."),
       outputPath: textProperty("Optional absolute or Action-root-relative JSON output path."),
@@ -969,7 +989,7 @@ const tools: Tool[] = [
   tool(
     "action.resolve.target",
     "Resolve Target",
-    "Resolve a target query through Action's runtime target interface.",
+    "Resolve a target query through Action's runtime target interface. Coordinate queries retain their screen point. Text/role queries do not search browser DOM: Chrome AX may expose only window chrome without AXManualAccessibility. Use the Chrome companion DOM surface or observe_ocr with coordinate targets for page content.",
     objectSchema({
       query: objectProperty("TargetQuery object with semanticId, text, role, surfaceId, anchorId, or point."),
     }, ["query"]),
@@ -1015,6 +1035,187 @@ const tools: Tool[] = [
     { readOnlyHint: true, idempotentHint: true },
   ),
   tool(
+    "action.layer.open",
+    "Open Agent Layer",
+    "Check capabilities and layer_status before opening. Requires a persistent monitor explicitly prepared with CLI layer prepare; this tool never creates or reconfigures a display. A compiled feature or missing quarantine is not host desktop-isolation acceptance. Do not bypass a setup quarantine or substitute ordinary background browser opening. "
+      + "Move an app's windows onto the prepared virtual display with a PiP viewer. For browser tasks, prefer {browser:true,url,task}: Action-owned Chrome uses CDP for page input and navigation. Native input can temporarily borrow focus/pointer; restoring them afterward is not continuous isolation. One task session per workspace; close your existing task explicitly before opening another. Native keyboard and pointer remain shared across workspaces. "
+      + "The app need not be running or have a window: a bundleId that isn't running is launched in the background, an app with no windows gets a new one, "
+      + "and windows the app opens later (cmd+n, pop-ups) move onto the layer by themselves. For native-app URL opening, pass bundleId or pid with url; this path is distinct from the CDP browser workflow. "
+      + "The layer is one drive: it begins a lease named for the task (or the app and page), every act on the layer runs under it, and action.layer.close releases it. The reply carries its leaseId and bound session identity. Browser sessions refuse native fallback; replacement layers require a new explicit open.",
+    objectSchema({
+      bundleId: textProperty("App whose windows move onto the layer. Launched in the background if it isn't running."),
+      url: textProperty("A URL, bare host or file path. With browser:true, navigate through CDP after layer setup. Native-app opening needs bundleId or pid."),
+      pid: numberProperty("Process id instead of bundleId."),
+      width: numberProperty("Expected prepared display width in points. Pass with height; mismatches refuse rather than resize."),
+      height: numberProperty("Expected prepared display height in points. Pass with width; mismatches refuse rather than resize."),
+      pip: booleanProperty("Show the picture-in-picture viewer. Defaults to on."),
+      previewWorkspace: textProperty("Show this workspace's preview on another prepared workspace instead of a physical display. Must differ from workspace."),
+      previewFull: booleanProperty("Show the entire virtual display in the preview instead of cropping to app windows. Use true for a stage containing another workspace's preview."),
+      windowId: numberProperty("Move only this window (kCGWindowNumber). Use to borrow one window of an app the user is also using, such as a browser."),
+      windowTitle: textProperty("Move only windows whose title contains this text."),
+      browser: booleanProperty("Open Action-owned Chrome on the prepared display. Page interaction uses DevTools; the task workflow still requires host desktop-preservation acceptance. Uses a separate layer browser debugging port from browser_* tools."),
+      profile: textProperty("Action Chrome profile base for this workspace's private browser identity. Supplying it selects the browser workflow. Named workspaces use separate profiles and ports."),
+      task: textProperty("What the agent is doing on the layer: the drive's name in runs and the supervision HUD. Defaults to the app and page."),
+      leaseId: textProperty("Run the layer under this existing drive lease instead of beginning one."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.close",
+    "Close Agent Layer",
+    "Close the task session. Moved windows return to their original frames; the persistent display remains connected. Releases the drive the layer began, with outcome and summary. Only explicit CLI layer release disconnects the monitor.",
+    objectSchema({
+      outcome: textProperty("How the layer's drive ended: done (default), failed or cancelled."),
+      summary: textProperty("One line on what was done, kept with the drive."),
+    }),
+    { readOnlyHint: false, idempotentHint: true },
+  ),
+  tool(
+    "action.layer.pip",
+    "Show Agent Layer Viewer",
+    "Bring the picture-in-picture viewer back after the user hid it with its close button. The layer keeps running while the viewer is hidden.",
+    objectSchema({
+      previewWorkspace: textProperty("Prepared workspace to contain this live preview. Must differ from workspace. Omit to retain its current preview destination."),
+      previewFull: booleanProperty("Show the entire virtual display, including embedded workspace previews. False crops to app windows; omitted retains current framing."),
+    }),
+    { readOnlyHint: false, idempotentHint: true },
+  ),
+  tool(
+    "action.layer.snapshot",
+    "Snapshot Agent Layer",
+    "Write a PNG of what is on the agent layer right now, from the layer's running capture feed: no capture setup, so it returns in milliseconds. Defaults to the subject app's windows; pass windowId for one window or full for the whole layer. Use it to check the result of an act.",
+    objectSchema({
+      windowId: numberProperty("Crop to this window (kCGWindowNumber). It must be on the layer."),
+      full: booleanProperty("The whole layer instead of the subject's windows."),
+      out: textProperty("PNG path. Defaults to the layer's snapshots folder."),
+    }),
+    { readOnlyHint: true, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.record",
+    "Record Agent Layer",
+    "Start or stop recording the agent layer to a .mov, off the layer's running capture feed (the one the viewer shows), so the take starts on the next frame. One take at a time.",
+    objectSchema({
+      action: textProperty("start or stop."),
+      out: textProperty("Movie path for start. Defaults to the layer's recordings folder."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.click",
+    "Click on Agent Layer",
+    "Click a point on the agent layer, or a control by its accessibility label. Points are pixels in the last action.layer.snapshot image, so look, then click what you saw. "
+      + "Browser sessions use DevTools only: missing page targets or browser chrome coordinates fail without native input fallback. Native sessions use accessibility or a blink that can borrow the pointer. "
+      + "Returns the actual route, bound session identity, and a fresh snapshot to check the result.",
+    objectSchema({
+      x: numberProperty("Pixels in the last action.layer.snapshot image (what you looked at), or points on the layer display with space: \"layer\"."),
+      y: numberProperty("Paired with x."),
+      label: textProperty("Click the control with this label instead of a point: its text, aria-label or placeholder in a browser page, its accessibility title, description or value in an app."),
+      selector: textProperty("In a browser on the layer: click the first visible element matching this CSS selector."),
+      holdMs: numberProperty("Press and hold this long. Some controls, such as SwiftUI toggles, need it."),
+      space: enumProperty(["snapshot", "layer"], "How to read x and y. Defaults to snapshot."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional: one is taken for you."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.type",
+    "Type on Agent Layer",
+    "Type text into the focused field of the layer's app. A trailing \\n submits (Return). Browser sessions use DevTools only; native sessions use accessibility or blink input that can borrow focus.",
+    objectSchema({
+      text: textProperty("Text to type. End with \\n to submit."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["text"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.press",
+    "Press Key on Agent Layer",
+    "Press a key in the layer's app. Browser sessions accept page keys through DevTools and refuse browser menu shortcuts such as cmd+l; use layer_go for navigation. Native sessions use menu accessibility or borrow focus.",
+    objectSchema({
+      key: textProperty("Key or chord."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["key"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.drag",
+    "Drag on Agent Layer",
+    "Drag from one point to another on the agent layer. Points as in action.layer.click. Browser sessions require both endpoints inside the page and use DevTools only. Native sessions can borrow the pointer for the drag.",
+    objectSchema({
+      from: objectProperty("Start point: { x, y } or [x, y]."),
+      to: objectProperty("End point: { x, y } or [x, y]."),
+      durationMs: numberProperty("How long the drag takes. Defaults to 200."),
+      space: enumProperty(["snapshot", "layer"], "How to read the points. Defaults to snapshot."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["from", "to"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.scroll",
+    "Scroll on Agent Layer",
+    "Scroll the view under a point on the agent layer. dy and dx are wheel pixels: positive dy is a wheel turned up, which most apps show as moving toward the top. Scroll once and look rather than reasoning from the sign.",
+    objectSchema({
+      x: numberProperty("Pixels in the last action.layer.snapshot image (what you looked at), or points on the layer display with space: \"layer\"."),
+      y: numberProperty("Paired with x."),
+      dy: numberProperty("Vertical wheel pixels. Try -400 to move down a screenful."),
+      dx: numberProperty("Horizontal wheel pixels."),
+      space: enumProperty(["snapshot", "layer"], "How to read x and y. Defaults to snapshot."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["x", "y"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.go",
+    "Go to URL on Agent Layer",
+    "Load a URL in the layer's app: a full URL, a bare host (read as https) or a file path. In a browser on the layer it navigates the visible tab and waits for the page to start rendering; elsewhere the app opens the URL in the background.",
+    objectSchema({
+      url: textProperty("URL, bare host or file path."),
+      look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["url"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.js",
+    "Run JavaScript on Agent Layer",
+    "Evaluate JavaScript in the visible page of a browser on the layer and return its value (promises are awaited). For reading the page or for what the other acts can't express; prefer click, type and go for interaction. Needs a browser opened with action.layer.open { browser: true }.",
+    objectSchema({
+      code: textProperty("An expression, e.g. \"document.title\" or \"[...document.querySelectorAll('h2')].map(h => h.innerText)\"."),
+      look: booleanProperty("Snapshot the layer after it runs. Defaults to off."),
+      leaseId: textProperty("Drive lease id. Optional."),
+    }, ["code"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.run",
+    "Run Steps on Agent Layer",
+    "Run a list of acts on the layer as one call, then look once. Each step names one verb with a short form: "
+      + "{ go: \"news.ycombinator.com\" }, { click: \"More\" } (a label), { click: [420, 310] } (snapshot pixels), { type: \"hello\\n\" }, { press: \"cmd+l\" }, "
+      + "{ scroll: -400 } (mid-view) or { scroll: { at: [x, y], dy: -400 } }, { drag: [[x, y], [x, y]] }, { wait: 500 }, { wait: \"settled\" }, { wait: \"Sign in\" } (until the text shows), "
+      + "{ js: \"document.title\" }, { note: \"Opening the thread\" }, { look: true }. "
+      + "Or pass file: a .json list of steps, or a .ts/.js module whose default export is async (layer) => { await layer.go(\"example.com\"); await layer.click(\"More information\") }, with one method per verb taking the same short forms. "
+      + "Stops at the first step that fails and says which.",
+    objectSchema({
+      steps: { type: "array", items: { type: "object" }, description: "Steps in order, each { verb: value }." },
+      file: textProperty("Absolute path to a .json steps file or a .ts/.js script, instead of steps."),
+      look: booleanProperty("Snapshot the layer at the end and return it. Defaults to on."),
+    }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.status",
+    "Agent Layer Status",
+    "Read the prepared monitor's owner identity and whether a task session is up: display id, global bounds, PiP state, and windows with their original frames. Does not prepare a monitor.",
+    objectSchema(),
+    { readOnlyHint: true, idempotentHint: true },
+  ),
+  tool(
     "action.act.execute",
     "Execute Action",
     "Execute a deterministic runtime action. Prefer resolved targets over raw coordinates.",
@@ -1023,6 +1224,8 @@ const tools: Tool[] = [
         "RuntimeAction object. kind is one of click, type, press-key, drag, scroll, focus-window, open-app. "
         + "Any other kind declared in ActionKind has no handler in the macOS runtime and is rejected rather than silently skipped. "
         + "focus-window and open-app need input.bundleId — an app name is not accepted; focus-window also takes an optional input.title to pick a window. "
+        + "open-app takes input.url to open a page or file in that app, and input.background: true to open it without bringing it forward (automatic for the agent layer's app). "
+        + "press-key takes a chord in input.key, written however you like: \"return\", \"cmd+l\", \"cmd+shift+t\", \"⌘⇧T\"; input.modifiers also works. It presses keys only — use a type act for text. "
         + "click accepts input.holdMs for press-and-hold (requires a point); some controls, including SwiftUI Toggle, do not actuate on a plain click and need a hold. "
         + "scroll takes a point plus input.deltaX/deltaY and an optional input.durationMs. Deltas are raw scroll wheel values, "
         + "not a screen direction: which way the content moves is up to the target app, so scroll once and observe rather than reasoning from the sign.",
@@ -1093,7 +1296,8 @@ const tools: Tool[] = [
 
 
 async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, direct: boolean | undefined): Promise<JsonObject | undefined> {
-  if (direct || process.env.ACTION_COMPANION_DIRECT === "1") {
+  // The companion worker drives the local Mac; remote runs go through the engine directly.
+  if (direct || process.env.ACTION_COMPANION_DIRECT === "1" || isRemote()) {
     return undefined;
   }
   const client = new CompanionClient({ timeoutMs: 2_000 });
@@ -1116,7 +1320,153 @@ async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, dir
   };
 }
 
+function rememberLayerView(snapshot: { ok: boolean; crop?: LayerView["crop"]; width?: number; height?: number }): void {
+  if (snapshot.ok && snapshot.crop && snapshot.width && snapshot.height) {
+    layerContext().view = { crop: snapshot.crop, width: snapshot.width, height: snapshot.height };
+  }
+}
+
+/**
+ * One primitive: read the agent's points against what it last saw, run the act as a
+ * blink through action.act.execute, then look again so the reply shows the result.
+ */
+/** "Safari · en.wikipedia.org" from com.apple.Safari and the page it opened on. */
+export function layerTaskName(input: { bundleId?: string; url?: string; title?: string | null }): string {
+  const app = input.bundleId?.split(".").pop() ?? input.title ?? "Agent layer";
+  let page: string | undefined;
+  if (input.url) {
+    try {
+      page = new URL(/^[a-z][a-z0-9+.-]*:/i.test(input.url) ? input.url : `https://${input.url}`).host || undefined;
+    } catch {
+      page = undefined;
+    }
+  }
+  return page ? `${app} · ${page}` : app;
+}
+
+/**
+ * The layer's drive: the caller's lease when it passes one, else a background lease
+ * begun for the layer and released with it. Acts on the layer all run under it, so a
+ * session reads as one drive rather than a row per scroll.
+ */
+async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
+  const previous = layerContext().lease;
+  layerContext().lease = undefined;
+  if (previous?.owned) {
+    await handlers["action.drive.release"]({ leaseId: previous.leaseId, outcome: "done" }).catch(() => undefined);
+  }
+  const given = optionalString(args.leaseId);
+  if (given) {
+    layerContext().lease = { leaseId: given, owned: false };
+    return given;
+  }
+  const identity = driverIdentity.get();
+  const begun = await driveClient.begin({
+    agent: identity.agent,
+    task: optionalString(args.task) ?? layerTaskName({
+      bundleId: optionalString(args.bundleId),
+      url: optionalString(args.url),
+    }),
+    mode: "background",
+    // The viewer is the supervision here: its notes and pointer sit on the layer, not
+    // on the operator's screen.
+    showSupervisionLabel: false,
+  });
+  if (begun.status !== "granted") {
+    return undefined;
+  }
+  await cursorPresenter.suspend(begun.lease.leaseId);
+  layerContext().lease = { leaseId: begun.lease.leaseId, owned: true };
+  return begun.lease.leaseId;
+}
+
+function createLayerDriver(): LayerDriver {
+  return new LayerDriver({
+    status: () => layerContext().director.status(),
+    view: () => layerContext().view,
+    async guard() {
+      const refusal = await layerContext().director.actRefusal();
+      if (refusal) {
+        throw new Error(refusal);
+      }
+    },
+    async blink(action) {
+      const lease = layerContext().lease;
+      const executed = await handlers["action.act.execute"]({
+        action: action as unknown as JsonObject,
+        ...(lease ? { leaseId: lease.leaseId } : {}),
+      }) as { result?: { host?: string }; drive?: { leaseId?: string } };
+      return { host: executed.result?.host, leaseId: executed.drive?.leaseId };
+    },
+    async touch(kind) {
+      await heartbeatDrive({ leaseId: layerContext().lease?.leaseId, axTier: "semantic", actionKind: `layer.${kind}` }).catch(() => undefined);
+    },
+    mark: (act) => layerContext().director.mark(act).catch(() => undefined),
+    async look() {
+      const snapshot = await layerContext().director.snapshot({});
+      rememberLayerView(snapshot);
+      return snapshot;
+    },
+    async note(text) {
+      await publishDriveNote(text, layerContext().lease?.leaseId, layerContext().workspace).catch(() => undefined);
+    },
+  });
+}
+
+/**
+ * One act on the layer through the driver, then a look so the reply shows the result.
+ * A leaseId passed to the call runs the act under that drive instead of the layer's.
+ */
+async function layerAct(verb: LayerVerb, args: JsonObject): Promise<JsonObject> {
+  const { look, leaseId, ...rest } = args;
+  const lease = layerContext().lease;
+  const given = optionalString(leaseId);
+  if (given) {
+    layerContext().lease = { leaseId: given, owned: false };
+  }
+  let result: Record<string, unknown>;
+  try {
+    result = await layerContext().driver.step({ verb, args: rest });
+  } finally {
+    if (given) {
+      layerContext().lease = lease;
+    }
+  }
+  const reply: Record<string, unknown> = { ok: true, [verb]: result, leaseId: given ?? lease?.leaseId };
+  if (look !== false) {
+    // Long enough for a click's redraw or a page to start loading; the snapshot says
+    // how long the layer has been still, so a caller can tell a settled frame.
+    await new Promise((done) => setTimeout(done, 350));
+    reply.snapshot = await layerContext().driver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
+  }
+  return reply as JsonObject;
+}
+
+async function previewDisplay(args: JsonObject): Promise<number | undefined> {
+  if (args.previewWorkspace === undefined) return undefined;
+  const workspace = parseAgentWorkspace(args.previewWorkspace);
+  if (workspace === layerContext().workspace) {
+    throw new Error("The preview workspace must differ from the captured workspace");
+  }
+  const status = await layerWorkspaces.get(workspace).director.displayStatus();
+  if (status.state !== "ready" || !status.display) {
+    throw new Error(`Preview workspace ${workspace} must have a prepared display`);
+  }
+  return status.display.displayId;
+}
+
+async function assertLayerOwnership(): Promise<void> {
+  const context = layerContext();
+  const status = await context.director.status();
+  if (status.active && (!context.ownedLayer || !canRollbackLayerOpen(context.ownedLayer, status))) {
+    throw new Error(`Workspace ${context.workspace} has a layer owned by another caller; refusing to modify it`);
+  }
+}
+
 const handlers: Record<string, ToolHandler> = {
+  async "action.capabilities"() {
+    return { ...refreshActionCapabilities(serverCapabilities), advertisedTools: advertisedTools().map((tool) => tool.name) };
+  },
   async "action.driver.identify"(args) {
     const agent = optionalString(args.agent);
     if (!agent) {
@@ -1140,6 +1490,7 @@ const handlers: Record<string, ToolHandler> = {
       nativeHostPath,
       diagnostics,
       toolFamilies,
+      capabilities: refreshActionCapabilities(serverCapabilities),
     };
   },
 
@@ -1208,17 +1559,8 @@ const handlers: Record<string, ToolHandler> = {
       };
     }
 
-    await persistDriveSession(result.lease, [{
-      type: "drive.lease_began",
-      at: result.lease.startedAt,
-      leaseId: result.lease.leaseId,
-      agent: result.lease.agent,
-      task: result.lease.task,
-      mode: result.lease.mode,
-      sessionId: result.lease.sessionId,
-      implicit: result.lease.implicit,
-    }]);
     cursorPresenter.recordStyle(result.lease.leaseId, parseDriveCursorStyle(args.cursorStyle));
+    cursorPresenter.recordCues(result.lease.leaseId, optionalBoolean(args.cursorCues) ?? true);
     await cursorPresenter.ensure(result.lease);
     return {
       ok: true,
@@ -1239,13 +1581,6 @@ const handlers: Record<string, ToolHandler> = {
       summary: optionalString(args.summary),
     });
     await cursorPresenter.release(lease.leaseId);
-    await persistDriveSession(lease, [{
-      type: "drive.lease_released",
-      at: lease.releasedAt ?? lease.lastActAt,
-      leaseId: lease.leaseId,
-      outcome: lease.outcome ?? "cancelled",
-      summary: lease.summary,
-    }]);
     return {
       ok: true,
       leaseId: lease.leaseId,
@@ -1474,7 +1809,9 @@ const handlers: Record<string, ToolHandler> = {
       actionRoot,
       optionalString(args.outputPath) ?? (existingImagePath ? `${screenshotPath}.ocr.json` : resolve(outputDir, "ocr-snapshot.json")),
     );
-    const result = await ocrScreenshot(screenshotPath, outputPath);
+    const result = engine.ocrSurface && currentSurface
+      ? await engine.ocrSurface(currentSurface, screenshotPath, outputPath)
+      : await ocrScreenshot(screenshotPath, outputPath);
     const query = optionalString(args.query);
     const matches = query ? searchOCRText(result.result, query) : undefined;
 
@@ -1537,6 +1874,7 @@ const handlers: Record<string, ToolHandler> = {
         ?? resolve(sessionOutputDir(sessionId), `ax-snapshot-${timestampId()}.json`),
     );
     const engine = newEngine();
+    if (!engine.captureSurfaceAccessibilitySnapshot) nativeOnly("action.observe.ax");
     const currentSurface = await engine.currentSurface();
     const result = await engine.captureSurfaceAccessibilitySnapshot(currentSurface, outputPath);
 
@@ -1561,6 +1899,11 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.act.execute"(args) {
+    const initialLayer = await layerContext().director.status();
+    const refusal = await layerContext().director.actRefusal();
+    if (refusal) {
+      throw new Error(refusal);
+    }
     const action = parseRuntimeAction(args.action);
     const engine = newEngine();
     const target = optionalObject(args.target, "target")
@@ -1569,42 +1912,54 @@ const handlers: Record<string, ToolHandler> = {
         ? await engine.resolveTarget(action.target)
         : undefined;
 
-    const channel = target?.mode === "coordinate" ? "hid" : "native";
+    const agentLayer = agentLayerRouting(initialLayer);
+    const blinkRoute = engine instanceof MacOSCommandEngine ? engine.blinkRoute(action, target, agentLayer) : undefined;
+    // Work that never touches the operator's screen: a blink act on the layer, or an app
+    // opened in the background (which the layer adopts). No cursor, cues or countdown.
+    const onLayerApp = agentLayer?.bundleId !== undefined && action.input?.bundleId === agentLayer.bundleId;
+    const offScreen = Boolean(blinkRoute)
+      || (action.kind === "open-app" && (action.input?.background === true || onLayerApp))
+      // An accessibility press or value on the layer's app moves nothing on screen.
+      || ((action.kind === "click" || action.kind === "type") && onLayerApp && action.input?.label !== undefined);
+    const channel = blinkRoute ? "blink" : target?.mode === "coordinate" ? "hid" : "native";
     const axTier = inferAxTier({
       actionKind: action.kind,
       channel,
       targetMode: target?.mode,
+      blink: Boolean(blinkRoute),
     });
     const lease = await ensureDriveLeaseForAct({
       leaseId: optionalString(args.leaseId),
       axTier,
       actionKind: action.kind,
       description: action.description,
+      presentCursor: !offScreen,
     });
 
+    const takesPointer = !offScreen && requiresPointerFocusWarning({ action, target, axTier, channel });
     let pointerFocusWarningShown = false;
     if (
-      cursorPresenter.isPresenting(lease.leaseId)
-      && requiresPointerFocusWarning({ action, target, axTier, channel })
+      takesPointer
+      && cursorPresenter.isPresenting(lease.leaseId)
+      && cursorPresenter.presentsCues(lease.leaseId)
+      && await pointerFocusWarningDue()
     ) {
-      const bounds = target?.bounds;
-      const point = bounds
-        ? pointFromBounds(bounds)
-        : action.target?.point
-          ? {
-              x: Number((action.target.point as { x?: number }).x),
-              y: Number((action.target.point as { y?: number }).y),
-            }
-          : undefined;
-      const safePoint = point && Number.isFinite(point.x) && Number.isFinite(point.y)
-        ? point
-        : undefined;
       pointerFocusWarningShown = await runPointerFocusCountdown({
         leaseId: lease.leaseId,
         agent: lease.agent,
-        point: safePoint,
+        point: actPoint(action, target),
         label: (action.description || action.kind).slice(0, 40),
       });
+    }
+    if (takesPointer) {
+      // The countdown is Action's to pace, not the caller's: every pointer-taking
+      // act pushes the re-arm out, so a session warns once per stretch of work
+      // however it spaces its clicks or splits its leases.
+      try {
+        await notePointerFocusAct({ leaseId: lease.leaseId, agent: lease.agent });
+      } catch {
+        // A lost record only means the next act may warn again.
+      }
     }
     await revalidatePointerFocusLease({
       warningShown: pointerFocusWarningShown,
@@ -1624,18 +1979,30 @@ const handlers: Record<string, ToolHandler> = {
     // performAction throws for anything it could not carry out — including an action kind the
     // runtime has no handler for — and the tool dispatcher turns a throw into an isError reply.
     // Reaching this line is therefore the success signal; the literal below is not an assumption.
-    const stagedPoint = actPoint(action, target);
-    const stagedHighlight = actHighlight(target);
-    await stageCursor({
-      lease,
-      point: stagedPoint,
-      highlight: stagedHighlight,
-      label: (action.description || action.kind).slice(0, 40),
-      wait: true,
-    });
+    // Off-screen work shows in the layer's viewer, not on the operator's screen: the
+    // overlay was suspended above, so there is no cursor to stage.
+    if (!offScreen) {
+      await stageCursor({
+        lease,
+        point: actPoint(action, target),
+        highlight: actHighlight(target),
+        label: (action.description || action.kind).slice(0, 40),
+        wait: true,
+      });
+    }
 
+    let hostDetail: string | undefined;
     try {
-      await engine.performAction(action, target);
+      await guardLayerDispatch(initialLayer, {
+        status: () => layerContext().director.status(),
+        guard: async () => {
+          const refusal = await layerContext().director.actRefusal();
+          if (refusal) throw new Error(refusal);
+        },
+      });
+      hostDetail = engine instanceof MacOSCommandEngine
+        ? await engine.performAction(action, target, { agentLayer })
+        : (await engine.performAction(action, target)) ?? undefined;
     } catch (error) {
       if (pointerFocusWarningShown) {
         try {
@@ -1643,7 +2010,7 @@ const handlers: Record<string, ToolHandler> = {
             leaseId: lease.leaseId,
             agent: lease.agent,
             phase: "idle",
-            label: "driving",
+            label: null,
           });
         } catch {
           // The native lease expiry remains the independent cleanup path.
@@ -1651,7 +2018,9 @@ const handlers: Record<string, ToolHandler> = {
       }
       throw error;
     }
-    await presentActCue({ lease, action, target });
+    if (!offScreen) {
+      await presentActCue({ lease, action, target });
+    }
 
     return {
       ok: true,
@@ -1661,6 +2030,9 @@ const handlers: Record<string, ToolHandler> = {
         status: "succeeded",
         channel,
         detail: action.description,
+        // How it landed: via=ax touched nothing of the operator's; via=keys or
+        // via=pointer borrowed focus or the pointer for a moment.
+        ...(hostDetail ? { host: hostDetail } : {}),
         axTier,
       },
       action,
@@ -1676,6 +2048,7 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.record.start"(args) {
+    if (isRemote()) nativeOnly("action.record.start (remote runs record through the guided session engine)");
     const sessionId = optionalString(args.sessionId);
     const recordingId = optionalString(args.recordingId) ?? defaultRecordingId();
     const scope = (() => {
@@ -1898,6 +2271,172 @@ const handlers: Record<string, ToolHandler> = {
     return { ok: true, stage: status };
   },
 
+  async "action.layer.snapshot"(args) {
+    const snapshot = await layerContext().director.snapshot({
+      windowId: optionalNumber(args.windowId),
+      full: optionalBoolean(args.full),
+      out: optionalString(args.out),
+    });
+    rememberLayerView(snapshot);
+    return { ok: true, snapshot };
+  },
+
+  "action.layer.click": (args) => layerAct("click", args),
+  "action.layer.type": (args) => layerAct("type", args),
+  "action.layer.press": (args) => layerAct("press", args),
+  "action.layer.drag": (args) => layerAct("drag", args),
+  "action.layer.scroll": (args) => layerAct("scroll", args),
+  "action.layer.go": (args) => layerAct("go", args),
+  "action.layer.js": (args) => layerAct("js", { ...args, look: args.look ?? false }),
+
+  async "action.layer.run"(args) {
+    const file = optionalString(args.file);
+    const result = file
+      ? await layerContext().driver.runFile(file)
+      : await layerContext().driver.run(parseLayerSteps(args.steps));
+    const reply: Record<string, unknown> = { ...result, leaseId: layerContext().lease?.leaseId };
+    if (args.look !== false && (await layerContext().director.status()).active) {
+      reply.snapshot = await layerContext().driver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
+    }
+    return reply as JsonObject;
+  },
+
+  async "action.layer.record"(args) {
+    await assertLayerOwnership();
+    const action = optionalString(args.action);
+    if (action === "start") {
+      return { ok: true, recording: await layerContext().director.startRecording({ out: optionalString(args.out) }) };
+    }
+    if (action === "stop") {
+      return { ok: true, recording: await layerContext().director.stopRecording() };
+    }
+    throw new Error("action.layer.record needs action: start or stop");
+  },
+
+  async "action.layer.pip"(args) {
+    await assertLayerOwnership();
+    return { ok: true, layer: await layerContext().director.showViewer({
+      previewDisplayId: await previewDisplay(args),
+      previewFull: optionalBoolean(args.previewFull),
+    }) };
+  },
+  async "action.layer.open"(args) {
+    if ((await layerContext().director.status()).active) {
+      throw new Error(`Workspace ${layerContext().workspace} already has an active task. Close it from its owning caller before opening another`);
+    }
+    const previewDisplayId = await previewDisplay(args);
+    const prepared = await layerContext().director.displayStatus();
+    if (prepared.state !== "ready") {
+      throw new Error(`Prepare the persistent monitor with CLI layer prepare before opening a task: ${prepared.detail ?? prepared.state}`);
+    }
+    const browser = args.browser === true || optionalString(args.profile)
+      ? await ensureLayerBrowser(optionalString(args.profile), { workspace: layerContext().workspace })
+      : undefined;
+    const status = await layerContext().director.open({
+      bundleId: browser ? undefined : optionalString(args.bundleId),
+      pid: browser?.pid ?? optionalNumber(args.pid),
+      // A browser navigates through DevTools once it is on the layer, never through
+      // Launch Services, which could hand the URL to the user's own Chrome.
+      url: browser ? undefined : optionalString(args.url),
+      windowless: browser !== undefined,
+      width: optionalNumber(args.width),
+      height: optionalNumber(args.height),
+      pip: optionalBoolean(args.pip),
+      previewDisplayId,
+      previewFull: optionalBoolean(args.previewFull),
+      windowId: optionalNumber(args.windowId),
+      windowTitle: optionalString(args.windowTitle),
+      // This server outlives the call, so the layer watches it and puts the windows
+      // back if the server dies before action.layer.close runs.
+      owner: "caller",
+    });
+    layerContext().ownedLayer = status;
+    return completeLayerOpen(async () => {
+      const session = layerContext().driver.bind(status, browser ? "browser" : "native", browser?.pid);
+      layerContext().view = undefined;
+      for (const leaseId of cursorPresenter.presentingLeaseIDs()) {
+        await cursorPresenter.suspend(leaseId);
+      }
+      if (browser && status.layer && status.layer.windows.length === 0) {
+        await openBrowserWindow(browser.port, status.layer.bounds);
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const next = await layerContext().driver.assertSession(session);
+          if ((next.layer?.windows.length ?? 0) > 0) break;
+          await new Promise((done) => setTimeout(done, 100));
+        }
+      }
+      const leaseId = await beginLayerLease(browser
+        ? { ...args, bundleId: browser.bundleId }
+        : args);
+      await layerContext().driver.assertSession(session);
+      // An app assigned to one Desktop keeps its windows there, so the layer shows nothing.
+      const subject = browser?.bundleId ?? optionalString(args.bundleId);
+      const pinned = subject ? await spacesBinding(subject) : undefined;
+      const warning = pinned
+        ? `${subject} is assigned to one Desktop (Dock > Options > Assign To), so macOS keeps its windows there and the layer shows none of them. Set Assign To: None${browser ? ", or install Chrome for Testing: bunx @puppeteer/browsers install chrome@stable --path ~/Library/Application\\ Support/Action/browsers" : ""}.`
+        : undefined;
+      if (browser && optionalString(args.url)) {
+        await layerContext().driver.assertSession(session);
+        const went = await layerContext().driver.step({ verb: "go", args: { url: optionalString(args.url) } });
+        return { ok: true, leaseId, session, browser, go: went, ...(warning ? { warning } : {}), layer: await layerContext().driver.assertSession(session) };
+      }
+      if (browser) {
+        return { ok: true, leaseId, session, browser, ...(warning ? { warning } : {}), layer: await layerContext().driver.assertSession(session) };
+      }
+      if (warning) {
+        return { ok: true, leaseId, session, warning, layer: status };
+      }
+      if (status.active && status.layer && status.layer.windows.length === 0) {
+        return {
+          ok: true,
+          leaseId,
+          session,
+          layer: status,
+          hint: "The layer is up but holds no windows yet. Windows the app opens from here move over by themselves: press-key \"cmd+n\", or open-app with input.url.",
+        };
+      }
+      return { ok: true, leaseId, session, layer: status };
+    }, async () => {
+      const current = await layerContext().director.status();
+      // Another owner may have replaced the layer while navigation was pending.
+      // Never turn this open's rollback into teardown of somebody else's display.
+      if (!canRollbackLayerOpen(status, current)) return false;
+      const closed = await handlers["action.layer.close"]({
+        outcome: "failed", summary: "Layer open setup failed; closing the created display",
+      });
+      return closed.ok === true;
+    });
+  },
+
+  async "action.layer.close"(args) {
+    await assertLayerOwnership();
+    if (layerContext().driver.identity() && (await layerContext().director.status()).active) await layerContext().driver.assertSession();
+    const ownedLayer = layerContext().ownedLayer?.layer;
+    const status = ownedLayer
+      ? await layerContext().director.close(ownedLayer)
+      : await layerContext().director.status();
+    if (!status.active) {
+      layerContext().driver.release();
+      layerContext().view = undefined;
+      layerContext().ownedLayer = undefined;
+    }
+    const lease = layerContext().lease;
+    if (!status.active) layerContext().lease = undefined;
+    if (!status.active && lease?.owned) {
+      await handlers["action.drive.release"]({
+        leaseId: lease.leaseId,
+        outcome: optionalString(args.outcome) ?? "done",
+        ...(optionalString(args.summary) ? { summary: optionalString(args.summary) } : {}),
+      }).catch(() => undefined);
+    }
+    return { ok: !status.active, ...(lease ? { leaseId: lease.leaseId } : {}), layer: status };
+  },
+
+  async "action.layer.status"() {
+    const status = await layerContext().director.status();
+    return { ok: true, session: layerContext().driver.identity(), layer: status, display: await layerContext().director.displayStatus() };
+  },
+
   async "action.artifacts.list"(args) {
     const outputDir = resolve(
       actionRoot,
@@ -1937,7 +2476,7 @@ for (const existing of legacyTools) {
   specTools.push({ ...existing, name: alias });
 }
 
-function advertisedTools(): Tool[] {
+export function advertisedTools(): Tool[] {
   const mode = (process.env.ACTION_MCP_TOOL_NAMES ?? "spec").trim().toLowerCase();
   if (mode === "legacy") {
     return legacyTools;
@@ -1948,26 +2487,37 @@ function advertisedTools(): Tool[] {
   return specTools;
 }
 
+// Capture provenance when this MCP process starts, not from files changed beneath it.
+const serverCapabilities = actionCapabilities(actionRoot, { sourceRoot: defaultActionRoot, nativeHostPath, mcpTools: advertisedTools().map((tool) => tool.name) });
+
 function createServer(): Server {
   const server = new Server(
     {
       name: "@action/mcp",
-      version: "0.0.0",
+      version: String(serverCapabilities.orchestration.version),
     },
     {
       capabilities: {
         tools: { listChanged: true },
       },
       instructions: [
+        "Use the active tools/list names. By default these are underscore names (capabilities, layer_open, drive_begin); dotted action.* names below denote optional compatibility aliases.",
+        "Call capabilities before private-layer work. Check source/native fingerprints, this server's advertised tools and safety.privateLayer. An unverified native build/override must be resolved before use. Reconnect MCP after updates and repeat discovery; semver alone is not capability proof.",
+        "Monitor provisioning is explicit: CLI layer prepare connects a stable persistent display and can change desktop topology. Task layer_open requires it; layer_close leaves it connected. Close the task explicitly before CLI layer release disconnects its monitor. Release refuses active tasks and incoming previews. Do not clear or bypass a provisioning quarantine; missing quarantine is not host acceptance.",
+        "Every layer tool accepts workspace (default: default). Prepare each named workspace explicitly with CLI layer prepare --workspace NAME. Each workspace has its own task, browser, controls and recording. Pass previewWorkspace to layer_open or layer_pip to show its preview on another prepared virtual display. Set previewFull:true on the outer stage to include its entire desktop and embedded previews. Never replace another caller's task. Native focus and pointer remain shared; multiple displays are not independent macOS input seats.",
+        "Private browser workflow on an accepted host/build/display configuration: layer_open {browser:true,url,task}, layer_snapshot, layer_click/type/js/go, layer_close. Open begins a drive lease unless an existing leaseId is supplied; close releases it. Do not begin a second drive or use desktop observe/aim for this path. Coordinates come from the last layer_snapshot.",
+        "CLI layer supports lifecycle, snapshot, PiP and recording only. Browser flags, URL navigation, input and JavaScript require MCP. Raw Action WebSocket and the Lattices daemon do not orchestrate private layers; Lattices workspace layers are a separate feature.",
+        "Physical modes, scale, arrangement and unrelated window frames must remain unchanged throughout open, interaction and close. Native input can temporarily borrow focus/pointer. Restoration after a disruption does not establish continuous isolation. Verify acceptance on an authorized test host; use a matched signed app and orchestration runtime with rollback on installation targets.",
+        "If a layer is paused, wait for resume. After operator takeover, stop and report it; a new layer requires new user authority. Close your layer on completion or failure; inspect layer_status when cleanup is unconfirmed and never close another owner's layer.",
         "Call action.driver.identify once when the connection label is not already supplied by the environment.",
         "Use Action tools to observe, resolve, act, record, and inspect native macOS surfaces.",
-        "Before multi-step UI work, call action.drive.begin with an agent identity and short task.",
+        "For multi-step UI work on the user's desktop, call action.drive.begin with an agent identity and short task.",
         "Pass the returned leaseId to observe and act calls, then call action.drive.release when the work ends.",
         "Background is the supported drive mode; attention approval is not available yet.",
         "Treat action.record.start as asynchronous; completion is represented by action.record.status and the finished file.",
-        "Prefer action.observe.snapshot and action.resolve.target before action.act.execute.",
+        "For desktop work, prefer action.observe.snapshot and action.resolve.target before action.act.execute. For private layers, use layer_snapshot and layer_* primitives.",
         "Use action.drive.note before each beat so the supervision HUD shows what you are doing.",
-        "Use action.drive.aim to move the synthetic cursor and highlight a region before acting. Move, then do the thing.",
+        "For desktop work, use action.drive.aim to highlight a region before acting.",
         "Use action.drive.play to run a named list of beats (note, aim, wait, act) as one sequence.",
         "Use action.stage.set to declare the world for a take: a color drape plus the windows that sit on it. Never write the desktop picture.",
         "These tools are also how you control the user's regular Chrome: it is a native window like any other, observed through screen capture and accessibility. The action-browser plugin's DOM tools (browser_snapshot / click / fill / screenshot) reach only Action-owned Chrome identities, never the user's own browser.",
@@ -2004,7 +2554,12 @@ function createServer(): Server {
 
     try {
       args = asObject(request.params.arguments ?? {}, "arguments");
-      const result = mcpResult(await handler(args));
+      const isLayer = canonical.startsWith("action.layer.");
+      const value = await layerWorkspaces.run(isLayer ? parseAgentWorkspace(args.workspace) : "default", async () => {
+        const result = await handler(args);
+        return isLayer ? { ...result, workspace: layerContext().workspace } : result;
+      });
+      const result = mcpResult(value);
       settle(true);
       return result;
     } catch (error) {
@@ -2027,6 +2582,7 @@ function createServer(): Server {
 export async function main(): Promise<void> {
   const server = createServer();
   await server.connect(new StdioServerTransport());
+  exitWithParent();
 }
 
 if (import.meta.main) {

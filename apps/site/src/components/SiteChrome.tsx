@@ -140,6 +140,7 @@ export function SiteHeader({ product }: { product?: HeaderProduct }) {
           )}
           <nav className="site-links" aria-label="Primary navigation">
             <ProductsMenu />
+            <a href="/learn">Learn</a>
             <a href="/blog" className="nav-blog-link">Blog</a>
             <a href="/docs/overview">Docs</a>
             <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">

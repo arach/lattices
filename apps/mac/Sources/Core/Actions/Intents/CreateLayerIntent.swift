@@ -47,7 +47,7 @@ struct CreateLayerIntent: LatticeIntent {
             params["name"] = .string(name)
         }
         return try LatticesApi.shared.dispatch(
-            method: "layer.create",
+            method: "layers.create",
             params: .object(params)
         )
     }

@@ -26,7 +26,7 @@ lattices addresses both sides with three layers:
 
 The CLI and agent API expose everything: query what's on screen, search
 window text, tile layouts, manage sessions. Install the family skills with
-`npx skills add arach/lattices --all --global --yes` (`lattices`,
+`npx skills add lattices-dev/lattices --all --global --yes` (`lattices`,
 `action`, `speech`, `blink`). Claude Code skills, MCP servers, or your own
 scripts can drive your desktop the same way you do. Your workspace becomes
 infrastructure you can observe and control programmatically.
@@ -50,7 +50,7 @@ and you can reattach anytime.
 
 | Component | Description |
 |-----------|-------------|
-| **CLI** | The `lattices` command. Tile windows, manage sessions, scan screen text, control the workspace from your terminal |
+| **CLI**     | The `lats` command. Tile windows, manage sessions, scan screen text, control the workspace from your terminal |
 | **Menu bar app** | Native macOS companion. Command palette, window tiling, project discovery, screen text indexing |
 | **Agent API** | WebSocket server on `ws://127.0.0.1:9399`. 35+ methods, 5 real-time events |
 | **Screen scanner** | Reads text from visible windows using Accessibility API (60s) and Apple Vision OCR (2h), indexes with FTS5 |
@@ -60,15 +60,15 @@ and you can reattach anytime.
 ## Example
 
 ```bash
-cd ~/my-project && lattices start
+cd ~/my-project && lats start
 ```
 
 Agents get the same control programmatically:
 
 ```js
-import { daemonCall } from '@lattices/cli'
-await daemonCall('session.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('window.place', {
+import { daemonCall } from '@lattices/lattices'
+await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
+await daemonCall('windows.place', {
   session: 'frontend-a1b2c3',
   placement: { kind: 'tile', value: 'left' }
 })

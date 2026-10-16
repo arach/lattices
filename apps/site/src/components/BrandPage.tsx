@@ -48,7 +48,7 @@ const nativeIcons: Record<BrandSlug, { dir: string; files: readonly string[]; no
   speech: { dir: 'products/voice/assets/', files: ['AppIcon.icon', 'Assets.car', 'AppIcon.icns'], note: 'bundled into Voice.app' },
 }
 
-const repoTree = 'https://github.com/arach/lattices/tree/main'
+const repoTree = 'https://github.com/lattices-dev/lattices/tree/main'
 
 const toc = [
   ['marks', 'Marks'],

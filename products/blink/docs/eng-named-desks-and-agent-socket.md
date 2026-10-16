@@ -50,7 +50,7 @@ Implement two complementary capabilities for Blink:
 - **Framing**: Newline-delimited JSON-RPC 2.0 (`\n`).
 
 ### Protocol & Core RPC Methods
-- **`system.hello`**: Returns `{ "protocol": "2.0", "version": "2.0.0", "app": "Blink" }`.
+- **`system.hello`**: Returns `{ "protocol": "2.0", "version": "<app version>", "app": "Blink" }`, where the version is the running app's `CFBundleShortVersionString`.
 - **`placements.list`**: Returns live open panel states (`id`, `frame`, `slot`, `screen`, `mode`, `shaded`, `focused`, `z`).
 - **`notes.list`**: Returns in-memory index from `NoteStore`.
 - **`notes.get`**: `{ "id": "<id>", "content": true }` returns frontmatter and note body.

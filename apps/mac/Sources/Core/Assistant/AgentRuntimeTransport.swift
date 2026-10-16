@@ -4,6 +4,8 @@ import Foundation
 struct AgentRuntimeReply {
     let text: String
     let harness: String
+    /// Model the harness reported on its session (`session.model`), if any.
+    let model: String?
     let sessionId: String
 }
 
@@ -39,6 +41,37 @@ enum AgentRuntimeTransportError: LocalizedError {
     }
 }
 
+/// The picked model / effort for one harness. Applied only when that harness
+/// answers the turn; a fallback harness starts on its own defaults.
+struct AgentRuntimeLaunch: Equatable {
+    let harness: String
+    let model: String?
+    let effort: String?
+
+    /// What changes the session: a new pick restarts it.
+    var key: String { [harness, model ?? "", effort ?? ""].joined(separator: "|") }
+
+    /// Start-request fields in the shape each agent-sessions adapter reads:
+    /// claude-code and pi take `model`, pi takes `options.thinking`, codex
+    /// takes its app-server launch args.
+    var startFields: [String: Any] {
+        switch harness {
+        case "codex":
+            var args: [String] = []
+            if let model { args += ["--model", model] }
+            if let effort { args += ["--reasoning-effort", effort] }
+            return args.isEmpty ? [:] : ["options": ["launchArgs": args]]
+        case "pi":
+            var fields: [String: Any] = [:]
+            if let model { fields["model"] = model }
+            if let effort { fields["options"] = ["thinking": effort] }
+            return fields
+        default:
+            return model.map { ["model": $0] } ?? [:]
+        }
+    }
+}
+
 /// Catalog entry from `{"op":"catalog"}`.
 struct AgentRuntimeHarness: Equatable {
     let id: String
@@ -60,6 +93,11 @@ final class AgentRuntimeTransport {
     /// wired for non-interactive use.
     static let defaultHarnessPreference = ["pi", "claude-code", "codex", "opencode"]
 
+    /// Harnesses whose agent-sessions adapter actually installs `systemPrompt`.
+    /// Every other adapter (pi, claude-code, opencode) drops it on the floor,
+    /// so for those the instructions ride in the first prompt of the session.
+    static let harnessesHonoringSystemPrompt: Set<String> = ["codex"]
+
     /// Wall-clock for catalog/start/prompt-ack RPC (not the model turn itself).
     private static let requestTimeoutSeconds: TimeInterval = 12
     /// Default model-turn budget per harness for chat (cascade stays responsive).
@@ -76,7 +114,17 @@ final class AgentRuntimeTransport {
 
     private var activeSessionID: String?
     private var activeHarness: String?
-    private var textBlockIDs = Set<String>()
+    /// Latest `session.model` from the adapter's `session:update` events.
+    private var activeModel: String?
+    /// `AgentRuntimeLaunch.key` the live session was started with.
+    private var activeLaunchKey: String?
+    /// Session that has already received the instructions (natively or inline).
+    private var primedSessionID: String?
+    /// Last turn context delivered, keyed by session, so unchanged state is not resent.
+    private var deliveredContext: (sessionID: String, context: String)?
+    /// Block id → block type ("text", "reasoning", "action", …) for the current turn.
+    /// Only text blocks reach the transcript; reasoning must never leak into it.
+    private var blockTypes: [String: String] = [:]
     private var accumulatedText = ""
     /// Last adapter/process error seen on stderr or session:update status=error.
     private var lastAdapterError: String?
@@ -142,11 +190,16 @@ final class AgentRuntimeTransport {
 
     /// Run one chat turn. Streams text deltas via `onDelta`.
     /// Tries preferred harness, then the rest of the preference list on empty/crash.
+    /// `turnContext` is the live state for this turn (settings, attachments). It is
+    /// sent inline with the prompt whenever it differs from what the session last saw,
+    /// because the system prompt is fixed at session start.
     func ask(
         text: String,
         systemPrompt: String,
+        turnContext: String? = nil,
         cwd: String,
         preferredHarness: String? = nil,
+        launch: AgentRuntimeLaunch? = nil,
         onDelta: @escaping (String) -> Void,
         onTool: ((String) -> Void)? = nil,
         timeoutSeconds: TimeInterval = AgentRuntimeTransport.defaultTurnTimeoutSeconds
@@ -167,8 +220,12 @@ final class AgentRuntimeTransport {
                 return try await askOnce(
                     text: text,
                     systemPrompt: systemPrompt,
+                    turnContext: turnContext,
                     cwd: cwd,
                     harness: harness.id,
+                    launch: launch?.harness == harness.id
+                        ? launch!
+                        : AgentRuntimeLaunch(harness: harness.id, model: nil, effort: nil),
                     onDelta: onDelta,
                     onTool: onTool,
                     timeoutSeconds: timeoutSeconds
@@ -220,13 +277,21 @@ final class AgentRuntimeTransport {
     private func askOnce(
         text: String,
         systemPrompt: String,
+        turnContext: String?,
         cwd: String,
         harness: String,
+        launch: AgentRuntimeLaunch,
         onDelta: @escaping (String) -> Void,
         onTool: ((String) -> Void)?,
         timeoutSeconds: TimeInterval
     ) async throws -> AgentRuntimeReply {
-        try await ensureSession(harness: harness, systemPrompt: systemPrompt, cwd: cwd)
+        try await ensureSession(launch: launch, systemPrompt: systemPrompt, cwd: cwd)
+        let outgoing = composeTurnText(
+            text: text,
+            systemPrompt: systemPrompt,
+            turnContext: turnContext,
+            harness: harness
+        )
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AgentRuntimeReply, Error>) in
             lock.lock()
@@ -237,7 +302,7 @@ final class AgentRuntimeTransport {
             }
             turnContinuation = cont
             accumulatedText = ""
-            textBlockIDs.removeAll()
+            blockTypes.removeAll()
             lastAdapterError = nil
             self.onTextDelta = onDelta
             self.onTool = onTool
@@ -256,7 +321,7 @@ final class AgentRuntimeTransport {
                     _ = try await self.request([
                         "op": "prompt",
                         "sessionId": self.activeSessionID ?? "lattices-assistant",
-                        "text": text,
+                        "text": outgoing,
                     ])
                 } catch {
                     self.failTurn(error)
@@ -293,30 +358,66 @@ final class AgentRuntimeTransport {
         teardownProcess()
     }
 
+    /// Wraps the user's text with whatever the session has not seen yet: the
+    /// instructions (first turn, adapters that ignore `systemPrompt`) and the
+    /// current state block (whenever it changed).
+    private func composeTurnText(
+        text: String,
+        systemPrompt: String,
+        turnContext: String?,
+        harness: String
+    ) -> String {
+        lock.lock()
+        let sessionID = activeSessionID ?? "lattices-assistant"
+        let needsInstructions = primedSessionID != sessionID
+            && !Self.harnessesHonoringSystemPrompt.contains(harness)
+        primedSessionID = sessionID
+        let context = turnContext?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let needsContext = !context.isEmpty
+            && (deliveredContext?.sessionID != sessionID || deliveredContext?.context != context)
+        if needsContext { deliveredContext = (sessionID, context) }
+        lock.unlock()
+
+        guard needsInstructions || needsContext else { return text }
+        var parts: [String] = []
+        if needsInstructions {
+            parts.append("<lattices_instructions>\n\(systemPrompt)\n</lattices_instructions>")
+        }
+        if needsContext {
+            parts.append(context)
+        }
+        parts.append("User request:\n\(text)")
+        return parts.joined(separator: "\n\n")
+    }
+
     // MARK: - Session lifecycle
 
-    private func ensureSession(harness: String, systemPrompt: String, cwd: String) async throws {
+    private func ensureSession(launch: AgentRuntimeLaunch, systemPrompt: String, cwd: String) async throws {
+        let harness = launch.harness
         try await ensureProcess()
         lock.lock()
-        let same = activeSessionID != nil && activeHarness == harness
+        let same = activeSessionID != nil && activeHarness == harness && activeLaunchKey == launch.key
         lock.unlock()
         if same { return }
 
         // Drop prior session id; start fresh for harness / prompt changes.
         lock.lock()
+        if activeLaunchKey != launch.key { activeModel = nil }
         activeSessionID = nil
         activeHarness = nil
         lock.unlock()
 
         let sessionID = "lattices-assistant-\(UUID().uuidString.prefix(8).lowercased())"
-        let response = try await request([
+        var start: [String: Any] = [
             "op": "start",
             "sessionId": sessionID,
             "harness": harness,
             "name": "Lattices Assistant",
             "cwd": cwd,
             "systemPrompt": systemPrompt,
-        ])
+        ]
+        start.merge(launch.startFields) { _, picked in picked }
+        let response = try await request(start)
         guard response["ok"] as? Bool == true else {
             let err = response["error"] as? String ?? "start failed"
             throw AgentRuntimeTransportError.startFailed(err)
@@ -325,6 +426,7 @@ final class AgentRuntimeTransport {
         lock.lock()
         activeSessionID = resolvedID
         activeHarness = harness
+        activeLaunchKey = launch.key
         lock.unlock()
     }
 
@@ -604,6 +706,14 @@ final class AgentRuntimeTransport {
         }
     }
 
+    /// Whether a block's content belongs in the visible reply. Untyped blocks
+    /// (adapters that never sent block:start) count as text; any typed block
+    /// other than "text" — reasoning, actions — does not. Call with `lock` held.
+    private func isTextBlock(_ blockId: String?) -> Bool {
+        guard let blockId, let type = blockTypes[blockId] else { return true }
+        return type == "text"
+    }
+
     private func handleEvent(_ event: [String: Any]) {
         let name = event["event"] as? String ?? ""
 
@@ -611,10 +721,9 @@ final class AgentRuntimeTransport {
         case "block:start":
             if let block = event["block"] as? [String: Any],
                let type = block["type"] as? String,
-               type == "text",
                let blockId = block["id"] as? String {
                 lock.lock()
-                textBlockIDs.insert(blockId)
+                blockTypes[blockId] = type
                 lock.unlock()
             }
             if let block = event["block"] as? [String: Any],
@@ -632,9 +741,7 @@ final class AgentRuntimeTransport {
             guard let text = event["text"] as? String, !text.isEmpty else { return }
             let blockId = event["blockId"] as? String
             lock.lock()
-            let isTextBlock = blockId.map { textBlockIDs.contains($0) } ?? true
-            // Prefer text blocks; if none were typed yet, still accumulate deltas.
-            let accept = textBlockIDs.isEmpty || isTextBlock
+            let accept = isTextBlock(blockId)
             if accept {
                 accumulatedText += text
             }
@@ -649,7 +756,7 @@ final class AgentRuntimeTransport {
             // Some adapters only put full text on block:end.
             if let blockId = event["blockId"] as? String {
                 lock.lock()
-                let isText = textBlockIDs.contains(blockId) || textBlockIDs.isEmpty
+                let isText = isTextBlock(blockId)
                 lock.unlock()
                 if isText, let text = event["text"] as? String, !text.isEmpty {
                     lock.lock()
@@ -689,6 +796,13 @@ final class AgentRuntimeTransport {
             failTurn(AgentRuntimeTransportError.turnFailed(message))
 
         case "session:update":
+            if let session = event["session"] as? [String: Any],
+               let model = session["model"] as? String,
+               !model.isEmpty {
+                lock.lock()
+                activeModel = model
+                lock.unlock()
+            }
             if let session = event["session"] as? [String: Any],
                let status = session["status"] as? String,
                status == "error" {
@@ -733,6 +847,7 @@ final class AgentRuntimeTransport {
         turnTimeoutWork = nil
         let text = accumulatedText
         let harness = activeHarness ?? "unknown"
+        let model = activeModel
         let sessionId = activeSessionID ?? ""
         let adapterError = lastAdapterError
         onTextDelta = nil
@@ -752,7 +867,7 @@ final class AgentRuntimeTransport {
             }
             cont.resume(throwing: AgentRuntimeTransportError.turnFailed(reason))
         } else {
-            cont.resume(returning: AgentRuntimeReply(text: trimmed, harness: harness, sessionId: sessionId))
+            cont.resume(returning: AgentRuntimeReply(text: trimmed, harness: harness, model: model, sessionId: sessionId))
         }
     }
 

@@ -6,6 +6,7 @@ app/.build-codex/
 app/.swiftpm/
 apps/mac/.build/
 apps/mac/.build-codex/
+apps/mac/.build-free/
 apps/mac/.swiftpm/
 # Pins resolved git deps (e.g. vox); deps are switched git↔path via env at
 # build time, so a checked-in resolved file just forces stale git-mode resolution.
@@ -20,6 +21,9 @@ apps/mac/Lattices.app/
 # Release artifacts
 dist/
 *.dmg
+
+# Local receipts for successful Icon Composer asset compilations
+Assets.car.build.json
 
 # Site build artifacts
 site/dist/
@@ -82,3 +86,8 @@ apps/ios/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
 artifacts/
 apps/artifacts/
 apps/ios/.artifacts/
+
+# Local agent tooling and design reviews (at any depth)
+.agent/
+.agents/
+.impeccable/

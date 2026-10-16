@@ -12,7 +12,7 @@ export type JsonRpcRequest = {
 export type ToolResult = {
   content: Array<
     | { type: "text"; text: string }
-    | { type: "image"; data: string; mimeType: "image/png" }
+    | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
   >;
   structuredContent?: JsonObject;
   isError?: boolean;
@@ -33,7 +33,7 @@ export type ToolDefinition = {
  * everything below the framing.
  */
 export type Toolset = {
-  /** Registry key, e.g. `browser`. Selectable with `lattices mcp --toolsets`. */
+  /** Registry key, e.g. `browser`. Selectable with `lats mcp --toolsets`. */
   name: string;
   title?: string;
   tools: readonly ToolDefinition[];

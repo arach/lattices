@@ -1,12 +1,22 @@
 #!/usr/bin/env bun
 
 import { compileScenario } from "@action/compiler";
-import { CompanionClient, inspectCurrentSurface, settleCurrentSurfaceViewport, StageDirector, StageSceneError } from "@action/runtime";
+import {
+  actionCapabilities,
+  AgentLayerDirector,
+  agentLayerWorkspaces,
+  CompanionClient,
+  inspectCurrentSurface,
+  settleCurrentSurfaceViewport,
+  StageDirector,
+  StageSceneError,
+} from "@action/runtime";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runScenarioGuidedCaptureDemo } from "./index.js";
 import { loadScenario } from "./scenarios.js";
+import { parseLayerCommand } from "./layer-command.js";
 
 const runtime = globalThis as typeof globalThis & {
   process: {
@@ -84,8 +94,14 @@ function requiredNumber(flags: Record<string, string>, key: string): number {
 
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
-  const { positionals, flags } = parseFlags(rest);
+  const { positionals, flags } = command === "layer" ? parseLayerCommand(rest) : parseFlags(rest);
   const [arg, extra] = positionals;
+
+  if (command === "capabilities") {
+    const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    printJson(actionCapabilities(process.env.ACTION_ROOT ?? sourceRoot, { sourceRoot }));
+    return;
+  }
 
   if (command === "demo" && arg) {
     const scenario = await loadScenario(arg);
@@ -206,6 +222,98 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (command === "layer") {
+    const nativeHostPath = resolve(
+      process.env.ACTION_NATIVE_HOST
+        ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../../native/engine/scripts/run-app-host.sh"),
+    );
+    if (arg === "list") {
+      const workspaces = await Promise.all((await agentLayerWorkspaces()).map(async workspace => {
+        const entry = new AgentLayerDirector(nativeHostPath, { workspace });
+        return { workspace, display: await entry.displayStatus(), layer: await entry.status() };
+      }));
+      printJson({ ok: true, workspaces });
+      return;
+    }
+    const director = new AgentLayerDirector(nativeHostPath, { workspace: flags.workspace });
+    let previewDisplayId: number | undefined;
+    if (flags["preview-workspace"]) {
+      const target = await new AgentLayerDirector(nativeHostPath, { workspace: flags["preview-workspace"] }).displayStatus();
+      if (!target.active || !target.display) throw new Error("Prepare the preview workspace before using it as a destination");
+      previewDisplayId = target.display.displayId;
+    }
+    if (arg === "prepare") {
+      const display = await director.prepareDisplay({ width: flags.width, height: flags.height });
+      printJson({ ok: display.active, display });
+      if (!display.active) process.exitCode = 1;
+      return;
+    }
+    if (arg === "display-status") {
+      printJson({ ok: true, display: await director.displayStatus() });
+      return;
+    }
+    if (arg === "release") {
+      const display = await director.releaseDisplay();
+      printJson({ ok: !display.active, display });
+      if (display.active) process.exitCode = 1;
+      return;
+    }
+    if (arg === "open") {
+      const status = await director.open({
+        bundleId: flags["bundle-id"],
+        pid: flags.pid,
+        width: flags.width,
+        height: flags.height,
+        pip: flags.pip,
+        previewDisplayId,
+        previewFull: flags["preview-full"] === undefined ? undefined : flags["preview-full"] === "true",
+        windowId: flags["window-id"],
+        windowTitle: flags["window-title"],
+        // This process exits once the layer is up, so the layer cannot watch it.
+        // `layer close` is the teardown.
+        owner: "detached",
+      });
+      printJson({ ok: true, layer: status });
+      return;
+    }
+    if (arg === "close") {
+      const status = await director.close();
+      printJson({ ok: !status.active, layer: status });
+      if (status.active) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (arg === "pip") {
+      printJson({ ok: true, layer: await director.showViewer({ previewDisplayId, previewFull: flags["preview-full"] === undefined ? undefined : flags["preview-full"] === "true" }) });
+      return;
+    }
+    if (arg === "record") {
+      const verb = extra;
+      if (verb === "start") {
+        printJson(await director.startRecording({ out: flags.out }));
+        return;
+      }
+      if (verb === "stop") {
+        printJson(await director.stopRecording());
+        return;
+      }
+      throw new Error("Usage: layer record start [--out <file.mov>] | layer record stop");
+    }
+    if (arg === "snapshot") {
+      const snapshot = await director.snapshot({
+        windowId: flags["window-id"] ? requiredNumber(flags, "window-id") : undefined,
+        full: flags.full === "true",
+        out: flags.out,
+      });
+      printJson(snapshot);
+      return;
+    }
+    if (arg !== "status") throw new Error(`Unknown layer command: ${arg}`);
+    printJson({ ok: true, layer: await director.status() });
+    return;
+  }
+
   if (command === "settle" && arg === "current-surface") {
     const result = await settleCurrentSurfaceViewport({
       targetViewport: {
@@ -226,6 +334,17 @@ async function main(argv: string[]): Promise<void> {
       "bun packages/cli/src/main.ts stage set [--mode drape|space] [--color RRGGBB] [--level normal|desktop] [--subjects bundleId:title,bundleId] [--seconds 1800]",
       "bun packages/cli/src/main.ts stage clear",
       "bun packages/cli/src/main.ts stage status",
+      "bun packages/cli/src/main.ts capabilities",
+      "bun packages/cli/src/main.ts layer list (list named workspaces; all other layer commands accept --workspace <name>, default: default)",
+      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] (connect a persistent monitor; may change desktop topology)",
+      "bun packages/cli/src/main.ts layer display-status",
+      "bun packages/cli/src/main.ts layer open [--workspace <name>] [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--window-id <n> | --window-title <text>] [--pip on|off] [--preview-workspace <name>] (attach to the prepared monitor)",
+      "bun packages/cli/src/main.ts layer pip [--workspace <name>] [--preview-workspace <name>] [--preview-full] (open also accepts --preview-full)",
+      "bun packages/cli/src/main.ts layer snapshot [--window-id <n> | --full] [--out <file.png>]",
+      "bun packages/cli/src/main.ts layer record start [--out <file.mov>] | layer record stop",
+      "bun packages/cli/src/main.ts layer close (restore task windows; keep the monitor connected)",
+      "bun packages/cli/src/main.ts layer release (disconnect the monitor after explicit task closure)",
+      "bun packages/cli/src/main.ts layer status",
       "bun packages/cli/src/main.ts inspect current-surface [--direct] [--mock] [--no-ocr] [--vision] [--vision-provider minimax|moondream] [--vision-prompt <prompt>]",
       "bun packages/cli/src/main.ts vision log [--session-id <id>] [--limit <n>]",
       "bun packages/cli/src/main.ts companion status",
@@ -252,4 +371,7 @@ function cliArgs(argv: string[]): string[] {
   return argv.slice(1);
 }
 
-void main(cliArgs(runtime.process.argv));
+void main(cliArgs(runtime.process.argv)).catch((error) => {
+  printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  process.exitCode = 1;
+});

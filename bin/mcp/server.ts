@@ -43,13 +43,13 @@ const CONFIG_SNIPPETS: Record<string, string> = {
 };
 
 export const MCP_USAGE = `
-lattices mcp — run the lattices MCP server over stdio
+lats mcp — run the lattices MCP server over stdio
 
-  lattices mcp                          Serve every toolset (${TOOLSET_NAMES.join(", ")})
-  lattices mcp --toolsets browser       Serve only the named toolsets
-  lattices mcp --list                   List toolsets and tools, then exit
-  lattices mcp --print-config <harness> Print the agent config snippet
-                                        (${Object.keys(CONFIG_SNIPPETS).join(", ")})
+  lats mcp                          Serve every toolset (${TOOLSET_NAMES.join(", ")})
+  lats mcp --toolsets browser       Serve only the named toolsets
+  lats mcp --list                   List toolsets and tools, then exit
+  lats mcp --print-config <harness> Print the agent config snippet
+                                    (${Object.keys(CONFIG_SNIPPETS).join(", ")})
 
 Agent config should name the binary, never a path:
 
@@ -76,7 +76,7 @@ export async function mcpCommand(args: readonly string[]): Promise<void> {
   if (printConfigIndex !== -1) {
     const harness = args[printConfigIndex + 1];
     if (!harness || !(harness in CONFIG_SNIPPETS)) {
-      console.error(`Usage: lattices mcp --print-config <${Object.keys(CONFIG_SNIPPETS).join("|")}>`);
+      console.error(`Usage: lats mcp --print-config <${Object.keys(CONFIG_SNIPPETS).join("|")}>`);
       process.exit(1);
     }
     console.log(CONFIG_SNIPPETS[harness]);

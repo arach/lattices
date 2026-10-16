@@ -9,7 +9,7 @@ function organization() {
     name: 'Lattices',
     url: `${SITE_ORIGIN}/`,
     logo: `${SITE_ORIGIN}/brand/lattices/lattices-icon-512.png`,
-    sameAs: ['https://github.com/arach/lattices'],
+    sameAs: ['https://github.com/lattices-dev/lattices'],
   }
 }
 

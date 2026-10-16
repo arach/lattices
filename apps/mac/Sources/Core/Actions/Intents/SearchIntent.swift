@@ -145,7 +145,7 @@ struct SearchIntent: LatticeIntent {
     private func searchSingle(query: String) throws -> JSON {
         // Quick first — title, app, session, OCR (instant)
         let quick = try LatticesApi.shared.dispatch(
-            method: "lattices.search",
+            method: "search.query",
             params: .object(["query": .string(query), "mode": .string("quick")])
         )
         if case .array(let items) = quick, !items.isEmpty {
@@ -155,7 +155,7 @@ struct SearchIntent: LatticeIntent {
 
         // Escalate to complete — adds terminal cwd/processes + OCR
         let result = try LatticesApi.shared.dispatch(
-            method: "lattices.search",
+            method: "search.query",
             params: .object(["query": .string(query)])
         )
         if case .array(let items) = result {
@@ -171,7 +171,7 @@ struct SearchIntent: LatticeIntent {
 
         for q in queries {
             let result = try LatticesApi.shared.dispatch(
-                method: "lattices.search",
+                method: "search.query",
                 params: .object(["query": .string(q), "mode": .string("quick")])
             )
             if case .array(let items) = result {

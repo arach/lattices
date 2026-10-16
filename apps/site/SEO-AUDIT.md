@@ -1,5 +1,7 @@
 # SEO audit
 
+The baseline below records the September 29 audit before the fixes. The October 15 integration preserves the current Learn routes, Action schema, namespace migration, and 0.14.1 download. Full build/export, lint, 46 focused tests, and the 17-route Learn audit pass. Native icon packaging has not been built during this integration.
+
 Crawler view of `apps/site/dist` after `bun run build` on 2026-09-29. No JavaScript. Origin is `https://lattices.dev` (`public/CNAME`, the canonical in `index.html`, and `SITE_URL` in `scripts/export-static.mjs`).
 
 `robots.txt` allows all crawlers and points at `https://lattices.dev/sitemap.xml`. `sitemap.xml` is generated at build with that origin. It lists the home page, product pages, `/action/agents`, `/blink/agents.md`, `/blog`, each published post, and each `/docs/<slug>` page. It omits `/docs`, the `/docs/blog` aliases, and the noindex download URLs. `og.png`, `og-docs.png`, `og-action.png`, `og-blink.png`, and `og-speech.png` are real files. `og-api.png`, `og-cli.png`, and `og-site.png` are in `dist` and unused. No page has JSON-LD. Draft post `lats-dev-ipad-companion` is correctly omitted.
@@ -34,7 +36,7 @@ Checked again with `bun run build` and `bun run lint` after the fixes. `bun /tmp
 - `/`, `/experiment`, and `/concept` are prerendered. `/concept` canonicalizes to `/experiment`. Only `/experiment` is in the sitemap.
 - `/docs` canonicalizes to `/docs/overview`. `/docs/blog` and `/docs/blog/<slug>` canonicalize to `/blog` and `/blog/<slug>`. Those aliases stay out of the sitemap.
 - `/docs/api` uses `og-api.png`. `/docs/config` uses `og-cli.png`. Other routes keep the card `routeBrand` already selected. Each `og:image` URL is a file in `dist`.
-- JSON-LD on `/`: `Organization`, `WebSite`, and `SoftwareApplication` (macOS, `DeveloperApplication`, download `v0.12.3/Lattices.dmg`). `/action`, `/blink`, and `/speech` get `SoftwareApplication`. Posts get `BlogPosting` from their front matter. Blink sets `isAccessibleForFree` because the install section says free. Action and Blink `downloadUrl` values are `https://lattices.dev/action/download` and `https://lattices.dev/blink/download`. Speech uses `speech-v0.2.0/Speech.dmg` and `softwareVersion` `0.2.0`.
+- JSON-LD on `/`: `Organization`, `WebSite`, and `SoftwareApplication` (macOS, `DeveloperApplication`, download `v0.14.1/Lattices.dmg`). `/blink` and `/speech` get `SoftwareApplication`. `/action` preserves its richer existing graph from `actionSchema`, including Linux remote use and setup instructions. Posts get `BlogPosting` from their front matter. Blink sets `isAccessibleForFree` because the install section says free. Action and Blink `downloadUrl` values are `https://lattices.dev/action/download` and `https://lattices.dev/blink/download`. Speech uses `speech-v0.2.0/Speech.dmg` and `softwareVersion` `0.2.0`.
 - Doc pages keep a single `h1`. A markdown `h1` that repeats the title is removed. Any other markdown `h1` is an `h2`. Descriptions that were the shared fallback `Lattices documentation` now come from `nav.json` or the first paragraph of at least 40 characters.
 - `404.html` is `noindex`. Its social title and description match the 404 page. It does not canonicalize to the homepage.
 - `/action/download` and `/blink/download` stay `noindex` and now have an `h1` and a description.

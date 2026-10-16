@@ -39,6 +39,9 @@ root.
 - `action.stage.set` (fails if the listed windows are not actually on the sheet)
 - `action.stage.clear`
 - `action.stage.status`
+- `action.layer.open` (moves an app onto a hidden display with a PiP viewer; see [agent-layer.md](../agent-layer.md))
+- `action.layer.close`
+- `action.layer.status`
 - `action.record.start`
 - `action.record.status`
 - `action.record.stop`

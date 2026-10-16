@@ -316,7 +316,7 @@ final class ScreenMapEditorState: ObservableObject {
             }
     }
 
-    /// Workspace layer names from workspace.json (layer index → label)
+    /// Names for depths, by depth. Unnamed depths show as D0, D1…
     var layerNames: [Int: String] = [:]
 
     static let minZoom: CGFloat = 0.3
@@ -442,12 +442,12 @@ final class ScreenMapEditorState: ObservableObject {
         visibleWindows.filter { $0.displayIndex == displayIndex }.count
     }
 
-    /// Display name for a layer (from workspace config or fallback)
+    /// Display name for a stack depth: its name, else "S2".
     func layerDisplayName(for layer: Int) -> String {
         if let name = layerNames[layer] {
             return String(name.prefix(8))
         }
-        return "L\(layer)"
+        return "S\(layer)"
     }
 
     /// Windows visible on the current desktop for the active layer filter.
@@ -593,7 +593,7 @@ final class ScreenMapEditorState: ObservableObject {
             return ScreenMapCanvasRegion(
                 id: "layer-\(layer)-\(focusedDisplayIndex.map(String.init) ?? "all")",
                 kind: .layer,
-                title: layerNames[layer] ?? "Layer \(layer)",
+                title: layerNames[layer] ?? "Depth \(layer)",
                 subtitle: subtitle,
                 rect: regionRect(for: layerWindows, fallback: layerWindows[0].virtualFrame, padding: 48),
                 count: layerWindows.count,
@@ -664,10 +664,16 @@ final class ScreenMapEditorState: ObservableObject {
         return displayIndex + 1
     }
 
-    /// Set focus to a specific display (nil = all-displays view)
-    func focusDisplay(_ index: Int?) {
+    /// Set focus to a specific display (nil = all-displays view). With
+    /// `keepStack`, the Stack filter stays wherever the new scope has
+    /// those stacks; otherwise it resets to "All".
+    func focusDisplay(_ index: Int?, keepStack: Bool = false) {
         focusedDisplayIndex = index
-        selectedLayers = []  // reset to "All" for the new display scope
+        if keepStack {
+            selectedLayers = selectedLayers.intersection(effectiveLayers)
+        } else {
+            selectedLayers = []  // reset to "All" for the new display scope
+        }
         resetZoomPan()
         DiagnosticLog.shared.info("[Canvas] scope → \(canvasScopeSummary)")
     }
@@ -1227,8 +1233,8 @@ final class ScreenMapEditorState: ObservableObject {
 
     var layerLabel: String {
         if selectedLayers.isEmpty { return "ALL" }
-        if selectedLayers.count == 1 { return "LAYER \(selectedLayers.first!)" }
-        return selectedLayers.sorted().map { "L\($0)" }.joined(separator: "+")
+        if selectedLayers.count == 1 { return "STACK \(selectedLayers.first!)" }
+        return selectedLayers.sorted().map { "S\($0)" }.joined(separator: "+")
     }
 
     /// Merge all windows from selected layers into the lowest one
@@ -1466,7 +1472,26 @@ final class ScreenMapController: ObservableObject {
         didSet { bindEditor() }
     }
     @Published var selectedWindowIds: Set<UInt32> = [] {
-        didSet { syncSharedSelection() }
+        didSet {
+            if publishesSharedSelection { syncSharedSelection() }
+            if !isQuietSelection { onSelectionChange?(selectedWindowIds) }
+        }
+    }
+    /// Hears the user's selection changes: clicks, toggles, marquee, select
+    /// all and an explicit clear. Overview mirrors its one selection here.
+    var onSelectionChange: ((Set<UInt32>) -> Void)?
+    /// Off while Overview owns the selection: it publishes the whole
+    /// selection itself, and this canvas only sees a filtered part of it.
+    var publishesSharedSelection = true
+    private var isQuietSelection = false
+
+    /// Sets the selection without telling `onSelectionChange`: for
+    /// housekeeping (a refresh) and for Overview pushing its selection in.
+    func setSelectionQuietly(_ ids: Set<UInt32>) {
+        guard ids != selectedWindowIds else { return }
+        isQuietSelection = true
+        selectedWindowIds = ids
+        isQuietSelection = false
     }
     @Published var windowSets: [ScreenMapWindowSet] = []
     @Published var activeWindowSetID: UUID? = nil
@@ -1901,13 +1926,6 @@ final class ScreenMapController: ObservableObject {
 
         let newEditor = ScreenMapEditorState(windows: mapWindows, displays: displayGeometries)
 
-        // Populate layer names from workspace config
-        if let layers = WorkspaceManager.shared.config?.layers {
-            for (i, layer) in layers.enumerated() {
-                newEditor.layerNames[i] = layer.label
-            }
-        }
-
         // Start monitor-first: focus the display under the cursor, or the first display.
         // Open on all displays so the canvas fills the center panel on first load.
         newEditor.focusedDisplayIndex = nil
@@ -1922,7 +1940,8 @@ final class ScreenMapController: ObservableObject {
         if let activeWindowSetID, !windowSets.contains(where: { $0.id == activeWindowSetID }) {
             self.activeWindowSetID = nil
         }
-        selectedWindowIds = []
+        // A refresh: housekeeping, not the user's clear.
+        setSelectionQuietly([])
         focusViewportPreset(.overview, flashView: false)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
             guard let self,
@@ -2761,8 +2780,8 @@ final class ScreenMapController: ObservableObject {
         let after = ed.actionLog.snapshot(ed.windows)
         let summary: String
         if count >= 2 { summary = "Tiled \(count) windows" }
-        else if count == 1 { summary = "Only 1 window in layer" }
-        else { summary = "Select a single layer first" }
+        else if count == 1 { summary = "Only 1 window at this depth" }
+        else { summary = "Select a single depth first" }
         let entry = ed.actionLog.record(action: "tile", summary: summary, before: before, after: after)
         ed.lastActionRef = entry.ref
         flash("\(summary)  [\(entry.ref)]")
@@ -2776,8 +2795,8 @@ final class ScreenMapController: ObservableObject {
         let after = ed.actionLog.snapshot(ed.windows)
         let summary: String
         if count >= 2 { summary = "Exposed \(count) windows" }
-        else if count == 1 { summary = "Only 1 window in layer" }
-        else { summary = "Select a single layer first" }
+        else if count == 1 { summary = "Only 1 window at this depth" }
+        else { summary = "Select a single depth first" }
         let entry = ed.actionLog.record(action: "expose", summary: summary, before: before, after: after)
         ed.lastActionRef = entry.ref
         flash("\(summary)  [\(entry.ref)]")
@@ -2791,8 +2810,8 @@ final class ScreenMapController: ObservableObject {
         let after = ed.actionLog.snapshot(ed.windows)
         let summary: String
         if count >= 2 { summary = "Spread \(count) windows" }
-        else if count == 1 { summary = "Only 1 window in layer" }
-        else { summary = "Select a single layer first" }
+        else if count == 1 { summary = "Only 1 window at this depth" }
+        else { summary = "Select a single depth first" }
         let entry = ed.actionLog.record(action: "spread", summary: summary, before: before, after: after)
         ed.lastActionRef = entry.ref
         flash("\(summary)  [\(entry.ref)]")
@@ -2836,7 +2855,7 @@ final class ScreenMapController: ObservableObject {
         let after = ed.actionLog.snapshot(ed.windows)
         let summary = result.old == result.new
             ? "Already optimal"
-            : "Consolidated \(result.old) → \(result.new) layers"
+            : "Consolidated \(result.old) → \(result.new) depths"
         let entry = ed.actionLog.record(action: "merge", summary: summary, before: before, after: after)
         ed.lastActionRef = entry.ref
         flash("\(summary)  [\(entry.ref)]")
@@ -2850,9 +2869,9 @@ final class ScreenMapController: ObservableObject {
         let after = ed.actionLog.snapshot(ed.windows)
         let summary: String
         if let result = result {
-            summary = "Merged \(result.count) windows into L\(result.target)"
+            summary = "Merged \(result.count) windows into D\(result.target)"
         } else {
-            summary = "Select 2+ layers to flatten"
+            summary = "Select 2+ depths to flatten"
         }
         let entry = ed.actionLog.record(action: "flatten", summary: summary, before: before, after: after)
         ed.lastActionRef = entry.ref

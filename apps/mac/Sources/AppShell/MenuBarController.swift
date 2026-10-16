@@ -12,6 +12,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private var popover: NSPopover?
     private var contextMenu: NSMenu?
     private weak var actionMenuItem: NSMenuItem?
+    private weak var visitMenuItem: NSMenuItem?
+    private weak var longMenuItem: NSMenuItem?
 
     var isPopoverShown: Bool {
         popover?.isShown == true
@@ -160,6 +162,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             ("Assistant", "⌘⇧A", #selector(menuAssistant)),
             ("Home", "", #selector(menuWorkspace)),
             ("Studio", "", #selector(menuLayout)),
+            ("Layers…", "", #selector(menuEditor)),
             ("Command Bar", "", #selector(menuSearch)),
         ]
         for (title, shortcut, action) in actions {
@@ -175,6 +178,24 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
         FrontWindowPlacementMenu.attach(to: menu)
         CompanionAppsMenu.attach(to: menu)
+        let machines = NSMenuItem(title: "Machines", action: nil, keyEquivalent: "")
+        machines.submenu = NSMenu(title: "Machines")
+        menu.addItem(machines)
+
+        let long = NSMenuItem(title: "Long", action: #selector(menuLong), keyEquivalent: "")
+        long.target = self
+        menu.addItem(long)
+        longMenuItem = long
+
+        let visit = NSMenuItem(title: "Visiting Cursor", action: #selector(menuVisit), keyEquivalent: "")
+        visit.target = self
+        visit.isHidden = true
+        menu.addItem(visit)
+        visitMenuItem = visit
+
+        let home = NSMenuItem(title: "Bring Cursor Home", action: #selector(menuCursorHome), keyEquivalent: "")
+        home.target = self
+        menu.addItem(home)
 
         menu.addItem(.separator())
 
@@ -225,11 +246,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     @objc private func menuAssistant() { AssistantAccess.show() }
     @objc private func menuWorkspace() { ScreenMapWindowController.shared.showPage(.home) }
-    @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.screenMap) }
+    @objc private func menuEditor() { EditorWindowController.shared.show() }
+    @objc private func menuLayout() { ScreenMapWindowController.shared.showPage(.overview) }
     @objc private func menuSearch() { UnifiedCommandBarWindow.shared.toggle(mode: .search) }
     @objc private func menuProjects() { DispatchQueue.main.async { self.showProjectsPopover() } }
     @objc private func menuInitializeProject() { CliActionLauncher.initializeProjectInTerminal() }
     @objc private func menuLaunchProject() { CliActionLauncher.launchProjectInTerminal() }
+    @objc private func menuCursorHome() { PointerHome.bringHome() }
+    @MainActor @objc private func menuLong() { DesktopLong.shared.shown ? DesktopLong.shared.hide() : DesktopLong.shared.show() }
+    @objc private func menuVisit() { VisitController.shared.arm(!VisitController.shared.armed) }
+    private func refreshPointerItems() {
+        longMenuItem?.state = MainActor.assumeIsolated { DesktopLong.shared.shown } ? .on : .off
+        visitMenuItem?.isHidden = VisitTrust.shared.list().isEmpty
+        visitMenuItem?.state = VisitController.shared.armed ? .on : .off
+    }
     @objc private func menuRuns() { ScreenMapWindowController.shared.showPage(.runs) }
     @objc private func menuActivityLog() { ScreenMapWindowController.shared.showPage(.activity) }
     @MainActor @objc private func menuUpdate() { AppUpdater.shared.promptForUpdate() }
@@ -240,6 +270,19 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         actionMenuItem?.title = actionMenuTitle()
+        refreshPointerItems()
+        if let submenu = menu.items.first(where: { $0.title == "Machines" })?.submenu {
+            submenu.removeAllItems()
+            for row in BrowseMenu.machinesSection().filter({ $0.title.hasPrefix("Visit ") || $0.title.hasPrefix("Bring everything to ") }) {
+                let item = NSMenuItem(title: row.title, action: #selector(menuMachineAction(_:)), keyEquivalent: "")
+                item.target = self; item.representedObject = row.action
+                submenu.addItem(item)
+            }
+        }
+    }
+
+    @objc private func menuMachineAction(_ sender: NSMenuItem) {
+        (sender.representedObject as? () -> Void)?()
     }
 
     @objc private func menuAction() {

@@ -1,5 +1,5 @@
 import actionDownload from '../src/action-download.json' with { type: 'json' }
-import { copyFile, cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
 import { createElement } from 'react'
@@ -14,13 +14,17 @@ import mermaid from 'shiki/langs/mermaid.mjs'
 import swift from 'shiki/langs/swift.mjs'
 import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
+import { copyActionReferences } from './action-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
+import { stripMdxImports } from '../src/lib/markdown.ts'
 import LandingPage from '../src/components/LandingPage.tsx'
 import ConceptExperimentPage from '../src/components/ConceptExperimentPage.tsx'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
+import LearnPage from '../src/components/LearnPage.tsx'
+import { learningRoutes } from '../src/lib/learning.ts'
 import ProductsPage from '../src/components/ProductsPage.tsx'
 import FamilyPage from '../src/components/FamilyPage.tsx'
 import BrandPage from '../src/components/BrandPage.tsx'
@@ -42,8 +46,8 @@ function recordSitemap(path, { priority = '0.7', lastmod } = {}) {
 }
 const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
 const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
-const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/lattices/releases/download/blink-v2.1.0/Blink.dmg'
+const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/blink-v2.1.0/Blink.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -143,6 +147,9 @@ for (const post of posts) {
 }
 
 await copyDocsAssets()
+for (const route of learningRoutes) {
+  await writeRoute(route.path, `${route.title} — Lattices`, route.description, renderToString(createElement(LearnPage, { path: route.path })))
+}
 await writeAgentArtifacts({ siteDir, repoRoot, distDir })
 
 // Emit a tiny manifest the React SPA can read on hydration for last-updated
@@ -449,7 +456,7 @@ async function writeNotFound() {
           <li><a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes</li>
           <li><a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts</li>
           <li><a href="/blog">Blog</a> — release notes and engineering write-ups</li>
-          <li><a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">GitHub</a> — open an issue if the link should work</li>
+          <li><a href="https://github.com/lattices-dev/lattices" target="_blank" rel="noopener noreferrer">GitHub</a> — open an issue if the link should work</li>
         </ul>
       </div>
     </main>
@@ -624,8 +631,7 @@ function stripQuotes(value) {
 }
 
 function prepareMarkdown(content) {
-  let prepared = content
-    .replace(/^import\s+.+$/gm, '')
+  let prepared = stripMdxImports(content)
     .replace(/\sclient:load/g, '')
 
   // Replace each MDX component tag with a unique HTML comment marker that
@@ -657,17 +663,8 @@ async function copyDocsAssets() {
 }
 
 async function copyActionDocs() {
-  const sourceDir = join(repoRoot, 'products', 'action', 'docs')
   const targetDir = join(distDir, 'action')
-  const entries = await readdir(sourceDir, { withFileTypes: true })
-
-  await mkdir(targetDir, { recursive: true })
-  for (const entry of entries) {
-    // The React product page owns /action. The old landing media is intentionally
-    // not published with the reference docs.
-    if (entry.name === 'index.html' || entry.name === 'assets') continue
-    await cp(join(sourceDir, entry.name), join(targetDir, entry.name), { recursive: true })
-  }
+  await copyActionReferences({ repoRoot, distDir })
 
   const landingMedia = [
     'action-record-the-work-poster.jpg',
@@ -804,9 +801,9 @@ function createRenderer() {
 
 function highlightStaticCode(code, language) {
   try {
-    return highlighter.codeToHtml(code, { lang: language, theme: 'lattices-green' })
+    return highlighter.codeToHtml(code, { lang: language, theme: 'lattices-ink' })
   } catch {
-    return highlighter.codeToHtml(code, { lang: 'text', theme: 'lattices-green' })
+    return highlighter.codeToHtml(code, { lang: 'text', theme: 'lattices-ink' })
   }
 }
 

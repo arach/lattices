@@ -16,7 +16,7 @@ Lattices.app.
 Lattices hosts an in-process voice runtime. Spoken commands are another client of the
 same execution layer as the CLI and daemon. Spoken commands must resolve
 into the same canonical mutations as the `lattices` skill
-(`window.place`, `layer.activate`, `space.optimize`).
+(`windows.place`, `layers.activate`, `spaces.optimize`).
 
 When this skill is invoked, run the command. Summarize the matched intent
 and the result. Do not invent intent names or slot values.
@@ -24,10 +24,10 @@ and the result. Do not invent intent names or slot values.
 ## Prerequisite
 
 ```bash
-lattices voice status
+lats voice status
 ```
 
-If the daemon is down, start it with `lattices app`. Voice lives on
+If the daemon is down, start it with `lats app`. Voice lives on
 `ws://127.0.0.1:9398`. The agent API stays on `9399`.
 
 Capability file:
@@ -39,10 +39,10 @@ Override the voice port only for tests with `LATTICES_VOICE_PORT`.
 ## Speaking
 
 ```bash
-lattices voice say "Build finished"
-lattices voice stop          # stop speaking and clear the queue
-lattices voice list          # voices, with availability
-lattices voice select <id>   # default voice for later say calls
+lats voice say "Build finished"
+lats voice stop              # stop speaking and clear the queue
+lats voice list              # voices, with availability
+lats voice select <id>       # default voice for later say calls
 ```
 
 `voice.say` returns once the job is queued, not when speech ends. If the
@@ -55,24 +55,24 @@ from Lattices › Apps. If it is installed but not running, they fail with
 Agents do not hold the microphone. They simulate speech through the CLI:
 
 ```bash
-lattices voice intents
-lattices voice simulate "tile this left"
-lattices voice simulate "focus chrome" --dry-run
+lats voice intents
+lats voice simulate "tile this left"
+lats voice simulate "focus chrome" --dry-run
 ```
 
-`lattices voice stopListening` stops capture. `lattices voice stop` stops
+`lats voice stopListening` stops capture. `lats voice stop` stops
 speaking (the Voice helper's output), not listening.
 
-`--dry-run` parses and does not execute. Read `lattices voice intents`
+`--dry-run` parses and does not execute. Read `lats voice intents`
 before sending a novel phrase.
 
 Equivalent daemon calls:
 
 ```bash
-lattices call voice.status
-lattices call voice.simulate '{"text":"tile this left","execute":true}'
-lattices call intents.list
-lattices call intents.execute '{"intent":"tile_window","slots":{"position":"left"},"rawText":"put this on the left","source":"agent"}'
+lats call voice.status
+lats call voice.simulate '{"text":"tile this left","execute":true}'
+lats call intents.list
+lats call intents.run '{"intent":"tile_window","slots":{"position":"left"},"rawText":"put this on the left","source":"agent"}'
 ```
 
 ## What people say
@@ -82,11 +82,11 @@ and release to stop.
 
 | Phrase | Result |
 | --- | --- |
-| "Tile this left" | `window.place` left |
+| "Tile this left" | `windows.place` left |
 | "Focus Safari" | Focus that app |
 | "Find all vox windows" | Search |
 | "Launch the vox project" | Session launch |
-| "Switch to layer 2" | `layer.activate` |
+| "Switch to layer 2" | `layers.activate` |
 | "Scan the screen" | OCR scan |
 | "List all windows" | Window list |
 
@@ -98,7 +98,7 @@ real app names before search.
 - Local intent matching runs first. Provider-backed interpretation is
   optional (Settings > Voice).
 - Do not skip the local matcher and send every phrase to an LLM.
-- Voice search uses the same backend as `lattices search`.
+- Voice search uses the same backend as `lats search`.
 - Keep `wid` in structured actions. In speech the user says an app name;
   the JSON action uses the window id from a snapshot.
 - Advisor learning, when a suggestion is used after a local miss, is
@@ -106,7 +106,7 @@ real app names before search.
 
 ## Live docs
 
-1. `lattices voice intents`
+1. `lats voice intents`
 2. https://lattices.dev/docs/voice
 3. https://lattices.dev/docs/agents
 4. `docs/voice-command-protocol.md` in this repository

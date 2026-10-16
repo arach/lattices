@@ -2,7 +2,7 @@ import { SectionHeader, PrimaryButton, GhostButton, Reveal, MockTitleBar } from 
 
 /** Blink's own references, which the family footer doesn't carry. */
 const RELEASE_LINKS = [
-  { href: 'https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md', label: 'CLI docs', external: true },
+  { href: 'https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md', label: 'CLI docs', external: true },
   { href: '/blink/llms.txt', label: 'llms.txt', external: false },
   { href: '/blink/agents.md', label: 'AGENTS.md', external: false },
   { href: 'https://blink.arach.dev/privacy/', label: 'Privacy', external: true },
@@ -40,7 +40,7 @@ export function Install() {
                     </span>{' '}
                     download for macOS
                   </PrimaryButton>
-                  <GhostButton href="https://github.com/arach/lattices/tree/main/products/blink">
+                  <GhostButton href="https://github.com/lattices-dev/lattices/tree/main/products/blink">
                     source <span className="text-faintx" aria-hidden>↗</span>
                   </GhostButton>
                 </div>

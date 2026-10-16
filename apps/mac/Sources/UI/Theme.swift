@@ -12,9 +12,9 @@ enum Palette {
     static let borderLit  = Color.white.opacity(0.14)
 
     // Text
-    static let text       = Color.white.opacity(0.92)
-    static let textDim    = Color.white.opacity(0.58)
-    static let textMuted  = Color.white.opacity(0.40)
+    static let text       = Color.white.opacity(0.96)
+    static let textDim    = Color.white.opacity(0.66)
+    static let textMuted  = Color.white.opacity(0.50)
 
     // Functional accents
     static let running  = Color(red: 0.20, green: 0.78, blue: 0.45)   // Green
@@ -26,20 +26,22 @@ enum Palette {
 // MARK: - Typography
 
 enum Typo {
-    private static let jetbrains = "JetBrains Mono"
     private static let geist     = "GeistMono Nerd Font"
     private static let gohu      = "GohuFontuni14 Nerd Font"
 
+    // UI type is the system face (SF Pro) at light weights; code-ish type is
+    // SF Mono. Bold and semibold read heavy on the dark panels, so the
+    // strongest weight here is semibold, and only for titles.
     static func title(_ size: CGFloat = 15) -> Font {
-        .system(size: size, weight: .bold, design: .rounded)
+        .system(size: size, weight: .semibold)
     }
 
     static func heading(_ size: CGFloat = 13) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+        .system(size: size, weight: .medium)
     }
 
     static func body(_ size: CGFloat = 12) -> Font {
-        .system(size: size, weight: .regular, design: .rounded)
+        .system(size: size, weight: .regular)
     }
 
     /// Reading font for message *content* (assistant/user prose) — SF Mono, the
@@ -51,15 +53,17 @@ enum Typo {
     }
 
     static func caption(_ size: CGFloat = 10) -> Font {
-        .system(size: size, weight: .medium, design: .rounded)
+        .system(size: size, weight: .regular)
     }
 
+    /// SF Mono. Was JetBrains Mono, which read heavier and wider than the
+    /// system type around it.
     static func mono(_ size: CGFloat = 11) -> Font {
-        .custom(jetbrains, size: size)
+        .system(size: size, weight: .regular, design: .monospaced)
     }
 
     static func monoBold(_ size: CGFloat = 11) -> Font {
-        Font.custom(jetbrains, size: size).weight(.semibold)
+        .system(size: size, weight: .medium, design: .monospaced)
     }
 
     static func geistMono(_ size: CGFloat = 11) -> Font {
@@ -248,6 +252,32 @@ enum Chrome {
     static let hairline: CGFloat = 0.5
 }
 
+// MARK: - Boxes
+
+extension View {
+    /// Anything that holds content (a list, a field, a preview) gets a fill
+    /// and the one hairline, at the control radius.
+    func outlinedBox(_ fill: Color = Palette.surface, radius: CGFloat = Chrome.controlRadius) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: radius)
+                .fill(fill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius)
+                        .strokeBorder(Palette.border, lineWidth: Chrome.hairline)
+                )
+        )
+    }
+
+    /// Buttons are fill only, so a row of actions doesn't read as a row of
+    /// boxes. The emphasized one is a step brighter.
+    func buttonBox(emphasized: Bool = false) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: Chrome.controlRadius)
+                .fill(Color.white.opacity(emphasized ? 0.11 : 0.06))
+        )
+    }
+}
+
 // MARK: - Page actions
 
 /// One control in a page's title bar.
@@ -255,6 +285,17 @@ enum Chrome {
 /// Pages publish their own set with `.pageActions(...)` and the shell renders
 /// them, so every page's actions land in the same place wearing the same shape
 /// — the page decides *what* it can do, the chrome decides how that looks.
+struct PageActionItem: Identifiable, Equatable {
+    let id: String
+    let title: String
+    var isOn: Bool = false
+    let perform: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.title == rhs.title && lhs.isOn == rhs.isOn
+    }
+}
+
 struct PageAction: Identifiable, Equatable {
     let id: String
     let title: String
@@ -263,6 +304,9 @@ struct PageAction: Identifiable, Equatable {
     let shortcut: String?
     let isPrimary: Bool
     let isEnabled: Bool
+    let isOn: Bool?
+    let menu: [PageActionItem]?
+    let segments: [PageActionItem]?
     let perform: () -> Void
 
     init(
@@ -272,7 +316,10 @@ struct PageAction: Identifiable, Equatable {
         shortcut: String? = nil,
         isPrimary: Bool = false,
         isEnabled: Bool = true,
-        perform: @escaping () -> Void
+        isOn: Bool? = nil,
+        menu: [PageActionItem]? = nil,
+        segments: [PageActionItem]? = nil,
+        perform: @escaping () -> Void = {}
     ) {
         self.id = id
         self.title = title
@@ -280,6 +327,9 @@ struct PageAction: Identifiable, Equatable {
         self.shortcut = shortcut
         self.isPrimary = isPrimary
         self.isEnabled = isEnabled
+        self.isOn = isOn
+        self.menu = menu
+        self.segments = segments
         self.perform = perform
     }
 
@@ -292,6 +342,9 @@ struct PageAction: Identifiable, Equatable {
             && lhs.shortcut == rhs.shortcut
             && lhs.isPrimary == rhs.isPrimary
             && lhs.isEnabled == rhs.isEnabled
+            && lhs.isOn == rhs.isOn
+            && lhs.menu == rhs.menu
+            && lhs.segments == rhs.segments
     }
 }
 
@@ -314,35 +367,91 @@ extension View {
 /// variant is the only one that carries hue, and it carries the running green.
 struct PageActionButton: View {
     let action: PageAction
+    var compact = false
 
     @State private var isHovering = false
 
     private var foreground: Color {
         if !action.isEnabled { return Palette.textMuted }
-        if action.isPrimary  { return Palette.running }
+        if action.isPrimary || action.isOn == true  { return Palette.running }
         return isHovering ? Palette.text : Palette.textDim
     }
 
     private var fill: Color {
-        if action.isPrimary { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
+        if action.isPrimary || action.isOn == true { return Palette.running.opacity(isHovering ? 0.22 : 0.14) }
         return isHovering ? Palette.surfaceHov : Palette.surface
     }
 
     private var stroke: Color {
-        if action.isPrimary { return Palette.running.opacity(0.32) }
+        if action.isPrimary || action.isOn == true { return Palette.running.opacity(0.32) }
         return isHovering ? Palette.borderLit : Palette.border
     }
 
     var body: some View {
-        Button(action: action.perform) {
+        Group {
+            if let items = action.segments {
+                HStack(spacing: 2) {
+                    ForEach(items) { item in
+                        Button(action: item.perform) {
+                            Text(item.title)
+                                .font(Typo.body(12))
+                                .foregroundColor(item.isOn
+                                    ? Color(red: 236 / 255, green: 237 / 255, blue: 239 / 255)
+                                    : Color(red: 176 / 255, green: 179 / 255, blue: 184 / 255))
+                                .padding(.horizontal, 12)
+                                .frame(height: Chrome.controlHeight - 4)
+                                .background {
+                                    if item.isOn {
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color(red: 36 / 255, green: 40 / 255, blue: 46 / 255))
+                                            .overlay(RoundedRectangle(cornerRadius: 4)
+                                                .strokeBorder(Color.white.opacity(0.11), lineWidth: 1))
+                                            .shadow(color: .black.opacity(0.20), radius: 1, y: 1)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(item.isOn ? [.isSelected] : [])
+                        .accessibilityValue(item.isOn ? "Selected" : "Not selected")
+                    }
+                }
+                .padding(2)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.15)))
+                .fixedSize()
+            } else if let items = action.menu {
+                Menu {
+                    ForEach(items) { item in
+                        Toggle(item.title, isOn: Binding(
+                            get: { item.isOn },
+                            set: { _ in item.perform() }
+                        ))
+                    }
+                } label: { controlLabel }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            } else {
+                Button(action: action.perform) { controlLabel }
+                    .accessibilityValue(action.isOn.map { $0 ? "On" : "Off" } ?? "")
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!action.isEnabled)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(action.title)
+        .help(action.title + (action.shortcut.map { " " + $0 } ?? ""))
+    }
+
+    private var controlLabel: some View {
             HStack(spacing: 6) {
                 if let icon = action.icon {
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .medium))
                 }
-                Text(action.title)
-                    .font(Typo.body(12))
-                if let shortcut = action.shortcut {
+                if !compact || action.icon == nil {
+                    Text(action.title).font(Typo.body(12))
+                }
+                if let shortcut = action.shortcut, !compact {
                     KeyCap(shortcut)
                 }
             }
@@ -357,11 +466,6 @@ struct PageActionButton: View {
                             .strokeBorder(stroke, lineWidth: Chrome.hairline)
                     )
             )
-        }
-        .buttonStyle(.plain)
-        .disabled(!action.isEnabled)
-        .onHover { isHovering = $0 }
-        .accessibilityLabel(action.title)
     }
 }
 

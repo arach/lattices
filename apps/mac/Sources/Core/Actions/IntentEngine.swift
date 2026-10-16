@@ -205,7 +205,7 @@ final class IntentEngine {
                 // Resolve target: explicit session, wid, app name, or frontmost
                 if let session = req.slots["session"]?.stringValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.place",
+                        method: "windows.place",
                         params: .object(["session": .string(session), "placement": placement.jsonValue])
                     )
                 }
@@ -256,7 +256,7 @@ final class IntentEngine {
                     }
 
                     return try LatticesApi.shared.dispatch(
-                        method: "space.optimize",
+                        method: "spaces.optimize",
                         params: .object([
                             "scope": .string("selection"),
                             "windowIds": .array(selectionIds.map { .int(Int($0)) }),
@@ -295,7 +295,7 @@ final class IntentEngine {
             handler: { req in
                 func focusEntry(_ entry: WindowEntry, resolution: String, requested: String? = nil) throws -> JSON {
                     let response = try LatticesApi.shared.dispatch(
-                        method: "window.focus",
+                        method: "windows.focus",
                         params: .object(["wid": .int(Int(entry.wid))])
                     )
                     guard case .object(var obj) = response else { return response }
@@ -315,13 +315,13 @@ final class IntentEngine {
 
                 if let session = req.slots["session"]?.stringValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.focus",
+                        method: "windows.focus",
                         params: .object(["session": .string(session)])
                     )
                 }
                 if let wid = req.slots["wid"]?.intValue {
                     return try LatticesApi.shared.dispatch(
-                        method: "window.focus",
+                        method: "windows.focus",
                         params: .object(["wid": .int(wid)])
                     )
                 }
@@ -331,7 +331,7 @@ final class IntentEngine {
                     }
 
                     let searchResult = try? LatticesApi.shared.dispatch(
-                        method: "lattices.search",
+                        method: "search.query",
                         params: .object([
                             "query": .string(app),
                             "sources": .array([
@@ -392,7 +392,7 @@ final class IntentEngine {
                         if name.localizedCaseInsensitiveContains(project) ||
                            path.localizedCaseInsensitiveContains(project) {
                             return try LatticesApi.shared.dispatch(
-                                method: "session.launch",
+                                method: "sessions.launch",
                                 params: .object(["path": .string(path)])
                             )
                         }
@@ -429,32 +429,14 @@ final class IntentEngine {
                     throw IntentError.missingSlot("layer")
                 }
 
-                // Try as index first
                 if let index = Int(layer) {
-                    // Try session layers first, then config layers
-                    let session = SessionLayerStore.shared
-                    if !session.layers.isEmpty && index < session.layers.count {
-                        DispatchQueue.main.async { session.switchTo(index: index) }
-                        return .object(["ok": .bool(true), "type": .string("session"), "index": .int(index)])
-                    }
                     return try LatticesApi.shared.dispatch(
-                        method: "layer.switch",
+                        method: "layers.switch",
                         params: .object(["index": .int(index)])
                     )
                 }
-
-                // Try as name — session layers first
-                let session = SessionLayerStore.shared
-                if let idx = session.layers.firstIndex(where: {
-                    $0.name.localizedCaseInsensitiveContains(layer)
-                }) {
-                    DispatchQueue.main.async { session.switchTo(index: idx) }
-                    return .object(["ok": .bool(true), "type": .string("session"), "name": .string(session.layers[idx].name)])
-                }
-
-                // Then config layers
                 return try LatticesApi.shared.dispatch(
-                    method: "layer.switch",
+                    method: "layers.switch",
                     params: .object(["name": .string(layer)])
                 )
             }
@@ -510,7 +492,7 @@ final class IntentEngine {
             ],
             slots: [],
             handler: { _ in
-                try LatticesApi.shared.dispatch(method: "tmux.sessions", params: nil)
+                try LatticesApi.shared.dispatch(method: "tmux.list", params: nil)
             }
         ))
 
@@ -560,7 +542,7 @@ final class IntentEngine {
                     params["scope"] = .string("selection")
                     params["windowIds"] = .array(selectionIds.map { .int(Int($0)) })
                     return try LatticesApi.shared.dispatch(
-                        method: "space.optimize",
+                        method: "spaces.optimize",
                         params: .object(params)
                     )
                 }
@@ -575,7 +557,7 @@ final class IntentEngine {
 
         register(IntentDef(
             name: "create_layer",
-            description: "Create a new session layer from current windows",
+            description: "Save the windows on screen as a new layer",
             examples: [
                 "save this layout as review",
                 "create a layer called deploy",
@@ -585,25 +567,17 @@ final class IntentEngine {
                 IntentSlot(name: "name", type: "string", required: true,
                            description: "Name for the new layer", enumValues: nil),
                 IntentSlot(name: "capture_visible", type: "bool", required: false,
-                           description: "Auto-capture visible windows into the layer", enumValues: nil),
+                           description: "Save the windows on screen into it (default true)", enumValues: nil),
             ],
             handler: { req in
                 guard let name = req.slots["name"]?.stringValue else {
                     throw IntentError.missingSlot("name")
                 }
-
-                var windowIds: [JSON] = []
-                if req.slots["capture_visible"]?.boolValue == true {
-                    for entry in DesktopModel.shared.windows.values where entry.isOnScreen {
-                        windowIds.append(.int(Int(entry.wid)))
-                    }
-                }
-
                 return try LatticesApi.shared.dispatch(
-                    method: "session.layers.create",
+                    method: "layers.create",
                     params: .object([
                         "name": .string(name),
-                        "windowIds": .array(windowIds)
+                        "visible": .bool(req.slots["capture_visible"]?.boolValue ?? true)
                     ])
                 )
             }
@@ -629,13 +603,13 @@ final class IntentEngine {
                 }
 
                 // Try direct name first
-                let sessions = try LatticesApi.shared.dispatch(method: "tmux.sessions", params: nil)
+                let sessions = try LatticesApi.shared.dispatch(method: "tmux.list", params: nil)
                 if case .array(let list) = sessions {
                     for s in list {
                         let name = s["name"]?.stringValue ?? ""
                         if name.localizedCaseInsensitiveContains(session) {
                             return try LatticesApi.shared.dispatch(
-                                method: "session.kill",
+                                method: "sessions.kill",
                                 params: .object(["name": .string(name)])
                             )
                         }
@@ -876,7 +850,7 @@ final class IntentEngine {
                 if let pos = req.slots["position"]?.stringValue {
                     params["position"] = .string(pos)
                 }
-                return try LatticesApi.shared.dispatch(method: "window.present", params: .object(params))
+                return try LatticesApi.shared.dispatch(method: "windows.present", params: .object(params))
             }
         ))
 

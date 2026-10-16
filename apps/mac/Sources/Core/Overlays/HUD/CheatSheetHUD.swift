@@ -377,7 +377,7 @@ struct CheatSheetView: View {
             shortcutRow(action: .motionMode)
             shortcutRow(action: .inPlaceMode)
             shortcutRow(action: .chordHints)
-            shortcutRow(action: .desktopInventory)
+            shortcutRow(action: .screenMap)
         }
     }
 

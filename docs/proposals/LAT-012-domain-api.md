@@ -319,6 +319,12 @@ Lattices.app/Contents/Helpers/
    `voice.stopListening`, and fix the dark-mode text in the controls window.
 2. **Router.** Add the alias table, apply the core renames, and update
    `api.schema`, the CLI, the SDK and `skills/lattices`.
+   *Status (2026-10-08):* the alias table (`MethodAliases.swift`), the core
+   renames, and the `window.tile`, `tmux.inventory` and `ocr.recent` merges are
+   in; `api.schema` lists aliases under `aliases`, and the CLI and LatticesKit
+   retry old names against older daemons. Still to do: `actions.execute` into
+   `intents.run`, and `handsoff.run` into `assistant.preview`. Both change
+   behavior, not just names.
 3. **Computer.** Audit the daemon's `computer.*` against Action one verb at a time,
    port daemon-only verbs into Action, make Action the backend, serve
    `computer_*` / `capture_*` / `browser_*` from `lattices mcp`, embed Action, and

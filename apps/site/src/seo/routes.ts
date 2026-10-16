@@ -1,10 +1,13 @@
+import { actionDescription } from '../lib/action-schema'
+
 /** Canonical origin. Matches public/CNAME and the tags in index.html. */
 export const SITE_ORIGIN = 'https://lattices.dev'
 
+export const latticesAppVersion = '0.14.1'
 export const latticesDownloadUrl =
-  'https://github.com/arach/lattices/releases/download/v0.12.3/Lattices.dmg'
+  `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`
 export const speechDownloadUrl =
-  'https://github.com/arach/lattices/releases/download/speech-v0.2.0/Speech.dmg'
+  'https://github.com/lattices-dev/lattices/releases/download/speech-v0.2.0/Speech.dmg'
 
 export interface SoftwareFacts {
   name: string
@@ -39,7 +42,7 @@ const latticesApp: SoftwareFacts = {
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'macOS',
   downloadUrl: latticesDownloadUrl,
-  softwareVersion: '0.12.3',
+  softwareVersion: latticesAppVersion,
 }
 
 export const staticRoutes: readonly RouteMeta[] = [
@@ -73,10 +76,9 @@ export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/action',
     title: 'Action — computer use from Lattices',
-    description:
-      'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
+    description: actionDescription,
     priority: '0.9',
-    jsonLd: 'software',
+    jsonLd: 'none',
     software: {
       name: 'Action',
       applicationCategory: 'DeveloperApplication',

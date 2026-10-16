@@ -9,16 +9,39 @@ Four steps to a running workspace.
 ## 1. Install lattices
 
 ```bash
-git clone https://github.com/arach/lattices
+git clone https://github.com/lattices-dev/lattices
 cd lattices && bun link
 ```
 
-Verify: `lattices help` should print usage info.
+This installs the CLI as `lats`, with `lattices` as a long-form alias.
+
+Verify: `lats help` should print usage info.
+
+### One-command setup
+
+For a new Mac, the setup script installs Homebrew when needed, tmux, Bun,
+and the CLI. Review the [installer source](https://github.com/lattices-dev/lattices/blob/main/scripts/install.sh) before running:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
+```
+
+The CLI and Mac app use release **0.14.0**. Install the Mac app with Homebrew:
+
+```bash
+brew tap arach/tap
+brew trust arach/tap
+brew install --cask arach/tap/lattices
+```
+
+The cask requires Apple Silicon and macOS 26 or later. It installs the app;
+the optional CLI is available with `bun install -g @lattices/lattices`.
+You can also download the [disk image](https://github.com/lattices-dev/lattices/releases/download/v0.14.0/Lattices.dmg).
 
 ## 2. Launch the menu bar app
 
 ```bash
-lattices app
+lats app
 ```
 
 This builds (or downloads) and launches the native macOS companion.
@@ -28,7 +51,7 @@ any project, tile windows, or switch workspace layers.
 To also open Lattices automatically when you log in:
 
 ```bash
-lattices app install
+lats app install
 ```
 
 ## 3. Add a project config
@@ -37,7 +60,7 @@ Drop a `.lattices.json` in your project root:
 
 ```bash
 cd ~/your-project
-lattices init
+lats init
 ```
 
 This generates a config like:
@@ -62,13 +85,13 @@ your pane layout:
 ```bash
 brew install tmux
 cd ~/your-project
-lattices          # home screen: status only, does not attach
-lattices start    # create or reattach the session
+lats              # home screen: status only, does not attach
+lats start        # create or reattach the session
 ```
 
 This creates a tmux session with your configured panes side by side.
 The session persists in the background — close your terminal, reopen it,
-run `lattices start` again, and everything is still there.
+run `lats start` again, and everything is still there.
 
 > **Without tmux**, you still get the menu bar app, command palette,
 > window tiling, workspace layers, OCR, and the full agent API.

@@ -33,7 +33,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case focusMode
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
-    case layerNext, layerPrev, layerTag
+    case layerNext, layerPrev, layerUp, layerDown, layerTag
     // Tiling
     case tileLeft, tileRight, tileMaximize, tileCenter
     case tileTopLeft, tileTopRight, tileBottomLeft, tileBottomRight
@@ -47,10 +47,10 @@ enum HotkeyAction: String, CaseIterable, Codable {
     var label: String {
         switch self {
         case .palette:         return "Command Palette"
-        case .screenMap:       return "Studio"
+        case .screenMap:       return "Overview"
         case .bezel:           return "Window Bezel"
         case .cheatSheet:      return "Cheat Sheet"
-        case .desktopInventory: return "Window Selector"
+        case .desktopInventory: return "Overview (alternate)"
         case .omniSearch:      return "Search"
         case .voiceCommand:    return "Voice Command"
         case .handsOff:        return "Hands-Off Mode"
@@ -67,13 +67,15 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
         case .layer4:          return "Layer 4"
-        case .layer5:          return "Layer 5"
+        case .layer5:          return "Show Current Layer"
         case .layer6:          return "Layer 6"
         case .layer7:          return "Layer 7"
         case .layer8:          return "Layer 8"
         case .layer9:          return "Layer 9"
-        case .layerNext:       return "Next Layer"
-        case .layerPrev:       return "Previous Layer"
+        case .layerNext:       return "Layer Right"
+        case .layerPrev:       return "Layer Left"
+        case .layerUp:         return "Layer Up"
+        case .layerDown:       return "Layer Down"
         case .layerTag:        return "Tag Window"
         case .tileLeft:        return "Tile Left"
         case .tileRight:       return "Tile Right"
@@ -103,7 +105,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .focusMode, .inPlaceMode, .chordHints: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
-             .layerNext, .layerPrev, .layerTag: return .layers
+             .layerNext, .layerPrev, .layerUp, .layerDown, .layerTag: return .layers
         default: return .tiling
         }
     }
@@ -139,6 +141,8 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .layerNext:       return 110
         case .layerPrev:       return 111
         case .layerTag:        return 112
+        case .layerUp:         return 113
+        case .layerDown:       return 114
         case .tileLeft:        return 300
         case .tileRight:       return 301
         case .tileMaximize:    return 302
@@ -297,15 +301,17 @@ class HotkeyStore: ObservableObject {
         bind(.commandBar, 49, ctrlOpt)     // Ctrl+Opt+Space (THE command bar — browse/search/commands)
         bind(.focusMode, 6, hyper)         // Hyper+Z — reversible window spotlight
 
-        // Layers: Cmd+Option+1-9
+        // Layers: Cmd+Option+1-9, one per slot of the pad; 5 shows the current one
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
         for (i, action) in HotkeyAction.layerActions.enumerated() {
             bind(action, layerKeyCodes[i], cmdOpt)
         }
 
-        // Layer cycling: Cmd+Option+Arrow / Cmd+Option+T
+        // Layer moves across the pad: Cmd+Option+Arrow / Cmd+Option+T
         bind(.layerNext, 124, cmdOpt)  // Cmd+Opt+→
         bind(.layerPrev, 123, cmdOpt)  // Cmd+Opt+←
+        bind(.layerUp,   126, cmdOpt)  // Cmd+Opt+↑
+        bind(.layerDown, 125, cmdOpt)  // Cmd+Opt+↓
         bind(.layerTag,   17, cmdOpt)  // Cmd+Opt+T
 
         // Tiling: Ctrl+Option for all

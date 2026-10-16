@@ -12,7 +12,7 @@ export interface FooterColumn {
   links: FooterLink[]
 }
 
-const repo = 'https://github.com/arach/lattices'
+const repo = 'https://github.com/lattices-dev/lattices'
 
 /** The sitewide footer's link columns, after the brand column. */
 export const footerColumns: FooterColumn[] = [
@@ -52,13 +52,14 @@ export const footerColumns: FooterColumn[] = [
   {
     title: 'Resources',
     links: [
+      { label: 'Learn', href: '/learn' },
       { label: 'Blog', href: '/blog' },
       { label: 'RSS feed', href: '/rss.xml' },
       { label: 'Brand', href: '/brand' },
       { label: 'Releases', href: `${repo}/releases`, external: true },
       { label: 'Source', href: repo, external: true },
       { label: 'Report an issue', href: `${repo}/issues/new`, external: true },
-      { label: 'CLI on npm', href: 'https://www.npmjs.com/package/@arach/lattices', external: true },
+      { label: 'CLI on npm', href: 'https://www.npmjs.com/package/@lattices/lattices', external: true },
     ],
   },
 ]

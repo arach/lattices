@@ -3,11 +3,39 @@ import XCTest
 
 /// Pure-model coverage for the shared right-click movement menu used by
 /// Desktop Inventory and Studio: display cycling/wrap, current-display
-/// handling, single-display hiding, multi-selection titles and targeting,
-/// and truthful receipt summaries.
+/// handling, display-specific desktop destinations, multi-selection titles
+/// and targeting, and truthful receipt summaries.
 final class WindowMoveMenuModelTests: XCTestCase {
-    private func display(_ index: Int, name: String? = nil, current: Bool = false) -> WindowMoveMenuModel.Display {
-        WindowMoveMenuModel.Display(index: index, name: name ?? "Display \(index + 1)", isCurrent: current)
+    private func display(
+        _ index: Int,
+        name: String? = nil,
+        current: Bool = false,
+        desktops: [WindowMoveMenuModel.Desktop] = []
+    ) -> WindowMoveMenuModel.Display {
+        WindowMoveMenuModel.Display(
+            index: index,
+            name: name ?? "Display \(index + 1)",
+            isCurrent: current,
+            desktops: desktops
+        )
+    }
+
+    private func desktop(
+        displayIndex: Int,
+        displayName: String,
+        spaceId: Int,
+        number: Int,
+        current: Bool = false,
+        showing: Bool = false
+    ) -> WindowMoveMenuModel.Desktop {
+        WindowMoveMenuModel.Desktop(
+            displayIndex: displayIndex,
+            displayName: displayName,
+            spaceId: spaceId,
+            number: number,
+            isCurrent: current,
+            isShowing: showing
+        )
     }
 
     private func target(_ wid: UInt32) -> WindowMoveMenuModel.Target {
@@ -33,6 +61,137 @@ final class WindowMoveMenuModelTests: XCTestCase {
         let model = WindowMoveMenuModel(displays: [display(0, current: true), display(1)], targets: [target(1)])
         XCTAssertTrue(model.isAvailable)
         XCTAssertTrue(model.includesPlacement)
+    }
+
+    func testSingleDisplayStillOffersDesktopDestinations() {
+        let desktops = [
+            desktop(displayIndex: 0, displayName: "DELL", spaceId: 1, number: 1, current: true, showing: true),
+            desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2),
+        ]
+        let model = WindowMoveMenuModel(
+            displays: [display(0, name: "DELL", current: true, desktops: desktops)],
+            targets: [target(1)]
+        )
+
+        XCTAssertTrue(model.isAvailable)
+        XCTAssertNil(model.nextDisplay)
+        XCTAssertFalse(model.includesPlacement)
+        XCTAssertFalse(model.isDisabled(desktops[1]))
+    }
+
+    func testDesktopDestinationsRequireAWindowTarget() {
+        let destination = desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2)
+        let model = WindowMoveMenuModel(
+            displays: [display(0, name: "DELL", desktops: [destination])],
+            targets: [],
+            here: destination
+        )
+
+        XCTAssertFalse(model.isAvailable)
+        XCTAssertNil(model.nextDisplay)
+        XCTAssertFalse(model.includesPlacement)
+    }
+
+    // MARK: - Display-specific desktop destinations
+
+    func testMatchingDesktopNumbersRemainDistinctAcrossDisplays() {
+        // Desktop 2 on the physical display must retain Space 3, even when
+        // the clicked window belongs to the virtual display's Desktop 2.
+        let physical = desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2, showing: true)
+        let virtual = desktop(
+            displayIndex: 2,
+            displayName: "Action Agent Layer",
+            spaceId: 1956,
+            number: 2,
+            current: true
+        )
+        let model = WindowMoveMenuModel(
+            displays: [
+                display(0, name: "DELL", desktops: [physical]),
+                display(2, name: "Action Agent Layer", current: true, desktops: [virtual]),
+            ],
+            targets: [target(1)]
+        )
+
+        XCTAssertEqual(model.displays[0].desktops[0].title, "DELL · Desktop 2")
+        XCTAssertEqual(model.displays[1].desktops[0].title, "Action Agent Layer · Desktop 2")
+        XCTAssertEqual(model.displays[0].desktops[0].spaceId, 3)
+        XCTAssertEqual(model.displays[1].desktops[0].spaceId, 1956)
+        XCTAssertNotEqual(physical, virtual)
+        XCTAssertFalse(model.isDisabled(physical))
+        XCTAssertTrue(model.isDisabled(virtual))
+    }
+
+    func testShowingDesktopIsSelectableWhenWindowIsOnAnInactiveDesktop() {
+        let source = desktop(
+            displayIndex: 2,
+            displayName: "Action Agent Layer",
+            spaceId: 1956,
+            number: 2,
+            current: true
+        )
+        let showing = desktop(
+            displayIndex: 2,
+            displayName: "Action Agent Layer",
+            spaceId: 2377,
+            number: 4,
+            showing: true
+        )
+        let model = WindowMoveMenuModel(
+            displays: [display(2, name: "Action Agent Layer", current: true, desktops: [source, showing])],
+            targets: [target(1)]
+        )
+
+        XCTAssertTrue(model.isDisabled(source))
+        XCTAssertFalse(model.isDisabled(showing))
+    }
+
+    func testCurrentDesktopDisabledOnlyForSingleTarget() {
+        let current = desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2, current: true)
+        let other = desktop(displayIndex: 0, displayName: "DELL", spaceId: 1, number: 1)
+        let displays = [display(0, name: "DELL", current: true, desktops: [current, other])]
+        let single = WindowMoveMenuModel(displays: displays, targets: [target(1)])
+        let multi = WindowMoveMenuModel(displays: displays, targets: [target(1), target(2)])
+
+        XCTAssertTrue(single.isDisabled(current))
+        XCTAssertFalse(single.isDisabled(other))
+        XCTAssertFalse(multi.isDisabled(current))
+        XCTAssertFalse(multi.isDisabled(other))
+    }
+
+    func testBringHereUsesTheInterfaceDisplayInsteadOfTheWindowDisplay() {
+        let destination = desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2, showing: true)
+        let source = desktop(
+            displayIndex: 2,
+            displayName: "Action Agent Layer",
+            spaceId: 2377,
+            number: 4,
+            current: true
+        )
+        let model = WindowMoveMenuModel(
+            displays: [
+                display(0, name: "DELL", desktops: [destination]),
+                display(2, name: "Action Agent Layer", current: true, desktops: [source]),
+            ],
+            targets: [target(1)],
+            here: destination
+        )
+
+        XCTAssertEqual(model.currentDisplay?.index, 2)
+        XCTAssertEqual(model.here?.displayIndex, 0)
+        XCTAssertEqual(model.here?.spaceId, 3)
+        XCTAssertEqual(model.bringHereTitle, "Bring Here — DELL · Desktop 2")
+    }
+
+    func testBringHereTitleCountsSelectedWindows() {
+        let destination = desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2, showing: true)
+        let model = WindowMoveMenuModel(
+            displays: [display(0, name: "DELL", desktops: [destination])],
+            targets: [target(1), target(2), target(3)],
+            here: destination
+        )
+
+        XCTAssertEqual(model.bringHereTitle, "Bring 3 Windows Here — DELL · Desktop 2")
     }
 
     // MARK: - Next-display cycling
@@ -184,6 +343,28 @@ final class WindowMoveMenuModelTests: XCTestCase {
         )
         let label = model.placeAccessibilityLabel(slot: .bottomRight, on: model.displays[1])
         XCTAssertEqual(label, "Move window to Studio Display and place \(TilePosition.bottomRight.label)")
+    }
+
+    func testRuntimeReceiptRequiresVerifiedSuccess() {
+        XCTAssertNil(WindowMovementService.failureMessage(for: .object([
+            "status": .string("ok"), "verified": .bool(true),
+        ])))
+        XCTAssertNotNil(WindowMovementService.failureMessage(for: .object([
+            "status": .string("ok"), "verified": .bool(false),
+        ])))
+        XCTAssertNotNil(WindowMovementService.failureMessage(for: .object([
+            "status": .string("failed"), "verified": .bool(true),
+        ])))
+    }
+
+    func testRuntimeFailureReasonRemainsVisible() {
+        XCTAssertEqual(WindowMovementService.failureMessage(for: .object([
+            "status": .string("failed"), "verified": .bool(false),
+            "failureReason": .string("Window stayed on Action Agent Layer; rollback verified"),
+        ])), "Window stayed on Action Agent Layer; rollback verified")
+        XCTAssertEqual(WindowMovementService.failureMessage(for: .object([
+            "status": .string("blocked"), "blockedReason": .string("Accessibility is disabled"),
+        ])), "Accessibility is disabled")
     }
 
     // MARK: - Truthful receipts

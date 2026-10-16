@@ -5,8 +5,13 @@ order: 3.5
 ---
 
 The menu bar app reads text from visible windows using Apple's Vision
-framework and stores results in a local SQLite database with FTS5
-full-text search. Agents can use this to "see" what's on screen.
+framework and keeps the latest results in memory, so `windows.search`,
+the command palette and Omni search match windows by what they show.
+Agents can use this to "see" what's on screen.
+
+Bundle builds also store every scan in a local SQLite database with FTS5
+full-text search. `ocr.search` and `ocr.history` read that
+history; the free build doesn't have them.
 
 ## Enabling OCR
 
@@ -60,28 +65,28 @@ contextual snippets.
 
 ```bash
 # Search windows by title, app, session, and OCR content
-lattices search "error"
+lats search "error"
 
 # Deep search — also inspects terminal tabs and processes
-lattices search "myproject" --deep
+lats search "myproject" --deep
 
 # Same as --deep (all search sources)
-lattices search "myproject" --all
+lats search "myproject" --all
 
 # Search + focus + tile the top result
-lattices place "myproject" left
+lats place "myproject" left
 
 # View current OCR snapshot
-lattices scan
+lats scan
 
 # Search OCR history directly (FTS5 syntax)
-lattices scan search "error OR failed"
+lats scan search "error OR failed"
 
 # Trigger an immediate deep scan
-lattices scan deep
+lats scan deep
 
 # View OCR history for a specific window ID
-lattices scan history 12345
+lats scan history 12345
 ```
 
 ### From the agent API
@@ -92,7 +97,7 @@ Agents can query OCR data through four API methods:
 |--------|-------------|
 | `ocr.snapshot` | Current OCR results for all visible windows |
 | `ocr.search` | Full-text search across history (FTS5 syntax) |
-| `ocr.history` | Timeline of OCR results for a specific window |
+| `ocr.history` | Timeline of OCR results for one window, or all windows without `wid` |
 | `ocr.scan` | Trigger an immediate deep scan |
 
 #### `ocr.snapshot`
@@ -100,7 +105,7 @@ Agents can query OCR data through four API methods:
 Returns the latest OCR results for all on-screen windows.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 const snapshot = await daemonCall('ocr.snapshot')
 // [{ wid, app, title, frame, fullText, blocks, timestamp }, ...]
@@ -134,11 +139,12 @@ delimiters around matched terms.
 
 #### `ocr.history`
 
-Get the OCR content timeline for a specific window.
+Get the OCR content timeline for a specific window, or across every window
+when `wid` is omitted.
 
 ```js
 const history = await daemonCall('ocr.history', {
-  wid: 12345,  // window ID (required)
+  wid: 12345,  // window ID (optional; omit for every window)
   limit: 50    // max results (optional, default 50)
 })
 ```
@@ -170,7 +176,7 @@ Entries older than 3 days are automatically deleted.
 A typical agent workflow: trigger a scan, then search for relevant content.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Trigger a fresh scan
 await daemonCall('ocr.scan')

@@ -14,11 +14,11 @@ import { createElement as h, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import sharp from 'sharp'
 import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { compileAssetCatalogIfNeeded } from './asset-catalog'
 import { ActionMark } from '../src/components/ActionMark'
 import { BlinkMark } from '../src/components/blink/BlinkMark'
 import { LatticesMark } from '../src/components/LatticesMark'
@@ -367,8 +367,8 @@ async function writeIconDocument(product: Product, bounds: Box) {
  * Compiles the document to the Assets.car the app bundles; `CFBundleIconName`
  * points macOS at it. For systems before macOS 26 the car also carries the
  * icon flattened in its light appearance. actool stamps every build, so the
- * export only recompiles when the document changes; delete the car to force
- * it. actool ships with Xcode, not the command line tools.
+ * exporter caches a receipt only after successful compilation. actool ships
+ * with Xcode, not the command line tools.
  */
 async function writeAssetCatalog(product: Product, doc: string) {
   const work = await mkdtemp(join(tmpdir(), `${product.slug}-car-`))
@@ -381,8 +381,7 @@ async function writeAssetCatalog(product: Product, doc: string) {
     await copyFile(join(work, 'Assets.car'), join(repoRoot, product.app.dir, 'Assets.car'))
     return true
   } catch (error) {
-    console.warn(`${product.slug}: Assets.car not rebuilt; actool failed: ${(error as Error).message.split('\n')[0]}`)
-    return false
+    throw new Error(`${product.slug}: Assets.car not rebuilt; actool failed`, { cause: error })
   } finally {
     await rm(work, { recursive: true, force: true })
   }
@@ -566,9 +565,14 @@ for (const product of selected) {
   if (product.iconSvg) await writeFile(join(repoRoot, product.iconSvg), icon)
   if (slug === 'lattices') await writeFile(join(siteDir, 'public', 'favicon.svg'), favicon)
 
-  const { doc, changed } = await writeIconDocument(product, bounds)
+  const { doc } = await writeIconDocument(product, bounds)
   const car = join(repoRoot, product.app.dir, 'Assets.car')
-  const compiled = canBuildIcns && (changed || !existsSync(car)) && (await writeAssetCatalog(product, doc))
+  const compiled = canBuildIcns && await compileAssetCatalogIfNeeded({
+    document: doc,
+    catalog: car,
+    settings: ['macosx', product.app.minimumSystem, product.app.name],
+    compile: () => writeAssetCatalog(product, doc),
+  })
   if (canBuildIcns) await writeIcns(product, icon)
 
   const wrote = [

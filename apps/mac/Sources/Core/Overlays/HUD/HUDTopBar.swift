@@ -236,7 +236,7 @@ struct HUDTopBar: View {
     private func layerStrip(_ layers: [Layer]) -> some View {
         HStack(spacing: 3) {
             ForEach(Array(layers.enumerated()), id: \.element.id) { idx, layer in
-                let isActive = idx == workspace.activeLayerIndex
+                let isActive = idx == workspace.activeLayerSelection
 
                 Button {
                     workspace.focusLayer(index: idx)
@@ -245,6 +245,10 @@ struct HUDTopBar: View {
                         Circle()
                             .fill(isActive ? Palette.running : Palette.textMuted.opacity(0.3))
                             .frame(width: 5, height: 5)
+
+                        Text(LayerSlots.slot(forIndex: idx).map(String.init) ?? "·")
+                            .font(Typo.mono(9))
+                            .foregroundColor(Palette.textDim)
 
                         Text(layer.label)
                             .font(Typo.monoBold(9))
