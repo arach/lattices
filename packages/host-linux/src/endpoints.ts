@@ -103,7 +103,7 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
   return result;
 }
 
-export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies) {
+export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies, moveDeps = { resolveTarget: desktop.resolveTarget, plan: hypr.plan, apply: hypr.apply, place: desktop.place }) {
   router.register({
     method: "mouse.home",
     description: "Bring the cursor to the focused real monitor",
@@ -332,7 +332,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       if (space === undefined && displayIndex === undefined && params.placement == null) {
         throw new RouterError("windows.move needs a display, space or placement");
       }
-      const { window, snap } = await desktop.resolveTarget(params);
+      const { window, snap } = await moveDeps.resolveTarget(params);
       const display = displayIndex !== undefined ? snap.displays[displayIndex] : undefined;
       if (displayIndex !== undefined && !display) throw RouterError.notFound(`display ${displayIndex}`);
       const workspace = space ?? display?.currentSpaceId;
@@ -341,11 +341,11 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       if (!dryRun) moves.record(window);
       if (workspace !== undefined && !window.spaceIds.includes(workspace)) {
         const ops: hypr.Op[] = [{ op: "toWorkspace", address: window.address, workspace }];
-        trace.push(...(dryRun ? await hypr.plan(ops) : await hypr.apply(ops)));
+        trace.push(...(dryRun ? await moveDeps.plan(ops) : await moveDeps.apply(ops)));
       }
       if (params.placement != null) {
         const dest = display ?? snap.displays[window.displayIndex];
-        const plan = await desktop.place(window, parsePlacement(params.placement), dest, dryRun);
+        const plan = await moveDeps.place(window, parsePlacement(params.placement), dest, dryRun);
         trace.push(...plan.commands);
       }
       const origin = moves.get(window.wid);
@@ -368,10 +368,10 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       if (wid === undefined) throw RouterError.missingParam("wid");
       const origin = moves.get(wid);
       if (!origin) throw RouterError.notFound(`a windows.move origin for window ${wid}`);
-      const { window } = await desktop.resolveTarget({ wid });
+      const { window } = await moveDeps.resolveTarget({ wid });
       const dryRun = bool(params, "dryRun") ?? false;
       const ops = moves.returnOps(window, origin);
-      const trace = dryRun ? await hypr.plan(ops) : await hypr.apply(ops);
+      const trace = dryRun ? await moveDeps.plan(ops) : await moveDeps.apply(ops);
       if (!dryRun) moves.forget(wid);
       return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid }, origin, trace });
     },
