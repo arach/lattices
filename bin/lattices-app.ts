@@ -20,6 +20,9 @@ const binaryPath = resolve(binaryDir, "Lattices");
 const entitlementsPath = resolve(__dirname, "../apps/mac/Lattices.entitlements");
 const resourcesDir = resolve(bundlePath, "Contents/Resources");
 const iconPath = resolve(__dirname, "../assets/AppIcon.icns");
+// The light and dark icons, compiled from assets/AppIcon.icon. CFBundleIconName
+// picks them over the .icns.
+const iconCatalogPath = resolve(__dirname, "../assets/Assets.car");
 const tapSoundPath = resolve(__dirname, "../apps/mac/Resources/tap.wav");
 const deckBuilderResourcesPath = resolve(__dirname, "../apps/mac/Resources/DeckBuilder");
 const launchAgentLabel = "dev.lattices.app.login";
@@ -498,6 +501,8 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
     <string>Lattices</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleURLTypes</key>
@@ -555,6 +560,9 @@ function syncBundleResources(): void {
   execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(resourcesDir, "companion-installer.js")], { stdio: "inherit" });
   if (existsSync(iconPath)) {
     execFileSync("cp", [iconPath, resolve(resourcesDir, "AppIcon.icns")]);
+  }
+  if (existsSync(iconCatalogPath)) {
+    execFileSync("cp", [iconCatalogPath, resolve(resourcesDir, "Assets.car")]);
   }
   if (existsSync(tapSoundPath)) {
     execFileSync("cp", [tapSoundPath, resolve(resourcesDir, "tap.wav")]);

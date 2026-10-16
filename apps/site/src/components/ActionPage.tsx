@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import actionDownload from "../action-download.json";
 import type { MouseEvent } from "react";
 import { ActionMark } from "./ActionMark";
+import { actionMarkBox } from "../lib/marks";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
 import { ActionDemo } from "./ActionDemo";
 import { ActionQuickStart } from "./ActionQuickStart";
@@ -9,7 +10,7 @@ import { actionSchema } from "../lib/action-schema";
 import "../styles/action-demo.css";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
 import { LatticesMark } from "./LatticesMark";
-import { ProductsMenu } from "./SiteChrome";
+import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { ThemeToggle } from "./ThemeToggle";
 
 const downloadUrl = "/action/download";
@@ -88,7 +89,7 @@ export default function ActionPage() {
               palette={{ ink: "currentColor" }}
               guides={false}
               background={false}
-              viewBox="15 35 590 590"
+              viewBox={actionMarkBox.join(" ")}
               decorative
               style={{ width: 16, height: 16 }}
             />
@@ -264,18 +265,7 @@ export default function ActionPage() {
         </section>
       </main>
 
-      <footer className="action-footer">
-        <div className="action-footer-inner">
-          <span>Action is a focused computer-use product from Lattices.</span>
-          <div>
-            <a href="/">Lattices</a>
-            <a href="/blink">Blink</a>
-            <a href="/speech">Speech</a>
-            <a href="/action/llms.txt" data-router="reload">Action docs</a>
-            <a href={sourceUrl}>GitHub</a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter current="/action" />
     </div>
   );
 }

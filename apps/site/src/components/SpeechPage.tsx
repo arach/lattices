@@ -1,7 +1,6 @@
-import { SiteHeader } from './SiteChrome'
+import { SiteFooter, SiteHeader } from './SiteChrome'
 import { SpeechMark } from './SpeechMark'
-
-const downloadUrl = 'https://github.com/lattices-dev/lattices/releases/download/speech-v0.2.0/Speech.dmg'
+import { speechDownloadUrl as downloadUrl } from '../seo/routes'
 const sourceUrl = 'https://github.com/lattices-dev/lattices/tree/main/products/voice'
 
 const features = [
@@ -298,14 +297,7 @@ export default function SpeechPage() {
           </nav>
         </section>
       </main>
-      <footer className="family-footer">
-        <span>Speech is a Lattices product.</span>
-        <nav aria-label="Footer">
-          <a href="/docs/overview">Docs</a>
-          <a href="/blog">Blog</a>
-          <a href="https://github.com/lattices-dev/lattices">GitHub</a>
-        </nav>
-      </footer>
+      <SiteFooter current="/speech" />
     </div>
   )
 }
