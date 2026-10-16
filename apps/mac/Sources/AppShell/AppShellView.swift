@@ -161,7 +161,7 @@ struct AppShellView: View {
             .background(ShellGlassBackdrop())
         }
         .environment(\.hudTheme, .lattices)
-        .background(HudWindowChrome(colorScheme: .dark))
+        .background(HudWindowChrome(colorScheme: .dark, isMovableByWindowBackground: false))
         .hudsonAppManifest(manifest)
         .onChange(of: windowController.activePage) { page in
             clearRelevantDismissals(for: page)
@@ -255,9 +255,14 @@ struct AppShellView: View {
         let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
         return VStack(spacing: wrap ? 5 : 0) {
             HStack(spacing: 8) {
-                Text(windowController.activePage.label)
-                    .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
-                Spacer(minLength: 8)
+                HStack {
+                    Text(windowController.activePage.label)
+                        .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
+                    Spacer(minLength: 8)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
                 }

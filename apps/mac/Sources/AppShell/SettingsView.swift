@@ -744,7 +744,7 @@ struct SettingsContentView: View {
 
                         settingsPrefRow(
                             "Slide echo",
-                            caption: "A quick swoosh at the pointer as you switch. Off, or with Reduce Motion, a thin top-edge sweep is used."
+                            caption: "A quick swoosh at the pointer as you switch. Turn off for just the desktop filmstrip. Reduce Motion suppresses the swoosh."
                         ) {
                             SettingsSwitch(isOn: $prefs.spaceSwitchGlideEnabled)
                         }

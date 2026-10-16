@@ -7,7 +7,7 @@
     {
       "id": "install",
       "title": "Install and launch",
-      "command": "bun add -g @arach/lattices\nlats action install --launch",
+      "command": "bun add -g @lattices/lattices\nlats action install --launch",
       "expected": "Action.app opens from Applications. The CLI is available as lats."
     },
     {

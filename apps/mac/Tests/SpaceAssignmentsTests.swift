@@ -33,4 +33,19 @@ final class SpaceAssignmentsTests: XCTestCase {
         XCTAssertNil(SpaceAssignments.conflict(.allDesktops, destinationSpaceId: 1, displays: displays))
         XCTAssertNil(SpaceAssignments.conflict(nil, destinationSpaceId: 1, displays: displays))
     }
+
+    func testMissingAndRemovedAssignmentsDoNotBlockMoves() {
+        let displays = [display(0, [1, 5, 6]), display(1, [46, 47])]
+        XCTAssertNil(SpaceAssignments.conflict(.missing(uuid: "GONE"), destinationSpaceId: 5, displays: displays))
+        XCTAssertNil(SpaceAssignments.conflict(.desktop(spaceId: 99), destinationSpaceId: 5, displays: displays))
+        XCTAssertNil(SpaceAssignments.conflict(.desktop(spaceId: 6), destinationSpaceId: 99, displays: displays))
+        XCTAssertEqual(SpaceAssignments.conflict(.desktop(spaceId: 46), destinationSpaceId: 47, displays: displays), 46)
+        XCTAssertNil(SpaceAssignments.conflict(.desktop(spaceId: 46), destinationSpaceId: 1, displays: displays))
+    }
+
+    func testInvalidPreferenceValuesAreIgnored() {
+        let parsed = SpaceAssignments.parse(["invalid": 123, "all": "AllSpaces", "missing": "GONE"], spaceIdsByUUID: [:])
+        XCTAssertEqual(parsed.map(\.bundleId), ["all", "missing"])
+        XCTAssertNil(SpaceAssignments.binding(forBundleId: nil, in: parsed))
+    }
 }

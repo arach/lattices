@@ -9,6 +9,7 @@ import type { IncomingMessage } from "node:http";
 import { resolveBuildEnv } from "./lattices-build-env";
 import { embedHelpers, signHelpers } from "./embedded-helpers";
 import { readBuildMetadata } from "./lattices-build-metadata";
+import { distribution, installedPackageName } from "./distribution";
 
 const __dirname = import.meta.dir;
 const appDir = resolve(__dirname, "../apps/mac");
@@ -25,7 +26,7 @@ const launchAgentLabel = "dev.lattices.app.login";
 const launchAgentPath = resolve(homedir(), "Library/LaunchAgents", `${launchAgentLabel}.plist`);
 const launchAgentLogPath = resolve(homedir(), ".lattices", "lattices-launchagent.log");
 
-const REPO = "arach/lattices";
+const REPO = distribution.repository;
 const RELEASE_APP_ASSET_NAMES = ["Lattices.dmg"];
 const RELEASE_BINARY_ASSET_NAMES = ["Lattices-macos-arm64", "LatticeApp-macos-arm64"];
 type ReleaseAsset = { name: string; browser_download_url: string };
@@ -510,6 +511,19 @@ function writeInfoPlist(metadata: BundleBuildMetadata = {}): void {
             </array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.lattices.overview-window</string>
+            <key>UTTypeDescription</key>
+            <string>Lattices Overview Window</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleVersion</key>
     <string>${version}</string>
     <key>CFBundleShortVersionString</key>
@@ -726,7 +740,7 @@ async function ensureBinary(): Promise<void> {
   console.error(
     "Could not find a bundled lattices app or download one.\n" +
     "Options:\n" +
-    "  \u2022 Reinstall or update @arach/lattices\n" +
+    "  \u2022 Reinstall or update your Lattices npm package\n" +
     "  \u2022 Developers can build from source with: lattices-app build\n" +
     "  \u2022 Download manually from:   https://github.com/" + REPO + "/releases"
   );
@@ -769,7 +783,13 @@ async function updateApp(extraArgs: string[] = [], shouldLaunch = false): Promis
 
 // ── Package upgrade (CLI + bundled app) ──────────────────────────────
 
-const NPM_PACKAGE = "@arach/lattices";
+const NPM_PACKAGE = (() => {
+  try {
+    return installedPackageName(JSON.parse(readFileSync(resolve(cliRoot, "package.json"), "utf8")).name);
+  } catch {
+    return distribution.package;
+  }
+})();
 
 function isSourceCheckout(): boolean {
   return existsSync(resolve(cliRoot, ".git")) || existsSync(resolve(appDir, "Package.swift"));
