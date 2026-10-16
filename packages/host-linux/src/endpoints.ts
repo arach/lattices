@@ -2,10 +2,12 @@ import { hostname as osHostname } from "node:os";
 import * as acted from "./acted.ts";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
+import * as ownedDisplays from "./displays.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
+import * as moves from "./moves.ts";
 import { bringCursorHome, type CursorHomeDependencies } from "./cursor-home.ts";
 import * as ocr from "./ocr.ts";
 import * as record from "./record.ts";
@@ -105,7 +107,10 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
   return result;
 }
 
-export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies, actionDeps = { snapshot: desktop.snapshot, cursorPos: hypr.cursorPos, scroll: input.scroll }) {
+const defaultEndpointDeps = { resolveTarget: desktop.resolveTarget, plan: hypr.plan, apply: hypr.apply, place: desktop.place, snapshot: desktop.snapshot, cursorPos: hypr.cursorPos, scroll: input.scroll };
+export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies, overrides: Partial<typeof defaultEndpointDeps> = {}) {
+  const actionDeps = { ...defaultEndpointDeps, ...overrides };
+  const moveDeps = actionDeps;
   // computer.acted after every executed computer.* action; never fails the action.
   const announce = async (sample: acted.Action | (() => Promise<acted.Action>)) => {
     if (!ctx.emit) return;
@@ -118,6 +123,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       // An overlay hint is not worth an error on an action that already ran.
     }
   };
+
   router.register({
     method: "mouse.home",
     description: "Bring the cursor to the focused real monitor",
@@ -185,7 +191,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
         version: VERSION,
         build: BUILD_IDENTITY,
         address: ctx.bindHost,
-        displays,
+        displays: displays.map((d) => ({ ...d, managed: ownedDisplays.readOwned().some((o) => o.name === d.displayId) })),
         capabilities: [...capabilities].sort(),
         capabilityHealth,
         eventStream: hypr.getEventStreamHealth(),
@@ -333,36 +339,62 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     capability: "windows.place",
     params: [
       ...targetParams,
-      { name: "display", type: "int", description: "Target display index" },
-      { name: "space", type: "int", description: "Target workspace id" },
+      { name: "display", type: "int", description: "Target display index (alias: displayIndex)" },
+      { name: "space", type: "int", description: "Target workspace id (alias: spaceId)" },
       { name: "placement", type: "string|object", description: "Optional placement on arrival" },
       { name: "dryRun", type: "bool", description: "Plan without moving" },
     ],
-    returns: "Receipt with target, destination and trace",
+    returns: "Receipt with target, destination, origin and trace; windows.moveBack undoes it",
     handler: async (params) => {
       const hasTarget = ["wid", "session", "app"].some((k) => params[k] != null);
       if (!hasTarget) throw new RouterError("windows.move requires a wid, session or app target");
-      const space = num(params, "space");
-      const displayIndex = num(params, "display");
+      const space = num(params, "space") ?? num(params, "spaceId");
+      const displayIndex = num(params, "display") ?? num(params, "displayIndex");
       if (space === undefined && displayIndex === undefined && params.placement == null) {
         throw new RouterError("windows.move needs a display, space or placement");
       }
-      const { window, snap } = await desktop.resolveTarget(params);
+      const { window, snap } = await moveDeps.resolveTarget(params);
       const display = displayIndex !== undefined ? snap.displays[displayIndex] : undefined;
       if (displayIndex !== undefined && !display) throw RouterError.notFound(`display ${displayIndex}`);
       const workspace = space ?? display?.currentSpaceId;
       const dryRun = bool(params, "dryRun") ?? false;
       const trace: string[] = [];
+      if (!dryRun) moves.record(window);
       if (workspace !== undefined && !window.spaceIds.includes(workspace)) {
         const ops: hypr.Op[] = [{ op: "toWorkspace", address: window.address, workspace }];
-        trace.push(...(dryRun ? await hypr.plan(ops) : await hypr.apply(ops)));
+        trace.push(...(dryRun ? await moveDeps.plan(ops) : await moveDeps.apply(ops)));
       }
       if (params.placement != null) {
         const dest = display ?? snap.displays[window.displayIndex];
-        const plan = await desktop.place(window, parsePlacement(params.placement), dest, dryRun);
+        const plan = await moveDeps.place(window, parsePlacement(params.placement), dest, dryRun);
         trace.push(...plan.commands);
       }
-      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid: window.wid }, space: workspace ?? null, trace });
+      const origin = moves.get(window.wid);
+      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid: window.wid }, space: workspace ?? null, origin: origin ?? null, trace });
+    },
+  });
+
+  router.register({
+    method: "windows.moveBack",
+    description: "Return a window to where windows.move took it from: its workspace, and its floating frame or tiled state",
+    access: "mutate",
+    capability: "windows.place",
+    params: [
+      { name: "wid", type: "uint32", required: true, description: "Window id" },
+      { name: "dryRun", type: "bool", description: "Plan without moving" },
+    ],
+    returns: "Receipt with target, origin and trace",
+    handler: async (params) => {
+      const wid = num(params, "wid");
+      if (wid === undefined) throw RouterError.missingParam("wid");
+      const origin = moves.get(wid);
+      if (!origin) throw RouterError.notFound(`a windows.move origin for window ${wid}`);
+      const { window } = await moveDeps.resolveTarget({ wid });
+      const dryRun = bool(params, "dryRun") ?? false;
+      const ops = moves.returnOps(window, origin);
+      const trace = dryRun ? await moveDeps.plan(ops) : await moveDeps.apply(ops);
+      if (!dryRun) moves.forget(wid);
+      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid }, origin, trace });
     },
   });
 
@@ -373,6 +405,46 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     capability: "spaces.read",
     returns: "Array of Display",
     handler: async () => asJson((await desktop.snapshot()).displays),
+  });
+
+  const displayById = async (name: string) => (await desktop.snapshot()).displays.find((d) => d.displayId === name) ?? null;
+
+  router.register({
+    method: "displays.create",
+    description: "Create a virtual (headless) display, or adopt an existing one so the host may remove it later",
+    access: "mutate",
+    capability: "displays.virtual",
+    params: [
+      { name: "name", type: "string", description: "Output name; defaults to the next free LATS-n" },
+      { name: "width", type: "int", required: true, description: "Width in physical pixels" },
+      { name: "height", type: "int", required: true, description: "Height in physical pixels" },
+      { name: "scale", type: "double", description: "Scale factor; defaults to 1" },
+      { name: "refresh", type: "int", description: "Refresh rate in Hz; defaults to 60" },
+      { name: "adopt", type: "bool", description: "Take ownership of an existing output with this name" },
+    ],
+    returns: "Object with ok, the Display, created, adopted and trace",
+    handler: async (params) => {
+      const width = num(params, "width");
+      const height = num(params, "height");
+      if (width === undefined) throw RouterError.missingParam("width");
+      if (height === undefined) throw RouterError.missingParam("height");
+      const scale = num(params, "scale") ?? 1;
+      const refresh = num(params, "refresh") ?? 60;
+      if (width < 320 || height < 200 || width > 7680 || height > 4320) throw new RouterError("width/height out of range (320x200 to 7680x4320)");
+      if (scale <= 0 || scale > 4) throw new RouterError("scale out of range (0, 4]");
+      const result = await ownedDisplays.create({ name: str(params, "name"), spec: { width, height, scale, refresh }, adopt: bool(params, "adopt") });
+      return asJson({ ok: true, ...result, display: await displayById(result.name) });
+    },
+  });
+
+  router.register({
+    method: "displays.remove",
+    description: "Remove a virtual display this host created or adopted; windows on it move to another display",
+    access: "mutate",
+    capability: "displays.virtual",
+    params: [{ name: "displayId", type: "string", required: true, description: "Output name, as in Display.displayId" }],
+    returns: "Object with ok, name and removed",
+    handler: async (params) => asJson({ ok: true, ...(await ownedDisplays.remove(requireStr(params, "displayId"))) }),
   });
 
   router.register({
