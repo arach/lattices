@@ -15,14 +15,14 @@ import ApplicationServices
 ///
 /// Blocks for one to three seconds; never call it on the main thread.
 /// Mission Control shows while it runs, and the view returns to the Space
-/// the display was on.
+/// the display was on unless the caller requests following the window.
 enum WindowSpaceCarry {
     enum Outcome {
         case moved
         case failed(String)
     }
 
-    static func carry(wid: UInt32, pid: pid_t, to target: Int) -> Outcome {
+    static func carry(wid: UInt32, pid: pid_t, to target: Int, followWindow: Bool = false) -> Outcome {
         precondition(!Thread.isMainThread, "WindowSpaceCarry blocks; run it off the main thread")
         let diag = DiagnosticLog.shared
 
@@ -49,6 +49,7 @@ enum WindowSpaceCarry {
         }
         let sourcePoint = CGPoint(x: initialFrame.midX, y: initialFrame.midY)
         let startSpace = display.currentSpaceId
+        var moved = false
         let restoreCursor = CGEvent(source: nil)?.location
         defer {
             if let restoreCursor { CGWarpMouseCursorPosition(restoreCursor) }
@@ -57,7 +58,8 @@ enum WindowSpaceCarry {
         // 1. Mission Control shows the current Space's windows, so stand on
         //    the window's Space first.
         defer {
-            if !selectDesktop(startSpace, on: display.displayId, at: sourcePoint, applications: missionControlApps) {
+            if !followWindow || !moved,
+               !selectDesktop(startSpace, on: display.displayId, at: sourcePoint, applications: missionControlApps) {
                 diag.warn("WindowSpaceCarry: could not restore display \(display.displayIndex) view to Space \(startSpace)")
             }
         }
@@ -101,8 +103,11 @@ enum WindowSpaceCarry {
         let events = CGEventSource(stateID: .combinedSessionState)
         var cursor = CGPoint(x: thumb.midX, y: thumb.midY)
         func mouse(_ type: CGEventType, _ point: CGPoint) {
-            CGEvent(mouseEventSource: events, mouseType: type, mouseCursorPosition: point, mouseButton: .left)?
-                .post(tap: .cghidEventTap)
+            let event = CGEvent(mouseEventSource: events, mouseType: type, mouseCursorPosition: point, mouseButton: .left)
+            // A gesture's held Shift belongs to Lattices, not the thumbnail
+            // drag. Do not let hardware modifiers alter Mission Control input.
+            event?.flags = []
+            event?.post(tap: .cghidEventTap)
         }
         func drag(to point: CGPoint, steps: Int) {
             let origin = cursor
@@ -145,6 +150,12 @@ enum WindowSpaceCarry {
         _ = waitUntil(timeout: 1.0) { WindowTiler.getSpacesForWindow(wid) != [source] }
         let after = WindowTiler.getSpacesForWindow(wid)
         if after.contains(target) {
+            moved = true
+            // Select the destination while Mission Control is already open.
+            // Gesture moves carry the user with the window; other moves return.
+            if followWindow {
+                _ = selectDesktop(target, on: display.displayId, at: sourcePoint, applications: missionControlApps)
+            }
             diag.success("WindowSpaceCarry: wid=\(wid) now on \(after)")
             return .moved
         }

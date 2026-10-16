@@ -113,8 +113,9 @@ final class ActionRuntime {
 
     /// The UI, API, and placement actions share one serialized relocation.
     /// Display and absolute Space ID identify a single destination together.
-    func executeWindowMove(params: JSON?, source: String = "daemon") throws -> JSON {
-        let receipt = try executeWindowRelocation(params: params, source: source)
+    func executeWindowMove(params: JSON?, source: String = "daemon", target: WindowEntry? = nil, followWindow: Bool = false) throws -> JSON {
+        let captured = target.map { ResolvedWindowTarget(kind: "wid", resolution: "gesture-start", confidence: 1.0, entry: $0) }
+        let receipt = try executeWindowRelocation(params: params, source: source, resolvedTarget: captured, followWindow: followWindow)
         history.record(receipt)
         return receipt
     }
@@ -127,7 +128,8 @@ final class ActionRuntime {
         params: JSON?,
         source: String,
         context: ActionInvocationContext? = nil,
-        resolvedTarget: ResolvedWindowTarget? = nil
+        resolvedTarget: ResolvedWindowTarget? = nil,
+        followWindow: Bool = false
     ) throws -> JSON {
         let dryRun = params?["dryRun"]?.boolValue == true
         if !dryRun && Thread.isMainThread {
@@ -151,7 +153,7 @@ final class ActionRuntime {
         guard let wid = resolved.wid, let pid = resolved.pid else {
             throw RouterError.custom("window.move requires a resolvable window")
         }
-        let environment = relocationEnvironment(wid: wid, pid: pid)
+        let environment = relocationEnvironment(wid: wid, pid: pid, followWindow: followWindow)
         let before = environment.snapshot()
         guard let beforeFrame = before.frame, before.spaceIds.count == 1,
               let sourceSpaceId = before.spaceIds.first else {
@@ -295,13 +297,29 @@ final class ActionRuntime {
             receipt["blockedReason"] = .string(blockedReason)
             receipt["requiredPermissions"] = .array([.string("accessibility")])
         }
+        if verified && followWindow {
+            // Verify the viewed desktop too, including when CGS moved the window
+            // without needing the Mission Control carry fallback.
+            let followed = WindowSpaceCarry.selectDesktop(spaceId, on: targetDisplay.displayId,
+                                                          at: CGPoint(x: targetFrame.midX, y: targetFrame.midY))
+            receipt["followed"] = .bool(followed)
+            if followed {
+                onMain {
+                    NSRunningApplication(processIdentifier: pid)?.activate()
+                    if let axWindow = WindowTiler.findAXWindowByFrame(wid: wid, pid: pid) {
+                        AXUIElementSetAttributeValue(axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
+                        AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+                    }
+                }
+            }
+        }
         if verified {
             receipt["undo"] = .object(["strategy": .string("restore-frame-and-space"), "requiresCurrentFrameMatch": .bool(true), "requiresCurrentSpaceMatch": .bool(true), "frameSource": .string("mutations.from")])
         }
         return .object(receipt)
     }
 
-    private func relocationEnvironment(wid: UInt32, pid: Int32) -> WindowRelocation.Environment {
+    private func relocationEnvironment(wid: UInt32, pid: Int32, followWindow: Bool = false) -> WindowRelocation.Environment {
         let snapshot = { [self] () -> WindowRelocation.Snapshot in
             let frame = Self.cgWindowFrameTopLeft(wid: wid)
             let spaces = WindowTiler.getSpacesForWindow(wid).sorted()
@@ -330,7 +348,7 @@ final class ActionRuntime {
                 if from == [space] { return nil }
                 let result = onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
                 if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
-                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space) { return reason }
+                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space, followWindow: followWindow) { return reason }
                 return nil
             },
             moveFrame: { [self] frame in

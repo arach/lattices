@@ -17,7 +17,10 @@ struct MouseGestureInkTitle: Equatable {
         "⇧⌘5": "Screenshot tools",
     ]
 
-    static func of(_ action: MouseShortcutActionDefinition) -> Self {
+    static func of(_ action: MouseShortcutActionDefinition, flags: CGEventFlags = []) -> Self {
+        if let offset = MouseGestureSpaceMove.offset(for: action.type, flags: flags) {
+            return .init(offset > 0 ? "Move window to next desktop" : "Move window to previous desktop")
+        }
         switch action.type {
         case .spaceNext:
             return .init("Next desktop")
@@ -54,10 +57,10 @@ struct MouseGestureInkMenu: Equatable {
     var threshold: CGFloat = 68
 
     /// The first enabled rule for a trigger wins, as it does in `match(for:)`.
-    static func build(rules: [MouseShortcutRule], button: MouseShortcutButton, device: MouseInputDeviceInfo?, threshold: CGFloat) -> Self {
+    static func build(rules: [MouseShortcutRule], button: MouseShortcutButton, device: MouseInputDeviceInfo?, threshold: CGFloat, flags: CGEventFlags = []) -> Self {
         var menu = Self(threshold: threshold)
         for rule in rules where rule.enabled && rule.trigger.button == button && rule.device.matches(device) {
-            let title = MouseGestureInkTitle.of(rule.effectiveActions.first ?? rule.action)
+            let title = MouseGestureInkTitle.of(rule.effectiveActions.first ?? rule.action, flags: flags)
             switch rule.trigger.kind {
             case .drag:
                 if let direction = rule.trigger.direction, menu.drags[direction] == nil {

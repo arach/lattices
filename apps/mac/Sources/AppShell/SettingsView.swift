@@ -893,6 +893,10 @@ struct SettingsContentView: View {
 
                         mouseShortcutMappingMatrix(title: "Active mappings", limit: 8)
 
+                        Text("Hold Shift before a desktop gesture to move the window under the pointer to the next or previous desktop. You follow the window to its new desktop.")
+                            .font(Typo.caption(11))
+                            .foregroundColor(Palette.textDim)
+
                         breakerStatusRow(
                             state: mouseGestureController.breakerState,
                             label: "Mouse gestures"

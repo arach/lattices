@@ -87,6 +87,8 @@ final class MouseGestureController: ObservableObject {
     /// this to surface "paused" / "disabled" status and a re-arm button.
     @Published private(set) var breakerState: EventTapBreaker.State = .armed
 
+    private var windowMoveInProgress = false
+
     private struct GestureOutcome {
         let label: String
         let success: Bool
@@ -129,6 +131,8 @@ final class MouseGestureController: ObservableObject {
         var handoffCandidate = false
         var handoffEligible = false
         var initialFlags: CGEventFlags = []
+        var moveTarget: WindowEntry?
+        var moveSourceSpaces: [Int] = []
         var inkMenu: MouseGestureInkMenu?
         var inkRecognizedCount = 0
         var canvasPull: SpaceCanvasPull?
@@ -742,6 +746,12 @@ final class MouseGestureController: ObservableObject {
         newSession.handoffCandidate = LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord
         newSession.handoffEligible = newSession.handoffCandidate
         newSession.initialFlags = snapshot.flags
+        if snapshot.flags.contains(.maskShift) {
+            newSession.moveTarget = DesktopModel.shared.liveFrontWindow(at: snapshot.location)
+            if let target = newSession.moveTarget {
+                newSession.moveSourceSpaces = WindowTiler.getSpacesForWindow(target.wid)
+            }
+        }
         newSession.canvasPull = canvasCandidate ? SpaceCanvasPull() : nil
         newSession.hasShortcutRules = Preferences.shared.mouseGesturesEnabled
             && MouseShortcutStore.shared.watchedButtonNumbers.contains(snapshot.buttonNumber)
@@ -751,7 +761,8 @@ final class MouseGestureController: ObservableObject {
                 rules: MouseShortcutStore.shared.enabledRules,
                 button: button,
                 device: nil,
-                threshold: MouseShortcutStore.shared.tuning.dragThreshold
+                threshold: MouseShortcutStore.shared.tuning.dragThreshold,
+                flags: snapshot.flags
             )
             newSession.inkMenu = menu
         }
@@ -991,12 +1002,12 @@ final class MouseGestureController: ObservableObject {
                     session.dismissOverlay(immediately: true)
                 }
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self else { return }
                     if !dismissBeforeAction {
                         self.retainOverlay(session.overlay)
                     }
-                    let outcome = self.performAction(match: shapeMatch, startPoint: session.startPoint)
+                    let outcome = await self.performAction(match: shapeMatch, session: session)
                     DiagnosticLog.shared.info("MouseGesture: \(shape.displayName) -> \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
                     self.recordObservedEvent(
                         phase: "up",
@@ -1010,6 +1021,7 @@ final class MouseGestureController: ObservableObject {
                         appInfo: appInfo
                     )
                     if !dismissBeforeAction {
+                        self.retainOverlay(session.overlay)
                         session.overlay.commit(
                             origin: session.startPoint,
                             direction: commitDirection,
@@ -1046,14 +1058,14 @@ final class MouseGestureController: ObservableObject {
                 appInfo: appInfo
             )
             if let clickMatch {
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self else { return }
                     session.dismissOverlay(immediately: true)
-                    let outcome = self.performAction(match: clickMatch, startPoint: session.startPoint)
+                    let outcome = await self.performAction(match: clickMatch, session: session)
                     DiagnosticLog.shared.info("MouseGesture: \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
                 }
             } else {
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     session.dismissOverlay()
                     self?.replayMouseClick(
                         buttonNumber: snapshot.buttonNumber,
@@ -1072,12 +1084,12 @@ final class MouseGestureController: ObservableObject {
             session.dismissOverlay(immediately: true)
         }
 
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             if !dismissBeforeAction {
                 self.retainOverlay(session.overlay)
             }
-            let outcome = self.performAction(match: match, startPoint: session.startPoint)
+            let outcome = await self.performAction(match: match, session: session)
             DiagnosticLog.shared.info("MouseGesture: \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
             self.recordObservedEvent(
                 phase: "up",
@@ -1091,6 +1103,7 @@ final class MouseGestureController: ObservableObject {
                 appInfo: appInfo
             )
             if !dismissBeforeAction {
+                self.retainOverlay(session.overlay)
                 session.overlay.commit(
                     origin: session.startPoint,
                     direction: direction,
@@ -1108,21 +1121,27 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func performAction(match: MouseShortcutMatchResult?, startPoint: CGPoint) -> GestureOutcome {
+    @MainActor
+    private func performAction(match: MouseShortcutMatchResult?, session: GestureSession) async -> GestureOutcome {
         guard let match else {
             return GestureOutcome(label: "No Shortcut Assigned", success: false, accessory: nil)
         }
 
         let steps = match.rule.effectiveActions
-        let outcome = executeSingleAction(steps[0], startPoint: startPoint)
+        let outcome = await executeSingleAction(steps[0], session: session)
         for step in steps.dropFirst() {
-            executeSingleAction(step, startPoint: startPoint)
+            await executeSingleAction(step, session: session)
         }
         return outcome
     }
 
+    @MainActor
     @discardableResult
-    private func executeSingleAction(_ action: MouseShortcutActionDefinition, startPoint: CGPoint) -> GestureOutcome {
+    private func executeSingleAction(_ action: MouseShortcutActionDefinition, session: GestureSession) async -> GestureOutcome {
+        if let offset = MouseGestureSpaceMove.offset(for: action.type, flags: session.initialFlags) {
+            return await moveWindowViaGesture(offset: offset, session: session)
+        }
+        let startPoint = session.startPoint
         switch action.type {
         case .spacePrevious:
             return switchSpaceViaGesture(offset: -1, label: "Previous Space", startPoint: startPoint)
@@ -1161,6 +1180,54 @@ final class MouseGestureController: ObservableObject {
                 success: activated,
                 accessory: nil
             )
+        }
+    }
+
+    @MainActor
+    private func moveWindowViaGesture(offset: Int, session: GestureSession) async -> GestureOutcome {
+        func blocked(_ label: String) -> GestureOutcome {
+            GestureOutcome(label: label, success: false, accessory: nil)
+        }
+        guard !windowMoveInProgress else { return blocked("Window move in progress") }
+        guard let window = session.moveTarget else { return blocked("No window under pointer") }
+        let sourceSpaces = session.moveSourceSpaces
+        guard sourceSpaces.count == 1,
+              WindowTiler.getSpacesForWindow(window.wid) == sourceSpaces,
+              let display = WindowTiler.getDisplaySpaces().first(where: { display in
+                  display.spaces.contains(where: { $0.id == sourceSpaces[0] })
+              }) else { return blocked("Window is no longer on its desktop") }
+        guard let destination = MouseGestureSpaceMove.destination(
+            in: display.spaces.map(\.id), sourceSpaces: sourceSpaces, offset: offset
+        ) else { return blocked(offset > 0 ? "No next desktop" : "No previous desktop") }
+
+        windowMoveInProgress = true
+        defer { windowMoveInProgress = false }
+        // Mission Control must not pick up the gesture HUD as a window.
+        session.dismissOverlay(immediately: true)
+        let result: Result<JSON, Error> = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: Result {
+                    try ActionRuntime.shared.executeWindowMove(
+                        params: .object(["wid": .int(Int(window.wid)), "spaceId": .int(destination)]),
+                        source: "mouse-gesture", target: window, followWindow: true
+                    )
+                })
+            }
+        }
+        switch result {
+        case .success(let receipt):
+            guard receipt["verified"]?.boolValue == true else {
+                let reason = receipt["message"]?.stringValue ?? receipt["failureReason"]?.stringValue ?? "Window move blocked"
+                DiagnosticLog.shared.warn("MouseGesture: window move blocked: \(reason)")
+                return blocked(reason)
+            }
+            guard receipt["followed"]?.boolValue == true else {
+                return blocked("Window moved, but desktop switch failed")
+            }
+            return GestureOutcome(label: offset > 0 ? "Moved to next desktop" : "Moved to previous desktop", success: true, accessory: nil)
+        case .failure(let error):
+            DiagnosticLog.shared.warn("MouseGesture: window move failed: \(error.localizedDescription)")
+            return blocked("Window move failed")
         }
     }
 
