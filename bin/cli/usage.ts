@@ -99,6 +99,7 @@ Usage:
                          List synthesized terminal instances
   lats capture window [wid]  Save a screenshot run artifact
   lats capture display [index]  Save a full-display screenshot run artifact
+  lats --host <name> capture display [index]  Screenshot another host, saved on this Mac
   lats capture record window [wid]  Record a window/visible region as a .mov artifact
   lats capture record-command --app Scout -- <cmd>
                          Record a target while running an action command
