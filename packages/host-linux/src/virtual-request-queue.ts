@@ -27,7 +27,10 @@ export class VirtualRequestQueue {
       job.started = true;
       this.emit({ id: request.id, event: "started" });
       try { settle({ result: await this.perform(request.method, request.params ?? {}) }); }
-      catch (error) { settle({ error: (error as Error).message }); }
+      catch (error) {
+        const mutation = request.method === "launch" || (request.method.startsWith("computer.") && request.method !== "computer.observe" && request.params?.treatment === "execute" && request.params?.dryRun !== true);
+        settle({ error: (error as Error).message + (mutation ? "; action outcome uncertain; do not retry blindly" : ""), ...(mutation ? { outcome: "uncertain" } : {}) });
+      }
     }).finally(() => { this.jobs.delete(request.id); });
     return this.tail;
   }

@@ -396,3 +396,26 @@ lats call computer.virtual.stop
 at two frames per second only while the virtual view is visible. The virtual
 desktop belongs to the host; closing the app leaves it running. Stopping the host
 also stops the virtual session. Existing physical windows are not moved into it.
+
+### Virtual action caller deadlines
+
+Virtual input uses an end-to-end deadline, not just a worker timeout. RPC callers
+must include an absolute Unix-millisecond deadline in the request envelope for
+executed virtual input and virtual app launch:
+
+    {"id":"click-1","method":"computer.click","deadline":1792123000000,"params":{"space":"virtual","x":100,"y":100,"treatment":"execute"}}
+
+Use Date.now() + budgetMs, not the example timestamp. CLI daemonCallTo, the
+published CUA SDK transport, and the Linux app backend supply this automatically.
+A transport mutation without a deadline is rejected before it can be queued.
+The host clamps the caller's deadline to its shorter internal limit, carries it
+to the worker, and cancels queued requests when their connection closes.
+
+The app's 5-second input budget therefore expires in the worker too, even when
+OCR is still running. The worker acknowledges cancellation of unstarted input.
+Already-started work or unconfirmed cancellation reports **outcome uncertain;
+do not retry blindly**. Known mutation clients wait a bounded 1.5-second receipt
+grace after the action deadline; this is cancellation/receipt time, not extra
+permission to start input. On a network failure without an authoritative receipt,
+other clients must also treat the outcome as uncertain. Caller/server clocks must
+be synchronized for absolute deadlines.

@@ -1,3 +1,4 @@
+import { currentRequestContext, assertRequestActive } from "./request-context.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { homedir, tmpdir } from "node:os";
@@ -138,16 +139,30 @@ export class VirtualSpace {
     catch (error) { await this.stop(); throw error; }
   }
   private async request(method: string, params: Params = {}): Promise<unknown> {
+    const context = currentRequestContext();
+    assertRequestActive(context);
+    const mutates = method === "launch" || (method.startsWith("computer.") && method !== "computer.observe" && params.treatment === "execute" && params.dryRun !== true);
+    if (context && mutates && context.deadline === undefined) {
+      throw new Error("Virtual mutations require an absolute request deadline (Unix milliseconds); on connection loss treat the outcome as uncertain");
+    }
     await this.ready;
+    assertRequestActive(context);
     const child = this.child;
     if (!child || this.closing) throw new Error("Start the virtual space first");
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
       const timeout = this.options.requestTimeoutMs ?? (method === "computer.observe" ? 35000 : 10000);
-      const deadline = Date.now() + timeout;
-      const timer = setTimeout(() => {
+      const deadline = Math.min(Date.now() + timeout, context?.deadline ?? Infinity);
+      const finishResolve = resolve, finishReject = reject;
+      const detach = () => context?.signal?.removeEventListener("abort", cancel);
+      resolve = value => { detach(); finishResolve(value); };
+      reject = error => { detach(); finishReject(error); };
+      let cancelling = false;
+      const cancel = () => {
         const pending = this.pending.get(id);
-        if (!pending) return;
+        if (!pending || cancelling) return;
+        cancelling = true;
+        clearTimeout(pending.timer);
         // The worker acknowledges whether cancellation beat execution.
         pending.timer = setTimeout(() => {
           this.pending.delete(id);
@@ -156,9 +171,11 @@ export class VirtualSpace {
         child.stdin!.write(JSON.stringify({ cancel: id }) + "\n", error => {
           if (error) { clearTimeout(pending.timer); this.pending.delete(id); reject(new Error("Virtual connection lost; action outcome uncertain")); }
         });
-      }, timeout);
+      };
+      const timer = setTimeout(cancel, Math.max(0, deadline - Date.now()));
       this.pending.set(id, { resolve, reject, timer });
-      child.stdin!.write(JSON.stringify({ id, method, params, deadline }) + "\n", error => { if (error) { clearTimeout(timer); this.pending.delete(id); reject(error); } });
+      context?.signal?.addEventListener("abort", cancel, { once: true });
+      child.stdin!.write(JSON.stringify({ id, method, params, deadline }) + "\n", error => { if (error) { clearTimeout(timer); this.pending.delete(id); reject(new Error("Virtual connection lost; action outcome uncertain; do not retry blindly")); } });
     });
   }
   async perform(method: string, params: Params) {

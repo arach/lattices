@@ -37,3 +37,12 @@ test("cancel and stop acknowledge unstarted work separately from uncertain start
   expect(calls).toEqual(["computer.click"]);
   expect(replies.filter(r => r.id === 1 && r.error)).toHaveLength(1);
 });
+
+test("an error after starting mutation is uncertain, including partial input failures",async()=>{
+  let inputs=0;const replies:any[]=[];
+  const queue=new VirtualRequestQueue(async()=>{inputs++;throw Error("input transport failed")},r=>replies.push(r));
+  await queue.enqueue({id:1,method:"computer.typeText",params:{treatment:"execute"},deadline:Date.now()+1000});
+  expect(inputs).toBe(1);
+  expect(replies.find(r=>r.error)?.error).toContain("outcome uncertain");
+  expect(replies.find(r=>r.error)?.outcome).toBe("uncertain");
+});
