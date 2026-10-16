@@ -62,7 +62,8 @@ class WaylandConnection {
   private constructor(socket: Socket) {
     this.socket = socket;
     socket.on("data", (chunk: Buffer) => this.onData(chunk));
-    socket.on("error", (err) => (this.failure = err));
+    socket.on("error", (err) => this.fail(err));
+    socket.on("close", () => this.fail(new Error("Wayland connection closed")));
   }
 
   static open(): Promise<WaylandConnection> {
@@ -91,7 +92,10 @@ class WaylandConnection {
     const id = this.newId();
     this.send(DISPLAY_ID, 0, [{ u: id }]); // wl_display.sync
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(this.failure ?? new Error("Wayland roundtrip timed out")), timeoutMs);
+      const timer = setTimeout(() => {
+        this.callbacks.delete(id);
+        reject(this.failure ?? new Error("Wayland roundtrip timed out"));
+      }, timeoutMs);
       this.callbacks.set(id, () => {
         clearTimeout(timer);
         if (this.failure) reject(this.failure);
@@ -116,6 +120,12 @@ class WaylandConnection {
     this.socket.end();
   }
 
+  private fail(error: Error) {
+    this.failure ??= error;
+    for (const done of this.callbacks.values()) done();
+    this.callbacks.clear();
+  }
+
   private onData(chunk: Buffer) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.buffer.length >= 8) {
@@ -134,9 +144,7 @@ class WaylandConnection {
     if (objectId === DISPLAY_ID && opcode === 0) {
       // wl_display.error(object, code, message)
       const message = readString(body, 8).value;
-      this.failure = new Error(`Wayland protocol error: ${message}`);
-      for (const done of this.callbacks.values()) done();
-      this.callbacks.clear();
+      this.fail(new Error(`Wayland protocol error: ${message}`));
       return;
     }
     if (objectId === this.registryId && opcode === 0) {
@@ -180,20 +188,22 @@ export type PointerStep =
 const now = () => Date.now() >>> 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Read the registry without creating a keyboard/pointer or sending input. */
+export async function waylandGlobals(): Promise<string[]> {
+  if (!process.env.WAYLAND_DISPLAY) throw new Error("WAYLAND_DISPLAY is not set");
+  const conn = await WaylandConnection.open();
+  try {
+    await conn.loadGlobals();
+    return conn.globals.map((g) => g.iface);
+  } finally {
+    conn.close();
+  }
+}
+
 /** True when the compositor offers the virtual pointer protocol. */
 export async function virtualPointerAvailable(): Promise<boolean> {
-  if (!process.env.WAYLAND_DISPLAY) return false;
-  try {
-    const conn = await WaylandConnection.open();
-    try {
-      await conn.loadGlobals();
-      return conn.globals.some((g) => g.iface === VIRTUAL_POINTER_MANAGER);
-    } finally {
-      conn.close();
-    }
-  } catch {
-    return false;
-  }
+  try { return (await waylandGlobals()).includes(VIRTUAL_POINTER_MANAGER); }
+  catch { return false; }
 }
 
 /**
@@ -206,16 +216,18 @@ export class PointerSession {
 
   static async open(): Promise<PointerSession> {
     const conn = await WaylandConnection.open();
-    await conn.loadGlobals();
-    const manager = conn.globals.find((g) => g.iface === VIRTUAL_POINTER_MANAGER);
-    if (!manager) {
+    try {
+      await conn.loadGlobals();
+      const manager = conn.globals.find((g) => g.iface === VIRTUAL_POINTER_MANAGER);
+      if (!manager) throw new Error(`${VIRTUAL_POINTER_MANAGER} is not offered by this compositor`);
+      const managerId = conn.bind(manager, Math.min(manager.version, 2));
+      const pointer = conn.newId();
+      conn.send(managerId, 0, [{ u: 0 }, { u: pointer }]);
+      return new PointerSession(conn, pointer);
+    } catch (error) {
       conn.close();
-      throw new Error(`${VIRTUAL_POINTER_MANAGER} is not offered by this compositor`);
+      throw error;
     }
-    const managerId = conn.bind(manager, Math.min(manager.version, 2));
-    const pointer = conn.newId();
-    conn.send(managerId, 0, [{ u: 0 }, { u: pointer }]);
-    return new PointerSession(conn, pointer);
   }
 
   async move(x: number, y: number, extent: Extent) {
@@ -232,10 +244,21 @@ export class PointerSession {
     await this.conn.roundtrip();
   }
 
+  async scroll(dx: number, dy: number) {
+    this.conn.send(this.pointer, Ptr.AxisSource, [{ u: 0 }]);
+    if (dy) this.conn.send(this.pointer, Ptr.Axis, [{ u: now() }, { u: 0 }, { fixed: dy }]);
+    if (dx) this.conn.send(this.pointer, Ptr.Axis, [{ u: now() }, { u: 1 }, { fixed: dx }]);
+    this.conn.send(this.pointer, Ptr.Frame);
+    await this.conn.roundtrip();
+  }
+
   async close() {
-    this.conn.send(this.pointer, Ptr.Destroy);
-    await this.conn.roundtrip().catch(() => {});
-    this.conn.close();
+    try {
+      this.conn.send(this.pointer, Ptr.Destroy);
+      await this.conn.roundtrip().catch(() => {});
+    } finally {
+      this.conn.close();
+    }
   }
 }
 
