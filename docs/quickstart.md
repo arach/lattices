@@ -4,13 +4,14 @@ description: Install lattices and launch your first workspace in 2 minutes
 order: 0.5
 ---
 
-Four steps to a running workspace.
+Requires macOS 26 or later. Install the [Mac app](https://github.com/lattices-dev/lattices/releases/latest) for window management, or follow these steps to add the CLI and optional terminal sessions.
 
 ## 1. Install lattices
 
+Install [Bun](https://bun.sh) first. The CLI needs Bun at runtime, including when installed with npm.
+
 ```bash
-git clone https://github.com/lattices-dev/lattices
-cd lattices && bun link
+npm install -g @lattices/lattices
 ```
 
 This installs the CLI as `lats`, with `lattices` as a long-form alias.
@@ -26,7 +27,7 @@ and the CLI. Review the [installer source](https://github.com/lattices-dev/latti
 curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
 ```
 
-The CLI and Mac app use release **0.14.0**. Install the Mac app with Homebrew:
+You can also install the Mac app with Homebrew:
 
 ```bash
 brew tap arach/tap
@@ -36,7 +37,7 @@ brew install --cask arach/tap/lattices
 
 The cask requires Apple Silicon and macOS 26 or later. It installs the app;
 the optional CLI is available with `bun install -g @lattices/lattices`.
-You can also download the [disk image](https://github.com/lattices-dev/lattices/releases/download/v0.14.0/Lattices.dmg).
+You can also download the [disk image](https://github.com/lattices-dev/lattices/releases/latest).
 
 ## 2. Launch the menu bar app
 
@@ -44,8 +45,8 @@ You can also download the [disk image](https://github.com/lattices-dev/lattices/
 lats app
 ```
 
-This builds (or downloads) and launches the native macOS companion.
-Open the command palette with **Cmd+Shift+M** to search and launch
+This launches the bundled Mac app. Grant Accessibility access when prompted. For screen-text search, grant Screen Recording permission and enable **Search & OCR** in Settings.
+Open the command palette with **Control+Option+Space** to search and launch
 any project, tile windows, or switch workspace layers.
 
 To also open Lattices automatically when you log in:
