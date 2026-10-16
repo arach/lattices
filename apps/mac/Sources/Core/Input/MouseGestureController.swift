@@ -109,7 +109,19 @@ final class MouseGestureController: ObservableObject {
     private final class GestureSession {
         let buttonNumber: Int64
         let startPoint: CGPoint
-        let overlay: MouseGestureOverlay
+        private let makeOverlay: () -> MouseGestureOverlay
+        private var existingOverlay: MouseGestureOverlay?
+        var overlay: MouseGestureOverlay {
+            if let existingOverlay { return existingOverlay }
+            let created = makeOverlay()
+            created.inkMenu = inkMenu
+            existingOverlay = created
+            return created
+        }
+
+        func dismissOverlay(immediately: Bool = false) {
+            existingOverlay?.dismiss(immediately: immediately)
+        }
         var currentPoint: CGPoint
         var lockedDirection: MouseGestureDirection?
         var pathPoints: [GesturePathPoint]
@@ -119,11 +131,13 @@ final class MouseGestureController: ObservableObject {
         var initialFlags: CGEventFlags = []
         var inkMenu: MouseGestureInkMenu?
         var inkRecognizedCount = 0
+        var canvasPull: SpaceCanvasPull?
+        var hasShortcutRules = false
 
-        init(buttonNumber: Int64, startPoint: CGPoint, overlay: MouseGestureOverlay) {
+        init(buttonNumber: Int64, startPoint: CGPoint, makeOverlay: @escaping () -> MouseGestureOverlay) {
             self.buttonNumber = buttonNumber
             self.startPoint = startPoint
-            self.overlay = overlay
+            self.makeOverlay = makeOverlay
             self.currentPoint = startPoint
             self.lockedDirection = nil
             self.pathPoints = [
@@ -189,6 +203,7 @@ final class MouseGestureController: ObservableObject {
         let dragThreshold: CGFloat
         let axisBias: CGFloat
         let startedAt: CFAbsoluteTime
+        let canvasCandidate: Bool
     }
 
     // Tap-thread-side mirror of "which button (if any) is currently being
@@ -207,7 +222,8 @@ final class MouseGestureController: ObservableObject {
         defer { trackingLock.unlock() }
         let now = CFAbsoluteTimeGetCurrent()
         if let state = tapTrackingState,
-           now - state.startedAt > maxTapThreadTrackingDuration {
+           now - state.startedAt > maxTapThreadTrackingDuration,
+           !(state.canvasCandidate && CGEventSource.buttonState(.combinedSessionState, button: .right)) {
             let staleButton = state.buttonNumber
             tapTrackingState = nil
             if now - lastTrackingStaleLogAt > 1 {
@@ -224,7 +240,8 @@ final class MouseGestureController: ObservableObject {
     private func setTrackingButton(
         _ value: Int64?,
         startPoint: CGPoint = .zero,
-        tuning: MouseShortcutTuning = .defaults
+        tuning: MouseShortcutTuning = .defaults,
+        canvasCandidate: Bool = false
     ) {
         trackingLock.lock()
         if let value {
@@ -233,7 +250,8 @@ final class MouseGestureController: ObservableObject {
                 startPoint: startPoint,
                 dragThreshold: tuning.dragThreshold,
                 axisBias: tuning.axisBias,
-                startedAt: CFAbsoluteTimeGetCurrent()
+                startedAt: CFAbsoluteTimeGetCurrent(),
+                canvasCandidate: canvasCandidate
             )
         } else {
             tapTrackingState = nil
@@ -318,6 +336,11 @@ final class MouseGestureController: ObservableObject {
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &subscriptions)
 
+        Preferences.shared.$spaceSwitchKeysEnabled
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &subscriptions)
+
         PermissionChecker.shared.$accessibility
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
@@ -341,6 +364,7 @@ final class MouseGestureController: ObservableObject {
 
     private func refresh() {
         let shouldCapture = MouseInputEventViewer.shared.isCaptureActive || Preferences.shared.mouseGesturesEnabled
+            || Preferences.shared.spaceSwitchKeysEnabled
         guard shouldCapture, PermissionChecker.shared.accessibility else {
             clearSession()
             removeEventTap()
@@ -577,9 +601,11 @@ final class MouseGestureController: ObservableObject {
         // NSScreen.screens reads are safe off-main; Preferences/Store snapshot
         // reads are lock-protected (see MouseShortcutStore).
         let tuning = MouseShortcutStore.shared.tuning
-        let canRecognize = Preferences.shared.mouseGesturesEnabled
+        let canvasCandidate = Preferences.shared.spaceSwitchKeysEnabled && !SpaceZoomInput.canvasEngaged
+            && SpaceCanvasPull.accepts(button: buttonNumber, flags: snapshot.flags)
+        let canRecognize = canvasCandidate || (Preferences.shared.mouseGesturesEnabled
             && (MouseShortcutStore.shared.watchedButtonNumbers.contains(buttonNumber)
-                || (LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord))
+                || (LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord)))
         let onScreen = (screen(containing: snapshot.location) != nil)
 
         if !onScreen {
@@ -610,12 +636,14 @@ final class MouseGestureController: ObservableObject {
         setTrackingButton(
             buttonNumber,
             startPoint: snapshot.location,
-            tuning: tuning
+            tuning: tuning,
+            canvasCandidate: canvasCandidate
         )
         DispatchQueue.main.async { [weak self] in
             self?.processMouseDownConsume(
                 snapshot: snapshot,
-                ignoredFrontmostApp: ignoredFrontmostApp
+                ignoredFrontmostApp: ignoredFrontmostApp,
+                canvasCandidate: canvasCandidate
             )
         }
         return nil
@@ -674,7 +702,7 @@ final class MouseGestureController: ObservableObject {
         }
     }
 
-    private func processMouseDownConsume(snapshot: MouseEventSnapshot, ignoredFrontmostApp: Bool) {
+    private func processMouseDownConsume(snapshot: MouseEventSnapshot, ignoredFrontmostApp: Bool, canvasCandidate: Bool) {
         dispatchPrecondition(condition: .onQueue(.main))
         MouseShortcutStore.shared.reloadIfNeeded()
         let button = MouseShortcutButton(rawButtonNumber: Int(snapshot.buttonNumber))
@@ -700,15 +728,23 @@ final class MouseGestureController: ObservableObject {
         }
 
         clearSession(clearTracking: false)
-        let overlay = MouseGestureOverlay(screen: screen, hudStyle: Preferences.shared.mouseGestureHUDStyle)
-        overlay.onDismiss = { [weak self, weak overlay] in
-            guard let self, let overlay else { return }
-            self.releaseOverlay(overlay)
+        // Ordinary right-clicks and canvas pulls never need an ink window.
+        // Allocate it only once an existing shortcut actually draws feedback.
+        let hudStyle = Preferences.shared.mouseGestureHUDStyle
+        let newSession = GestureSession(buttonNumber: snapshot.buttonNumber, startPoint: snapshot.location) { [weak self] in
+            let overlay = MouseGestureOverlay(screen: screen, hudStyle: hudStyle)
+            overlay.onDismiss = { [weak self, weak overlay] in
+                guard let self, let overlay else { return }
+                self.releaseOverlay(overlay)
+            }
+            return overlay
         }
-        let newSession = GestureSession(buttonNumber: snapshot.buttonNumber, startPoint: snapshot.location, overlay: overlay)
         newSession.handoffCandidate = LogitechDeviceHandoff.isEnabled && snapshot.isHardwareHandoffChord
         newSession.handoffEligible = newSession.handoffCandidate
         newSession.initialFlags = snapshot.flags
+        newSession.canvasPull = canvasCandidate ? SpaceCanvasPull() : nil
+        newSession.hasShortcutRules = Preferences.shared.mouseGesturesEnabled
+            && MouseShortcutStore.shared.watchedButtonNumbers.contains(snapshot.buttonNumber)
         newSession.visual = MouseShortcutStore.shared.visualHint(for: button)
         if Preferences.shared.mouseGestureHUDStyle == .ink {
             let menu = MouseGestureInkMenu.build(
@@ -718,7 +754,6 @@ final class MouseGestureController: ObservableObject {
                 threshold: MouseShortcutStore.shared.tuning.dragThreshold
             )
             newSession.inkMenu = menu
-            overlay.inkMenu = menu
         }
         session = newSession
         scheduleStaleSessionCleanup(for: newSession)
@@ -770,6 +805,15 @@ final class MouseGestureController: ObservableObject {
             x: snapshot.location.x - session.startPoint.x,
             y: snapshot.location.y - session.startPoint.y
         )
+        if session.canvasPull?.update(delta: delta, flags: snapshot.flags) == true {
+            session.dismissOverlay(immediately: true)
+            DiagnosticLog.shared.info("SpaceCanvas: right pull opened at \(format(session.startPoint))")
+            SpaceSwitchInterceptor.shared.openCanvas(from: session.startPoint)
+        }
+        if session.canvasPull?.opened == true { return }
+        // The plain right-button candidate is silent until it becomes a
+        // deliberate pull. Existing mapped strokes keep their own feedback.
+        if session.canvasPull != nil && !session.hasShortcutRules { return }
         let tuning = MouseShortcutStore.shared.tuning
         let direction = Self.resolveDirection(delta: delta, threshold: tuning.dragThreshold, axisBias: tuning.axisBias)
         updateInkCandidate(for: session)
@@ -909,8 +953,22 @@ final class MouseGestureController: ObservableObject {
         staleSessionTimer?.invalidate()
         staleSessionTimer = nil
 
+        if let pull = session.canvasPull {
+            if pull.opened {
+                session.dismissOverlay(immediately: true)
+                // Consume release without choosing, replaying a context menu,
+                // or firing a second configured gesture behind the canvas.
+                return
+            }
+            if !session.hasShortcutRules {
+                session.dismissOverlay(immediately: true)
+                replayRightStroke(session: session, end: snapshot.location, flags: snapshot.flags)
+                return
+            }
+        }
+
         if session.handoffCandidate {
-            session.overlay.dismiss(immediately: true)
+            session.dismissOverlay(immediately: true)
             if session.handoffEligible && snapshot.isHardwareHandoffChord,
                let direction = MouseHandoffGesture.direction(delta: delta, threshold: tuning.dragThreshold) {
                 // handleMouseUp already cleared tap tracking. Switch only after
@@ -930,7 +988,7 @@ final class MouseGestureController: ObservableObject {
                 let commitDirection = shapeResult.segments.last?.direction ?? direction ?? .right
                 let dismissBeforeAction = shouldDismissOverlayBeforeAction(match: shapeMatch)
                 if dismissBeforeAction {
-                    session.overlay.dismiss(immediately: true)
+                    session.dismissOverlay(immediately: true)
                 }
 
                 DispatchQueue.main.async { [weak self] in
@@ -990,13 +1048,13 @@ final class MouseGestureController: ObservableObject {
             if let clickMatch {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    session.overlay.dismiss(immediately: true)
+                    session.dismissOverlay(immediately: true)
                     let outcome = self.performAction(match: clickMatch, startPoint: session.startPoint)
                     DiagnosticLog.shared.info("MouseGesture: \(outcome.label) -> \(outcome.success ? "ok" : "blocked")")
                 }
             } else {
                 DispatchQueue.main.async { [weak self] in
-                    session.overlay.dismiss()
+                    session.dismissOverlay()
                     self?.replayMouseClick(
                         buttonNumber: snapshot.buttonNumber,
                         at: session.startPoint,
@@ -1011,7 +1069,7 @@ final class MouseGestureController: ObservableObject {
         let match = MouseShortcutStore.shared.match(for: triggerEvent)
         let dismissBeforeAction = shouldDismissOverlayBeforeAction(match: match)
         if dismissBeforeAction {
-            session.overlay.dismiss(immediately: true)
+            session.dismissOverlay(immediately: true)
         }
 
         DispatchQueue.main.async { [weak self] in
@@ -1151,7 +1209,7 @@ final class MouseGestureController: ObservableObject {
     private func clearSession(clearTracking: Bool = true) {
         staleSessionTimer?.invalidate()
         staleSessionTimer = nil
-        session?.overlay.dismiss(immediately: true)
+        session?.dismissOverlay(immediately: true)
         session = nil
         // Keep tap-side tracking in sync with main-side session lifetime so a
         // subsequent drag/up isn't consumed for a session that no longer
@@ -1227,6 +1285,10 @@ final class MouseGestureController: ObservableObject {
         staleSessionTimer?.invalidate()
         let timer = Timer(timeInterval: 3.0, repeats: false) { [weak self, weak session] _ in
             guard let self, let session, self.session === session else { return }
+            if session.canvasPull != nil, CGEventSource.buttonState(.combinedSessionState, button: .right) {
+                self.scheduleStaleSessionCleanup(for: session)
+                return
+            }
             DiagnosticLog.shared.warn("MouseGesture: stale gesture session dismissed")
             self.clearSession()
         }
@@ -1449,22 +1511,7 @@ private final class MouseGestureOverlay {
         window.hasShadow = false
         window.ignoresMouseEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        if hudStyle == .ink {
-            // Ink's lattice is a layer under the stroke, composited on the GPU.
-            let bounds = NSRect(origin: .zero, size: screen.frame.size)
-            let container = NSView(frame: bounds)
-            let host = NSView(frame: bounds)
-            host.wantsLayer = true
-            let lattice = CALayer()
-            lattice.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull(), "opacity": NSNull()]
-            host.layer?.addSublayer(lattice)
-            container.addSubview(host)
-            container.addSubview(overlayView)
-            overlayView.latticeLayer = lattice
-            window.contentView = container
-        } else {
-            window.contentView = overlayView
-        }
+        window.contentView = overlayView
         // Ordered in on first draw, not here: every gesture-button press
         // makes an overlay, and a plain click never draws.
     }
@@ -1657,7 +1704,6 @@ private final class MouseGestureOverlayView: NSView {
     var inkMenu: MouseGestureInkMenu?
     var inkCandidate: MouseGestureInkCandidate?
     var inkSegments: [DirectionSegment] = []
-    var latticeLayer: CALayer?
     private var inkLink: CADisplayLink?
     private var inkCommittedAt: CFTimeInterval?
     /// The last area ink painted, so the next redraw can clear it.
@@ -1736,39 +1782,11 @@ private final class MouseGestureOverlayView: NSView {
         let dirty = area.union(inkPainted)
         inkPainted = area
         if !dirty.isNull { setNeedsDisplay(dirty) }
-        updateLattice()
     }
 
     private var inkProgress: CGFloat {
         let elapsed = inkCommittedAt.map { CACurrentMediaTime() - $0 } ?? .infinity
         return CGFloat(min(1, elapsed / MouseGestureInkRenderer.commitDrawDuration))
-    }
-
-    private func updateLattice() {
-        guard let latticeLayer else { return }
-        let origin: CGPoint, path: [CGPoint], opacity: CGFloat
-        switch state {
-        case .idle:
-            latticeLayer.contents = nil
-            return
-        case .tracking(let o, _, _, _, _, _, _, _, let p, _):
-            (origin, path, opacity) = (o, p, 1)
-        case .committed(let o, _, _, _, _, _, _, _, let p, _, _, _):
-            (origin, path, opacity) = (o, p, MouseGestureInkRenderer.latticeOpacity(committed: inkProgress))
-        }
-        let scale = window?.backingScaleFactor ?? 2
-        let space = window?.colorSpace?.cgColorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
-        guard opacity > 0.01,
-              let lattice = MouseGestureInkRenderer.lattice(origin: origin, path: path, scale: scale, space: space) else {
-            latticeLayer.contents = nil
-            return
-        }
-        if (latticeLayer.contents as CFTypeRef?) !== lattice.image {
-            latticeLayer.contents = lattice.image
-            latticeLayer.contentsScale = scale
-            latticeLayer.frame = lattice.rect
-        }
-        latticeLayer.opacity = Float(opacity)
     }
 
     override func draw(_ dirtyRect: NSRect) {

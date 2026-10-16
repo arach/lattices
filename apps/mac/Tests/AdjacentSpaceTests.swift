@@ -28,6 +28,18 @@ final class AdjacentSpaceTests: XCTestCase {
         }
     }
 
+    func testLandingPollWaitsForDockCommitsBeyondOneSecond() {
+        for delay in [1.5, 2.9] {
+            var time: TimeInterval = 0
+            let landed = WindowTiler.waitForSpaceChange(from: 5, read: {
+                time >= delay ? 6 : 5
+            }, now: { time }, pause: { time += 0.01 })
+            XCTAssertEqual(landed, 6, "Do not release the switch worker while its swipe can still land")
+            XCTAssertGreaterThanOrEqual(time, delay)
+            XCTAssertLessThan(time, delay + 0.011)
+        }
+    }
+
     func testLandingPollReturnsImmediatelyAndIgnoresUnreadableState() {
         var time: TimeInterval = 0
         var reads = 0
@@ -47,8 +59,8 @@ final class AdjacentSpaceTests: XCTestCase {
         let result = WindowTiler.waitForSpaceChange(from: 5, read: { 5 },
             now: { time }, pause: { time += 0.01 })
         XCTAssertEqual(result, 5)
-        XCTAssertGreaterThanOrEqual(time, 1)
-        XCTAssertLessThan(time, 1.011)
+        XCTAssertGreaterThanOrEqual(time, 3)
+        XCTAssertLessThan(time, 3.011)
     }
 
     // MARK: - Gesture / tiler adjacent target (space.previous / space.next)

@@ -22,6 +22,9 @@ apps/mac/Lattices.app/
 dist/
 *.dmg
 
+# Local receipts for successful Icon Composer asset compilations
+Assets.car.build.json
+
 # Site build artifacts
 site/dist/
 site/node_modules/

@@ -87,7 +87,7 @@ export function refreshActionCapabilities(capabilities: ReturnType<typeof action
   };
 }
 
-export function actionCapabilities(root: string, options: { nativeHostPath?: string; mcpTools?: string[]; sourceRoot?: string } = {}) {
+export function actionCapabilities(root: string, options: { nativeHostPath?: string; bundlePath?: string; mcpTools?: string[]; sourceRoot?: string } = {}) {
   root = resolve(root);
   const sourceRoot = resolve(options.sourceRoot ?? root);
   const packageInfo = jsonFile(join(sourceRoot, "package.json"));
@@ -99,7 +99,7 @@ export function actionCapabilities(root: string, options: { nativeHostPath?: str
   } catch { /* A deployed runtime does not need a git checkout. */ }
   const nativeHostPath = resolve(options.nativeHostPath ?? process.env.ACTION_NATIVE_HOST ?? join(root, "native/engine/scripts/run-app-host.sh"));
   const defaultHost = resolve(root, "native/engine/scripts/run-app-host.sh");
-  const bundle = join(process.env.ACTION_DIST_DIR ?? join(root, "native/dist"), "Action.app");
+  const bundle = options.bundlePath !== undefined ? resolve(options.bundlePath) : join(process.env.ACTION_DIST_DIR ?? join(root, "native/dist"), "Action.app");
   const nativeManifest = jsonFile(join(bundle, "Contents/Resources/build-provenance.json"));
   const executable = join(bundle, "Contents/MacOS/Action");
   const executableSha256 = existsSync(executable) ? createHash("sha256").update(readFileSync(executable)).digest("hex") : null;

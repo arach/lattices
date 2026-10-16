@@ -82,7 +82,7 @@ final class OverviewRenderTests: XCTestCase {
     /// Overview from fixtures in an offscreen window, never ordered in.
     /// `top` drops the page that far down its window, as the shell's title
     /// bar and rounded stage do, which can land it between pixels.
-    private func host(width: CGFloat, height: CGFloat, sidebar: Bool, top: CGFloat = 0,
+    private func host(width: CGFloat, height: CGFloat, sidebar: Bool, top: CGFloat = 0, canvas: Bool = false,
                       configure: (OverviewModel) -> Void = { _ in }) -> (NSHostingView<AnyView>, NSWindow, () -> Void) {
         let suite = "overview.render.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -91,7 +91,7 @@ final class OverviewRenderTests: XCTestCase {
         model.membershipShown = sidebar
         configure(model)
 
-        let view = OverviewView(model: model, controller: ScreenMapController(), live: false)
+        let view = OverviewView(model: model, controller: ScreenMapController(), live: false, canvasFixture: canvas)
             .frame(width: width, height: height - top)
             .padding(.top, top)
             .environment(\.colorScheme, .dark)
@@ -129,6 +129,16 @@ final class OverviewRenderTests: XCTestCase {
         let rep = try snapshot(host, scale: scale)
         let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
         try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+    }
+
+    func testConnectedCanvasRender() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
+            throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")
+        }
+        let (host, window, cleanup) = self.host(width: 1120, height: 740, sidebar: false, canvas: true)
+        defer { cleanup(); _ = window }
+        let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("overview-connected-canvas.png"))
     }
 
     private func scrollViews(in view: NSView) -> [NSScrollView] {
