@@ -63,6 +63,8 @@ export interface PairingRequest {
   platform: string;
   appVersion?: string;
   requestedCapabilities?: string[];
+  /** Tailnet node the request came from, set by the host (never by the client). */
+  node?: string;
 }
 
 export interface PairingResponse {
@@ -84,6 +86,7 @@ export interface TrustedDevice {
   platform: string;
   appVersion?: string;
   capabilities: string[];
+  node?: string;
   pairedAt: string;
   lastSeenAt: string;
 }
@@ -162,6 +165,28 @@ export function open(key: Buffer, sealedBase64: string, aad: Buffer): Buffer {
   return Buffer.from(plaintext);
 }
 
+export type VisitDirection = "up" | "down";
+
+export function visitAAD(direction: VisitDirection, deviceID: string, upgradeNonce: string, seq: number): Buffer {
+  if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("Invalid visit sequence");
+  return Buffer.from(["visit", direction, deviceID, upgradeNonce, String(seq)].join("\n"), "utf8");
+}
+
+/** Raw ChaChaPoly combined box; visit frames are binary, never base64. */
+export function sealVisitFrame(key: Buffer, plaintext: Buffer, direction: VisitDirection, deviceID: string, upgradeNonce: string, seq: number): Buffer {
+  const nonce = randomBytes(12);
+  const { ciphertext, tag } = chacha.seal(key, nonce, plaintext, visitAAD(direction, deviceID, upgradeNonce, seq));
+  return Buffer.concat([nonce, ciphertext, tag]);
+}
+
+export function openVisitFrame(key: Buffer, combined: Buffer, direction: VisitDirection, deviceID: string, upgradeNonce: string, seq: number): Buffer {
+  if (combined.length < 28) throw new BridgeSecurityError("Invalid visit frame", 401);
+  const plaintext = chacha.open(key, combined.subarray(0, 12), combined.subarray(12, -16), combined.subarray(-16),
+    visitAAD(direction, deviceID, upgradeNonce, seq));
+  if (!plaintext) throw new BridgeSecurityError("Invalid visit frame", 401);
+  return Buffer.from(plaintext);
+}
+
 function constantTimeEquals(a: string, b: string): boolean {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
@@ -200,6 +225,8 @@ export interface CoordinatorOptions {
   devicesPath?: string;
   /** Asks a person; resolves true to trust the device. */
   approve: (request: PairingRequest, kind: "pair" | "upgrade", additions: string[]) => Promise<boolean>;
+  /** What a request is granted; the companion capabilities by default. */
+  grant?: (requested: string[] | undefined) => string[];
   now?: () => Date;
 }
 
@@ -251,7 +278,7 @@ export class BridgeSecurity {
   }
 
   async handlePairing(request: PairingRequest): Promise<PairingResponse> {
-    const granted = grantedCapabilities(request.requestedCapabilities);
+    const granted = (this.options.grant ?? grantedCapabilities)(request.requestedCapabilities);
     if (!request.deviceID?.trim() || !request.deviceName?.trim() || !publicKeyFromBase64(request.devicePublicKey ?? "")) {
       return this.response("denied", [], "The paired device key is invalid.");
     }
@@ -276,6 +303,7 @@ export class BridgeSecurity {
       platform: request.platform,
       appVersion: request.appVersion,
       capabilities: granted,
+      node: request.node,
       pairedAt: at,
       lastSeenAt: at,
     });
@@ -327,6 +355,11 @@ export class BridgeSecurity {
     if (!auth.device.capabilities.includes(capability)) {
       throw new BridgeSecurityError(`This device is not allowed to use ${capability}. Pair it again to grant it.`, 403);
     }
+  }
+
+  visitEncryptionKey(auth: AuthorizedRequest): Buffer {
+    this.requireCapability(CAPABILITIES.inputTrackpad, auth);
+    return this.keysFor(auth.device).encryption;
   }
 
   decodeBody<T>(body: Buffer, auth: AuthorizedRequest, method: string, path: string): T {

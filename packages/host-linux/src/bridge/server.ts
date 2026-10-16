@@ -8,7 +8,11 @@ import { hostname } from "node:os";
 import { hasCommand } from "../exec.ts";
 import { PairingApprovals } from "./approval.ts";
 import * as deck from "./deck.ts";
-import { BridgeSecurity, BridgeSecurityError, CAPABILITIES, DEFAULT_CAPABILITIES, type PairingRequest } from "./security.ts";
+import { join } from "node:path";
+import { BridgeSecurity, BridgeSecurityError, CAPABILITIES, DEFAULT_CAPABILITIES, loadOrCreateBridgeKey, type AuthorizedRequest, type PairingRequest } from "./security.ts";
+import { VisitChannel, Visits } from "./visit-channel.ts";
+import { QuickshellVisitorOverlay } from "./visitor-overlay.ts";
+import type { VisitDependencies, VisitorOverlay } from "./visit.ts";
 
 export const BRIDGE_PORT = 5287;
 const MAX_BODY_BYTES = 512 * 1024;
@@ -23,6 +27,12 @@ export interface BridgeOptions {
   log: (line: string) => void;
   security?: BridgeSecurity;
   approvals?: PairingApprovals;
+  /** Isolate a second host's keys and trust records from the everyday host. */
+  stateDir?: string;
+  visitOverlay?: VisitorOverlay;
+  visitDependencies?: VisitDependencies;
+  /** Only tests shorten the six-second production timeout. */
+  visitSilenceMs?: number;
   /** Tests inject a snapshot instead of reading Hyprland. */
   snapshot?: () => Promise<unknown>;
 }
@@ -42,18 +52,21 @@ export function isLanAddress(address: string): boolean {
 }
 
 export function startBridge(options: BridgeOptions) {
+  let stopping = false;
   const name = options.name ?? hostname();
   const approvals = options.approvals ?? new PairingApprovals();
   const security =
     options.security ??
     new BridgeSecurity({
       bridgeName: name,
+      ...(options.stateDir ? { privateKey: loadOrCreateBridgeKey(join(options.stateDir, "bridge-key.json")), devicesPath: join(options.stateDir, "bridge-devices.json") } : {}),
       approve: (request, kind, additions) => {
         options.log(`pairing ${kind} from ${request.deviceName} (${request.deviceID}); approve in the notification or with bridge.pairing.approve`);
         return approvals.request(request, kind, additions);
       },
     });
   const trackpad = new deck.Trackpad();
+  const visits = new Visits(options.visitOverlay ?? new QuickshellVisitorOverlay(options.log), options.visitDependencies);
   const snapshot = options.snapshot ?? (() => deck.runtimeSnapshot(options.trackpadAvailable(), options.hasTmux()));
 
   async function route(req: Request): Promise<Response> {
@@ -109,19 +122,39 @@ export function startBridge(options: BridgeOptions) {
   }
 
   const boundPort = () => servers[0]?.port ?? options.port ?? BRIDGE_PORT;
+  type VisitSocketData = { auth: AuthorizedRequest; channel?: VisitChannel };
   const servers = options.hosts.map((hostname) =>
-    Bun.serve({
+    Bun.serve<VisitSocketData>({
       hostname,
       port: options.port ?? BRIDGE_PORT,
       idleTimeout: 255, // pairing waits on a person
-      async fetch(req) {
+      async fetch(req, server) {
         try {
+          if (stopping) return error(503, "Bridge stopping");
+          if (req.method === "GET" && new URL(req.url).pathname === "/visit") {
+            const body = Buffer.from(await req.arrayBuffer());
+            if (body.length) return error(400, "Visit upgrade body must be empty");
+            const auth = security.authorize("GET", "/visit", req.headers, body);
+            security.requireCapability(CAPABILITIES.inputTrackpad, auth);
+            if (server.upgrade(req, { data: { auth } })) return;
+            return error(400, "WebSocket upgrade required");
+          }
           return await route(req);
         } catch (err) {
           if (err instanceof BridgeSecurityError) return error(err.status, err.message);
           if (err instanceof SyntaxError) return error(400, "Invalid JSON body");
           return error(500, (err as Error).message);
         }
+      },
+      websocket: {
+        maxPayloadLength: MAX_BODY_BYTES,
+        idleTimeout: 0, // the encrypted visit protocol owns its six-second timer
+        open(ws) {
+          ws.data.channel = new VisitChannel(ws, ws.data.auth, security, visits, options.visitSilenceMs);
+          if (stopping) void ws.data.channel.finish(1001, "Host stopping");
+        },
+        message(ws, message) { ws.data.channel?.receive(message); },
+        close(ws) { void ws.data.channel?.finish(); },
       },
     })
   );
@@ -141,8 +174,17 @@ export function startBridge(options: BridgeOptions) {
     approvals,
     port: boundPort(),
     advertised: advert !== null,
-    stop() {
+    async revoke(deviceID: string) {
+      if (!security.revoke(deviceID)) return false;
+      await Promise.all([...visits.channels]
+        .filter((channel) => channel.deviceID === deviceID)
+        .map((channel) => channel.finish(4001, "Device revoked")));
+      return true;
+    },
+    async stop() {
+      stopping = true;
       advert?.kill();
+      await visits.stop();
       for (const s of servers) s.stop(true);
     },
   };
@@ -168,8 +210,9 @@ export function registerBridgeEndpoints(router: Router, bridge: ReturnType<typeo
   });
   router.register({
     method: "bridge.pairing.approve",
-    description: "Approve a pending companion pairing (check its fingerprint code first)",
+    description: "Approve a pending companion pairing (check its fingerprint code first). Loopback only",
     access: "mutate",
+    loopbackOnly: true,
     params: [{ name: "deviceID", type: "string", required: true, description: "From bridge.status pending" }],
     returns: "Object with ok",
     handler: (params) => {
@@ -179,8 +222,9 @@ export function registerBridgeEndpoints(router: Router, bridge: ReturnType<typeo
   });
   router.register({
     method: "bridge.pairing.deny",
-    description: "Deny a pending companion pairing",
+    description: "Deny a pending companion pairing. Loopback only",
     access: "mutate",
+    loopbackOnly: true,
     params: [{ name: "deviceID", type: "string", required: true, description: "From bridge.status pending" }],
     returns: "Object with ok",
     handler: (params) => {
@@ -190,12 +234,12 @@ export function registerBridgeEndpoints(router: Router, bridge: ReturnType<typeo
   });
   router.register({
     method: "bridge.devices.revoke",
-    description: "Forget a trusted companion device; it must pair again",
+    description: "Forget a trusted companion device and close its visits; it must pair again",
     access: "mutate",
     params: [{ name: "deviceID", type: "string", required: true, description: "From bridge.status devices" }],
     returns: "Object with ok",
-    handler: (params) => {
-      if (!bridge.security.revoke(requireStr(params, "deviceID"))) throw RouterError.notFound("trusted device");
+    handler: async (params) => {
+      if (!await bridge.revoke(requireStr(params, "deviceID"))) throw RouterError.notFound("trusted device");
       return { ok: true };
     },
   });
