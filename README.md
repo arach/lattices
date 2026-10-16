@@ -23,7 +23,7 @@ Give your agents the same desktop controls you use.</p>
 
 Lattices is a native Mac app that makes your desktop part of your workflow. Put your editor and browser side by side, find a terminal by the project running inside it, and switch between groups of windows as your work changes.
 
-Use hotkeys, gestures, or the command bar. Your agents can inspect and arrange the same workspace through `lats`, MCP, or a local API. For computer use inside apps and browsers, [Action](https://lattices.dev/action) adds observation, interaction, and recording.
+Use hotkeys, gestures, or the command bar. Your agents can inspect and arrange the same workspace, read app controls, click, type, and verify results through `lats`, MCP, or a local API.
 
 - **Arrange the work in front of you.** Tile windows into halves, thirds, or grids. Group a project's windows into a [workspace layer](https://lattices.dev/docs/layers).
 - **Find the context you need.** Search window titles, apps, terminal directories, and screen text. Bring the matching window into place with one command.
@@ -111,9 +111,19 @@ lats mcp --print-config claude       # also: codex or kimi
 
 Use the installed `lattices` binary with arguments `["mcp"]` in agent configuration. The `browser` and `hosts` toolsets can be selected with `--toolsets`. See the [MCP guide](https://lattices.dev/docs/mcp).
 
-## Give agents a place to work
+## Let agents use your Mac
 
-Lattices provides the workspace: find the right windows, arrange them, and capture the current screen. [Action](https://lattices.dev/action) provides computer use: observe an app, interact with its controls, operate a browser, and record the result.
+Computer use starts with context. Lattices lets an agent find a window, inspect its Accessibility tree, capture the screen, and act on a specific control. Click, type, scroll, and keyboard actions can be staged before execution; captures and verification help the agent check what happened.
+
+With a Finder window open, inspect it without clicking or typing:
+
+```sh
+lats call computer.windowState '{"app":"Finder","maxDepth":4}'
+```
+
+Use the returned snapshot and element IDs for subsequent actions. The [computer-use API](https://lattices.dev/docs/api) also exposes a typed SDK at `@lattices/lattices/cua`. Accessibility permission is required; screenshots need Screen Recording permission.
+
+For private browser layers and dedicated computer-use sessions, add [Action](https://lattices.dev/action):
 
 ```sh
 lats action install
@@ -121,7 +131,7 @@ lats action launch
 lats action status
 ```
 
-Action is a separate native app. Install the [Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md) for your agent’s observation and interaction workflow, including private browser layers. See the [agent guide](https://lattices.dev/docs/agents) for setup and permissions.
+Action is a separate native app. The [Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md) and [agent guide](https://lattices.dev/docs/agents) cover its observation, interaction, and recording workflow.
 
 ## Keep a terminal session alive
 
