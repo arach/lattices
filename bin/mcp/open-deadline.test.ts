@@ -55,7 +55,7 @@ for (const stalledPhase of ["health", "navigate", "readiness", "none"] as const)
       send(2, "tools/list");
       expect((await next()).result.tools.find((tool: { name: string }) => tool.name === "browser_open").inputSchema.properties.mode).toBeDefined();
       const started = performance.now();
-      send(3, "tools/call", { name: "browser_open", arguments: { url: "https://example.com/", waitMs: 200 } });
+      send(3, "tools/call", { name: "browser_open", arguments: { url: "https://example.com/", waitMs: 200, background: false } });
       const reply = await next();
       expect(performance.now() - started).toBeLessThan(700);
       if (stalledPhase === "none") expect(reply.result.structuredContent.ok).toBe(true);
