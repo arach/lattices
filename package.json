@@ -1,7 +1,7 @@
 {
   "name": "@lattices/lattices",
-  "version": "0.14.1",
-  "description": "A programmable workspace for your Mac. Native window management, screen search, persistent sessions, and a shared API for people and agents.",
+  "version": "0.15.0",
+  "description": "A native Mac workspace for you and your agents. Tile windows, find project context, and return to running terminal sessions with a shared local API.",
   "homepage": "https://lattices.dev",
   "bugs": {
     "url": "https://github.com/lattices-dev/lattices/issues"

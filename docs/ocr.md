@@ -57,7 +57,7 @@ timestamp.
 
 ### From the command palette
 
-The OmniSearch bar (Cmd+Shift+M) searches OCR content alongside windows,
+The OmniSearch bar (Control+Option+Space) searches OCR content alongside windows,
 projects, and sessions. Matches show as "Screen Text" results with
 contextual snippets.
 

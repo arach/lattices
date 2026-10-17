@@ -15,6 +15,8 @@ struct OverviewView: View {
     @ObservedObject var controller: ScreenMapController
     /// Off for fixture renders: no live reads, no shared selection.
     var live = true
+    var canvasFixture = false
+    @State private var canvasShown = false
     @FocusState private var searchFocused: Bool
     @FocusState private var canvasFocused: Bool
     @ObservedObject private var index = LayerIndexState.shared
@@ -34,12 +36,14 @@ struct OverviewView: View {
         }
         .onReceive(indexTimer) { _ in
             guard live else { return }
-            _ = try? index.snapshot()
+            try? index.refreshRows()
             applyIndex()
         }
         .onReceive(index.$selected) { _ in if live { DispatchQueue.main.async { applyIndex() } } }
-        .onAppear { if live { _ = try? index.snapshot(); applyIndex() } }
+        .onAppear { if live { try? index.refreshRows(); applyIndex() } }
     }
+
+    private var isCanvas: Bool { live ? canvasShown : canvasFixture }
 
     private var indexRows: [LayerIndexState.Row] { live ? index.rows : model.indexFixtureRows }
     private var selectedLayers: [String] { live ? index.selected : model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? [] }
@@ -166,6 +170,7 @@ struct OverviewView: View {
             }
             searchField
                 .frame(width: barWidth >= 1000 ? 170 : 130)
+            canvasToggle
             listToggle
         }
         .padding(.horizontal, 14)
@@ -246,6 +251,21 @@ struct OverviewView: View {
     // MARK: List toggle
 
     /// The list's name and size; opens and closes the sidebar.
+    /// Desk and the connected canvas are two views of the same projection;
+    /// the selection and drafts carry across.
+    private var canvasToggle: some View {
+        Button {
+            canvasShown.toggle()
+        } label: {
+            Image(systemName: isCanvas ? "rectangle.split.3x1" : "square.grid.2x2")
+                .font(.system(size: 10))
+        }
+        .buttonStyle(.overview(selected: isCanvas))
+        .fixedSize()
+        .help(isCanvas ? "Desk" : "Canvas: every Desktop on one plane")
+        .accessibilityLabel(isCanvas ? "Show the desk" : "Show the canvas")
+    }
+
     private var listToggle: some View {
         let name = OverviewWorkingList.name(model)
         let count = OverviewWorkingList.count(model)
@@ -287,7 +307,7 @@ struct OverviewView: View {
     /// selection, / searches, Esc closes the sidebar, then clears the
     /// selection.
     private var stage: some View {
-        OverviewStage(model: model)
+        OverviewStage(model: model, canvas: isCanvas)
             .focusable()
             .focused($canvasFocused)
             .focusEffectDisabled()

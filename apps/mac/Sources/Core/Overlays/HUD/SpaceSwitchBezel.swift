@@ -5,7 +5,8 @@ import SwiftUI
 
 /// One retained filmstrip and backdrop. All input is already cached by the
 /// desktop inventory; showing this never scans windows or captures pixels.
-/// Main-thread only. The switch queue never waits for presentation.
+/// Main-thread only. The switch queue synchronizes only the compositor clock
+/// around its brief global screen-update freeze.
 final class SpaceSwitchBezel {
     static let shared = SpaceSwitchBezel()
 
@@ -13,6 +14,8 @@ final class SpaceSwitchBezel {
     private var backdrop: NSPanel?
     private let filmstrip = SpaceFilmstripView()
     private var dismissTimer: Timer?
+    private var cacheRelease: DispatchWorkItem?
+    private var pausedClocks: [SpaceOverlayAnimationClock] = []
     private var generation = 0
     private var holdingForSwitch = false
     /// Window alpha is presentation state, not a reliable lifecycle flag:
@@ -30,13 +33,314 @@ final class SpaceSwitchBezel {
     private var transitVisible = false
     private var captureTask: Task<Void, Never>?
     private var transitGeneration = 0
+    private var canvasPanel: SpaceCanvasPanel?
+    private var canvasView: SpaceCanvasView?
+    /// Closing surfaces still participate in screen-freeze clock ownership.
+    private var departingCanvases: [ObjectIdentifier: SpaceCanvasPanel] = [:]
+    /// After Enter, the canvas stays as the landing cover: it holds the
+    /// chosen desktop at the full display until both the camera has arrived
+    /// and the switch has finished, then fades to reveal the real one.
+    private var landingPanel: SpaceCanvasPanel?
+    private var landingView: SpaceCanvasView?
+    private var landingArrived = false
+    private var landingSwitched = false
+    private var landingToken = 0
+    private var previewSpaces: [SpaceInfo] = []
+    private var previewBounds: CGRect = .zero
+    private var pendingInventory: [WindowEntry]?
+    private var refreshQueued = false
 
-    func show(direction: Int, targetIndex: Int?, currentIndex: Int?, display: DisplaySpaces, holding: Bool = false, scrubbing: Bool = false, fullscreenOrdinal: Int? = nil, on screen: NSScreen? = nil) {
+    private init() {
+        EventBus.shared.subscribe { [weak self] event in
+            guard case let .windowsChanged(windows, _, _) = event else { return }
+            // The inventory publishes on main, after assigning its new state.
+            // Use the event payload so refresh never races @Published's willSet.
+            if Thread.isMainThread {
+                self?.receiveInventory(windows)
+            } else {
+                DispatchQueue.main.async { self?.receiveInventory(windows) }
+            }
+        }
+    }
+
+    private func receiveInventory(_ windows: [WindowEntry]) {
+        guard canvasPanel != nil || (panel?.isVisible == true && !isDismissing) else { return }
+        pendingInventory = windows
+        queuePreviewRefresh()
+    }
+
+    private func queuePreviewRefresh() {
+        guard pendingInventory != nil, !refreshQueued else { return }
+        refreshQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.refreshQueued = false
+            guard self.canvasPanel != nil || (self.panel?.isVisible == true && !self.isDismissing) else {
+                self.pendingInventory = nil
+                return
+            }
+            // Hold details during fast traversal and the Dock's transition.
+            // Only one latest snapshot is retained; completion drains it.
+            guard self.canvasPanel != nil || (!self.filmstrip.isScrubbing && !self.holdingForSwitch),
+                  self.pausedClocks.isEmpty, let windows = self.pendingInventory else { return }
+            self.pendingInventory = nil
+            guard self.previewSpaces.map(\.id) == self.spaceIDs else { return }
+            let started = CACurrentMediaTime()
+            let cards = SpaceFilmstripLayout.cards(spaces: self.previewSpaces, windows: windows, bounds: self.previewBounds)
+            let changed = self.filmstrip.refresh(cards: cards)
+            let canvasChanged = self.canvasView?.refresh(cards: cards) ?? false
+            if changed || canvasChanged {
+                let counts = cards.map { "\($0.number):\($0.windows.count)" }.joined(separator: ",")
+                DiagnosticLog.shared.info("SpaceFilmstrip: inventoryRefreshMs=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) canvas=\(self.canvasPanel != nil) windows=[\(counts)]")
+            }
+        }
+    }
+
+    /// Workspace notifications can arrive after the worker has landed but
+    /// before its main-queue completion. Do not restart the same confirmation
+    /// or replace a held selection with an intermediate desktop.
+    func ownsConfirmation(display: String, space: Int) -> Bool {
+        guard displayID == display else { return false }
+        if holdingForSwitch { return true }
+        guard panel?.isVisible == true, !isDismissing,
+              let selected = filmstrip.selected, spaceIDs.indices.contains(selected) else { return false }
+        return spaceIDs[selected] == space
+    }
+
+    /// Promote the existing cached miniature into a navigation overlay on
+    /// the same display. No window inventory fetch or capture on this path.
+    func openCanvas(currentSpaceID: Int, on target: NSScreen? = nil, choose: @escaping (Int) -> Void,
+                    land: @escaping () -> Void, cancel: @escaping () -> Void,
+                    zoom: @escaping (_ out: Bool, _ exitsAtMinimum: Bool) -> Void) -> Bool {
+        guard canvasPanel == nil, let strip = panel, let screen = target ?? strip.screen,
+              !filmstrip.cardModels.isEmpty else { return false }
+        let started = CACurrentMediaTime()
+        let cards = filmstrip.cardModels
+        let selected = filmstrip.selected ?? 0
+        // Grow out of the strip only when the strip is what the user sees.
+        let fromStrip = strip.isVisible && !isDismissing
+        let p = SpaceCanvasPanel(contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.level = .statusBar
+        p.hasShadow = false
+        p.hidesOnDeactivate = false
+        p.isReleasedWhenClosed = false
+        p.animationBehavior = .none
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        let panelAt = CACurrentMediaTime()
+        let view = SpaceCanvasView(cards: cards, selected: selected,
+            current: cards.firstIndex(where: { $0.id == currentSpaceID }) ?? selected,
+            room: screen.frame.size, scale: screen.backingScaleFactor,
+            handlers: .init(choose: { [weak self] index in
+                guard cards.indices.contains(index) else { return }
+                self?.canvasView?.select(index, animated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                choose(cards[index].id)
+            }, land: land, cancel: cancel))
+        let builtAt = CACurrentMediaTime()
+        p.contentView = view
+        let attachedAt = CACurrentMediaTime()
+        // The thumbnail the user is looking at, in the canvas's coordinates.
+        // The filmstrip draws the selected card inset from the focus frame.
+        let card: CGRect? = fromStrip ? {
+            let world = strip.convertToScreen(filmstrip.convert(filmstrip.apertureFrame.insetBy(dx: 4, dy: 4), to: nil))
+            return view.convert(p.convertFromScreen(world), from: nil)
+        }() : nil
+        canvasPanel = p
+        canvasView = view
+        dismissTimer?.invalidate()
+        generation &+= 1
+        SpaceZoomInput.onCanvasZoom = zoom
+        SpaceZoomInput.onCanvasZoomKey = { [weak view] key, pressed, opening in
+            guard let view else { return }
+            if pressed && !opening && key == 125 && view.atMinimum {
+                zoom(true, true)
+            } else {
+                view.zoomKey(key, pressed: pressed, opening: opening,
+                    reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            }
+        }
+        SpaceZoomInput.setCanvas(true)
+        SpaceCanvasKeyboard.shared.begin { [weak view] key, pressed, repeated in
+            view?.handleKey(key, pressed: pressed, repeated: repeated)
+        }
+        Self.setStripShown(false)
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        // Author the entrance on a stopped clock. AppKit's first ordering can
+        // block long enough to consume the fade before any pixels are visible.
+        let openingClock = view.layer.map { SpaceOverlayAnimationClock(layer: $0) }
+        view.open(from: card, reduceMotion: reduced) { [weak self, weak p] in
+            guard let self, let p, self.canvasPanel === p else { return }
+            // Keep a superseded landing behind the replacement until its
+            // entrance is actually visible, including any paused layer clock.
+            self.abortLanding()
+            // Follow actual fade completion, not a wall-clock timer: ordering
+            // and a Dock screen freeze can both delay presentation.
+            self.panel?.orderOut(nil)
+            self.backdrop?.orderOut(nil)
+        }
+        CATransaction.flush()
+        let preparedAt = CACurrentMediaTime()
+        p.orderFrontRegardless()
+        p.acceptsMouseMovedEvents = true
+        let orderedAt = CACurrentMediaTime()
+        DiagnosticLog.shared.info("SpaceCanvas: openMs=\(String(format: "%.2f", (orderedAt - started) * 1000)) panelMs=\(String(format: "%.2f", (panelAt - started) * 1000)) buildMs=\(String(format: "%.2f", (builtAt - panelAt) * 1000)) attachMs=\(String(format: "%.2f", (attachedAt - builtAt) * 1000)) prepareMs=\(String(format: "%.2f", (preparedAt - attachedAt) * 1000)) orderMs=\(String(format: "%.2f", (orderedAt - preparedAt) * 1000))")
+        if pausedClocks.isEmpty {
+            openingClock?.resume()
+        } else {
+            // This canvas did not exist when the Dock freeze began; transfer
+            // its stopped clock to the same owner as the existing surfaces.
+            if let openingClock { pausedClocks.append(openingClock) }
+        }
+        CATransaction.flush()
+        queuePreviewRefresh()
+        return true
+    }
+
+    /// The strip is what the user is looking at, not merely prepared.
+    var stripVisible: Bool { panel?.isVisible == true && !isDismissing }
+
+    func moveCanvas(offset: Int) { canvasView?.moveSelection(offset: offset) }
+
+    /// The canvas camera is at its smallest zoom: the whole map in view.
+    var canvasAtMinimum: Bool { canvasView?.atMinimum ?? false }
+
+    func zoomCanvas(out: Bool) -> Bool {
+        canvasView?.zoom(out: out, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) ?? false
+    }
+
+    var canvasDisplayID: CGDirectDisplayID? { (canvasPanel ?? landingPanel)?.screen.flatMap(Self.displayID) }
+
+    /// `landing`: Enter or double-click. The canvas becomes the landing cover;
+    /// `covered` runs once it hides the whole display, so the switch can run
+    /// behind it with the screen live. Otherwise Escape: the camera returns
+    /// into the current desktop and the canvas dissolves as it gets there.
+    func closeCanvas(landing: Bool, covered: @escaping () -> Void = {}) {
+        guard let p = canvasPanel, let view = canvasView else { return }
+        // AppKit ordering can deliver pending mouse events. Seal the chosen
+        // destination before any window operation can re-enter this view.
+        view.endInteraction()
+        p.ignoresMouseEvents = true
+        canvasPanel = nil
+        canvasView = nil
+        // Nothing of the strip may survive under a canvas that is leaving.
+        panel?.orderOut(nil)
+        backdrop?.orderOut(nil)
+        SpaceZoomInput.onCanvasZoom = nil
+        SpaceZoomInput.onCanvasZoomKey = nil
+        SpaceCanvasKeyboard.shared.end()
+        // Keep the shortcut lease through the switch the landing starts.
+        if landing { Self.setStripShown(true) }
+        SpaceZoomInput.setCanvas(false)
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard landing else {
+            view.dissolve(reduceMotion: reduced, dismissed: canvasDeparture(p, reason: "cancel"))
+            return
+        }
+        abortLanding()
+        landingToken &+= 1
+        let mine = landingToken
+        landingPanel = p
+        landingView = view
+        landingArrived = false
+        landingSwitched = false
+        view.land(reduceMotion: reduced, covered: { [weak self] in
+            guard let self, self.landingToken == mine else { return }
+            DiagnosticLog.shared.info("SpaceCanvas: landing covered")
+            covered()
+        }) { [weak self] in
+            guard let self, self.landingToken == mine else { return }
+            self.landingArrived = true
+            DiagnosticLog.shared.info("SpaceCanvas: landing arrived switched=\(self.landingSwitched)")
+            self.tryFinishLanding()
+        }
+        // A switch that never reports must not leave a stand-in on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.landingToken == mine, self.landingPanel != nil else { return }
+            DiagnosticLog.shared.info("SpaceCanvas: landing failsafe arrived=\(self.landingArrived) switched=\(self.landingSwitched)")
+            self.releaseLanding(duration: 0.12)
+        }
+    }
+
+    /// The navigator's switch for the landing has finished, either way.
+    func landingSwitchFinished() {
+        guard landingPanel != nil else { return }
+        landingSwitched = true
+        tryFinishLanding()
+    }
+
+    /// New navigation supersedes a landing in flight: get out of its way.
+    func abortLanding() {
+        guard landingPanel != nil else { return }
+        releaseLanding(duration: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.08)
+    }
+
+    private func tryFinishLanding() {
+        guard landingArrived, landingSwitched else { return }
+        releaseLanding(duration: 0, reveal: true)
+    }
+
+    /// `reveal`: the switch landed, so the schematic hands over to the real
+    /// desktop it sits over. Otherwise the whole canvas fades out of the way.
+    private func releaseLanding(duration: CFTimeInterval, reveal: Bool = false) {
+        guard let p = landingPanel, let view = landingView else { return }
+        landingToken &+= 1
+        landingPanel = nil
+        landingView = nil
+        landingArrived = false
+        landingSwitched = false
+        let dismissed = canvasDeparture(p, reason: reveal ? "land" : "superseded")
+        if reveal {
+            view.reveal(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, dismissed: dismissed)
+        } else {
+            Self.fade(view, to: 0, duration: duration, completed: dismissed)
+        }
+    }
+
+    private func canvasDeparture(_ p: SpaceCanvasPanel, reason: String) -> () -> Void {
+        let id = ObjectIdentifier(p)
+        departingCanvases[id] = p
+        let started = CACurrentMediaTime()
+        return { [weak self, weak p] in
+            guard let self, let p, self.departingCanvases.removeValue(forKey: id) != nil else { return }
+            let orderStarted = CACurrentMediaTime()
+            p.orderOut(nil)
+            DiagnosticLog.shared.info("SpaceCanvas: dismissed reason=\(reason) elapsedMs=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) orderMs=\(String(format: "%.2f", (CACurrentMediaTime() - orderStarted) * 1000))")
+            // The lease was held for the switch; give it back if no strip took it.
+            guard self.canvasPanel == nil, self.landingPanel == nil, self.panel?.isVisible != true else { return }
+            Self.setStripShown(false)
+        }
+    }
+
+    static func displayID(_ screen: NSScreen) -> CGDirectDisplayID? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    /// Read on the event tap thread: Ctrl+− / Ctrl+= are claimed only while
+    /// the strip is up, so the chord stays the foreground app's otherwise.
+    private static let zoomGate = NSLock()
+    private static var stripShown = false
+    static var acceptsZoom: Bool {
+        zoomGate.lock(); defer { zoomGate.unlock() }
+        return stripShown
+    }
+    private static func setStripShown(_ shown: Bool) {
+        zoomGate.lock(); stripShown = shown; zoomGate.unlock()
+        SpaceZoomInput.setStrip(shown)
+    }
+
+    /// `zoomed` sets the aperture: true for every desktop at once, false for
+    /// the reel, nil to leave it.
+    func show(direction: Int, targetIndex: Int?, currentIndex: Int?, display: DisplaySpaces, holding: Bool = false, scrubbing: Bool = false, fullscreenOrdinal: Int? = nil, zoomed: Bool? = nil, on screen: NSScreen? = nil, reveal: Bool = true) {
         guard let screen = screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let desktopTarget = display.spaces.firstIndex(where: { $0.index == targetIndex })
         guard desktopTarget != nil || fullscreenOrdinal != nil else { return }
         let target = desktopTarget ?? filmstrip.selected ?? 0
         let started = CACurrentMediaTime()
+        cacheRelease?.cancel()
+        cacheRelease = nil
+        var rebuilt = false
         dismissTimer?.invalidate()
         generation &+= 1
         holdingForSwitch = holding
@@ -48,10 +352,14 @@ final class SpaceSwitchBezel {
             return
         }
         let opening = panel?.isVisible != true
+        // A strip already on screen is revealed; `reveal: false` only prepares one.
+        let revealing = reveal || !opening
+        if revealing { abortLanding() }
         let ids = display.spaces.map(\.id)
         let changedDisplay = displayID != display.displayId
         let width = SpaceFilmstripLayout.trayWidth(screenWidth: screen.frame.width, count: ids.count)
         let size = CGSize(width: width, height: SpaceFilmstripLayout.height)
+        let sizeChanged = surfaceFrame?.size != size
         if opening || changedDisplay || surfaceFrame?.size != size || surfaceFrame.map(screen.frame.contains) != true {
             surfaceFrame = Self.frame(position: Preferences.shared.spaceSwitchBezelPosition, direction: direction,
                                       size: size, screen: screen.frame)
@@ -63,44 +371,62 @@ final class SpaceSwitchBezel {
             panel = p
         }
         guard let panel else { return }
+        // Prepare both surfaces while hidden. Ordering an NSPanel can flush
+        // AppKit drawing, so nothing may become visible with the previous
+        // gesture's opacity or selection still installed.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         if panel.frame != frame { panel.setFrame(frame, display: false) }
-        if opening || changedDisplay || spaceIDs != ids {
+        let washHost = prepareBackdrop(on: screen)
+        // Window ordering can itself take a few frames. Keep that time out
+        // of the entrance, just as we do for the Dock's screen-update freeze.
+        // If a switch already owns the clocks, leave them in its custody.
+        let openingClocks = opening && pausedClocks.isEmpty
+            ? [filmstrip.layer, backdrop?.contentView?.layer].compactMap { $0 }
+                .map { SpaceOverlayAnimationClock(layer: $0) }
+            : []
+        if opening || changedDisplay || spaceIDs != ids || sizeChanged {
             displayID = display.displayId
             spaceIDs = ids
+            pendingInventory = nil
             let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
             let bounds = CGRect(x: screen.frame.minX, y: primaryHeight - screen.frame.maxY,
                                 width: screen.frame.width, height: screen.frame.height)
+            previewSpaces = display.spaces
+            previewBounds = bounds
             let cards = SpaceFilmstripLayout.cards(spaces: display.spaces,
                 windows: Array(DesktopModel.shared.windows.values), bounds: bounds)
-            filmstrip.configure(cards: cards, size: size, scale: screen.backingScaleFactor)
+            rebuilt = filmstrip.configure(cards: cards, size: size, scale: screen.backingScaleFactor)
+            let counts = cards.map { "\($0.number):\($0.windows.count)" }.joined(separator: ",")
+            DiagnosticLog.shared.info("SpaceFilmstrip: inventorySnapshot display=\(display.displayId) windows=[\(counts)]")
             let departure = display.spaces.firstIndex(where: { $0.index == currentIndex }) ?? target
             filmstrip.select(departure, animated: false)
         }
+        let configuredAt = CACurrentMediaTime()
         // Backdrop and strip arrive together. A press that lands during the
         // fade-out retargets the same fade back up from where it is, rather
         // than popping to full; a reused panel keeps us from allocating
         // another display surface per press.
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let fadingOut = isDismissing || (!opening && panel.alphaValue < 1)
+        let fadingOut = isDismissing
         isDismissing = false
-        if opening {
-            panel.alphaValue = 0
-            panel.orderFrontRegardless()
+        if fadingOut {
+            // A recovered inventory may have published while dismissal was
+            // ignoring updates. A reversal keeps the old layers, so reconcile
+            // their content even if no further inventory event arrives.
+            pendingInventory = Array(DesktopModel.shared.windows.values)
         }
-        let washHost = showBackdrop(on: screen, opening: opening)
-        if opening || fadingOut {
-            // Still geometry, two depths: the backdrop acknowledges the
-            // chord immediately, then the frame resolves into focus. AppKit
-            // retargets an interrupted fade from its current visible alpha.
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = reduceMotion ? 0 : 0.24
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0, 0.22, 1)
-                panel.animator().alphaValue = 1
-            }
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = reduceMotion ? 0 : 0.12
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0, 0.2, 1)
-                self.backdrop?.animator().alphaValue = 1
+        if revealing { Self.setStripShown(true) }
+        if revealing && (opening || fadingOut) {
+            // Window-alpha animation requires AppKit ticks on main. A layer
+            // fade is committed once and runs in the compositor, even while
+            // the inventory or another view is busy. The first frame already
+            // acknowledges the key before WindowServer's short switch freeze.
+            Self.fade(filmstrip, to: 1, duration: reduceMotion ? 0 : 0.14,
+                      from: opening ? 0.35 : nil)
+            if let view = backdrop?.contentView {
+                Self.fade(view, to: 1, duration: reduceMotion ? 0 : 0.12,
+                          from: opening ? 0.15 : nil)
             }
             if opening { filmstrip.illuminateFrame(animated: !reduceMotion) }
         }
@@ -112,11 +438,34 @@ final class SpaceSwitchBezel {
         } else {
             filmstrip.select(target, animated: !reduceMotion)
         }
-        if !scrubbing, direction != 0, !reduceMotion, SpaceSwitchWash.isEnabled, let washHost {
+        if let zoomed { filmstrip.setZoomed(zoomed, reduceMotion: reduceMotion) }
+        if revealing, !scrubbing, direction != 0, !reduceMotion, SpaceSwitchWash.isEnabled, let washHost {
             wash.pass(direction: direction < 0 ? -1 : 1, in: washHost)
         }
         if !holding { armDismissal() }
-        DiagnosticLog.shared.info("SpaceFilmstrip: presentMs=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) opening=\(opening)")
+        // Commit the complete first frame before either surface is exposed.
+        panel.displayIfNeeded()
+        backdrop?.displayIfNeeded()
+        CATransaction.commit()
+        CATransaction.flush()
+        let preparedAt = CACurrentMediaTime()
+        if opening && revealing {
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+        }
+        if revealing, let backdrop, !backdrop.isVisible {
+            backdrop.alphaValue = 1
+            backdrop.orderFrontRegardless()
+        }
+        let orderedAt = CACurrentMediaTime()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        openingClocks.forEach { $0.resume() }
+        CATransaction.commit()
+        // Submit the entrance before the switch worker freezes updates.
+        CATransaction.flush()
+        if !scrubbing { queuePreviewRefresh() }
+        DiagnosticLog.shared.info("SpaceFilmstrip: presentMs=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) opening=\(opening) rebuilt=\(rebuilt) setupMs=\(String(format: "%.2f", (configuredAt - started) * 1000)) prepareMs=\(String(format: "%.2f", (preparedAt - configuredAt) * 1000)) orderMs=\(String(format: "%.2f", (orderedAt - preparedAt) * 1000)) flushMs=\(String(format: "%.2f", (CACurrentMediaTime() - orderedAt) * 1000))")
     }
 
     /// One bounded, optional departure still per held gesture, captured
@@ -134,13 +483,17 @@ final class SpaceSwitchBezel {
         // Mission Control opens on every display. Keep each display still,
         // including the ones which aren't participating in navigation.
         let screens = [screen] + NSScreen.screens.filter { $0 != screen }
+        // An open canvas already covers its display, and keeps covering it
+        // as the landing cover. Never capture it into a stale stand-in.
+        let covered = canvasDisplayID
         let displays = screens.compactMap { screen -> (CGDirectDisplayID, CGRect)? in
-            guard let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else { return nil }
+            guard let id = Self.displayID(screen), id != covered else { return nil }
             return (id, screen.frame)
         }
         transitFrames = Dictionary(uniqueKeysWithValues: displays)
         let mine = transitGeneration
-        let excluded = Self.captureWindowIDs(([panel, backdrop] + transitCovers.values.map { Optional($0) }).compactMap { $0?.windowNumber })
+        let ours: [NSWindow?] = [panel, backdrop, canvasPanel, landingPanel] + transitCovers.values.map { Optional($0) }
+        let excluded = Self.captureWindowIDs(ours.compactMap { $0?.windowNumber })
         captureTask = Task { @MainActor [weak self] in
             for (id, _) in displays {
                 guard !Task.isCancelled else { return }
@@ -221,6 +574,7 @@ final class SpaceSwitchBezel {
     func finishSwitch() {
         guard holdingForSwitch else { return }
         holdingForSwitch = false
+        queuePreviewRefresh()
         armDismissal()
     }
 
@@ -248,8 +602,10 @@ final class SpaceSwitchBezel {
     }
 
     func dismiss() {
+        Self.setStripShown(false)
         endTransitCover()
         holdingForSwitch = false
+        pendingInventory = nil
         dismissTimer?.invalidate()
         dismissTimer = nil
         generation &+= 1
@@ -257,60 +613,98 @@ final class SpaceSwitchBezel {
         guard let panel, panel.isVisible else {
             isDismissing = false
             backdrop?.orderOut(nil)
+            // The canvas ordered the strip out; release what it was holding.
+            if canvasPanel == nil, landingPanel == nil { Self.setStripShown(false) }
+            releasePresentation(mine)
             return
         }
         isDismissing = true
-        NSAnimationContext.runAnimationGroup({ ctx in
-            // A gentle release, accelerating out of the way. No shrinking,
-            // translation, or reverse travel on the preview track.
-            ctx.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.20
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.8, 0.35)
-            panel.animator().alphaValue = 0
-            self.backdrop?.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
+        let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.0 : 0.12
+        if let view = backdrop?.contentView { Self.fade(view, to: 0, duration: duration) }
+        Self.fade(filmstrip, to: 0, duration: duration) { [weak self] in
             guard let self, self.generation == mine else { return }
             self.isDismissing = false
+            if self.landingPanel == nil { Self.setStripShown(false) }
             panel.orderOut(nil)
             self.backdrop?.orderOut(nil)
-            // Clear card backing stores after a gesture; keep only the two
-            // panels and small layer scaffold, with no image cache to grow.
+            self.releasePresentation(mine)
+        }
+    }
+
+    /// Keep one preview through nearby gestures, never a per-display
+    /// cache. Every reopen compares freshly projected inventory before
+    /// reuse; idle expiry releases backing stores and window metadata.
+    private func releasePresentation(_ mine: Int) {
+        filmstrip.resetPresentation()
+        wash.release()
+        surfaceFrame = nil
+        let release = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == mine, self.panel?.isVisible != true else { return }
             self.filmstrip.clear()
-            self.wash.release()
             self.spaceIDs = []
-            self.surfaceFrame = nil
-        })
+            self.cacheRelease = nil
+        }
+        cacheRelease = release
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: release)
+    }
+
+    func setScreenUpdatesEnabled(_ enabled: Bool) {
+        if enabled {
+            pausedClocks.forEach { $0.resume() }
+            pausedClocks.removeAll()
+            queuePreviewRefresh()
+        } else if pausedClocks.isEmpty {
+            // A global screen freeze must not consume the strip's entire
+            // animation offscreen and reveal only its final frame.
+            let departing = departingCanvases.values.map { $0.contentView?.layer }
+            pausedClocks = ([filmstrip.layer, backdrop?.contentView?.layer, canvasView?.layer, landingView?.layer] + departing)
+                .compactMap { $0 }.map { SpaceOverlayAnimationClock(layer: $0) }
+        }
+        CATransaction.flush()
+    }
+
+    static func fade(_ view: NSView, to opacity: Float, duration: CFTimeInterval, from: Float? = nil, completed: (() -> Void)? = nil) {
+        guard let layer = view.layer else {
+            if let completed { DispatchQueue.main.async(execute: completed) }
+            return
+        }
+        let start = from ?? layer.presentation()?.opacity ?? layer.opacity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.removeAnimation(forKey: "visibility")
+        layer.opacity = opacity
+        if duration > 0 {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = start
+            animation.toValue = opacity
+            animation.duration = duration
+            animation.timingFunction = opacity == 0
+                ? CAMediaTimingFunction(controlPoints: 0.4, 0, 0.8, 0.35)
+                : CAMediaTimingFunction(controlPoints: 0.22, 0, 0.22, 1)
+            if let completed { animation.delegate = SpaceCanvasArrival(completed) }
+            layer.add(animation, forKey: "visibility")
+        } else if let completed {
+            DispatchQueue.main.async(execute: completed)
+        }
+        CATransaction.commit()
     }
 
     @discardableResult
-    private func showBackdrop(on screen: NSScreen, opening: Bool) -> NSView? {
+    private func prepareBackdrop(on screen: NSScreen) -> NSView? {
         if backdrop == nil {
             let p = Self.makePanel()
             p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
             let view = NSView()
             view.wantsLayer = true
-            view.layer?.backgroundColor = NSColor(calibratedRed: 0.015, green: 0.03, blue: 0.045, alpha: 0.20).cgColor
+            view.layer?.backgroundColor = NSColor(calibratedWhite: 0.04, alpha: 0.18).cgColor
             p.contentView = view
             backdrop = p
         }
         guard let backdrop, let view = backdrop.contentView else { return nil }
         if backdrop.frame != screen.frame { backdrop.setFrame(screen.frame, display: false) }
         let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-        if !reduceTransparency, view.subviews.isEmpty {
-            let blur = NSVisualEffectView(frame: view.bounds)
-            blur.autoresizingMask = [.width, .height]
-            blur.material = .hudWindow
-            blur.blendingMode = .behindWindow
-            blur.state = .active
-            blur.appearance = NSAppearance(named: .darkAqua)
-            blur.alphaValue = 0.14
-            view.addSubview(blur)
-        } else if reduceTransparency {
-            view.subviews.forEach { $0.removeFromSuperview() }
-        }
-        if opening || !backdrop.isVisible {
-            backdrop.alphaValue = 0
-            backdrop.orderFrontRegardless()
-        }
+        // Keep blur bounded to the tray. A second full-display material
+        // hazed the desktop and added compositor work to every transition.
         // The wash is a transparency effect; Reduce Transparency goes without.
         return reduceTransparency ? nil : view
     }
@@ -445,6 +839,8 @@ final class SpaceLandscape {
 
     private var panel: NSPanel?
     private var dismissTimer: Timer?
+    private var cacheRelease: DispatchWorkItem?
+    private var pausedClocks: [SpaceOverlayAnimationClock] = []
     private var token = 0
     private var captureTask: Task<Void, Never>?
     private let state = SpaceLandscapeState()
@@ -864,5 +1260,29 @@ private struct SpaceNumberMarkView: View {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(Color.black.opacity(0.22))
             )
+    }
+}
+
+/// Freeze compositor time with screen updates; repeated cycles preserve the
+/// local timeline, including animations authored while the screen is frozen.
+final class SpaceOverlayAnimationClock {
+    private let layer: CALayer
+    private let pausedTime: CFTimeInterval
+    private var resumed = false
+
+    init(layer: CALayer, now: CFTimeInterval = CACurrentMediaTime()) {
+        self.layer = layer
+        pausedTime = layer.convertTime(now, from: nil)
+        layer.speed = 0
+        layer.timeOffset = pausedTime
+    }
+
+    func resume(now: CFTimeInterval = CACurrentMediaTime()) {
+        guard !resumed else { return }
+        resumed = true
+        layer.speed = 1
+        layer.timeOffset = 0
+        layer.beginTime = 0
+        layer.beginTime = layer.convertTime(now, from: nil) - pausedTime
     }
 }

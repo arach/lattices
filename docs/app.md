@@ -40,7 +40,7 @@ you already have the latest version.
 
 ## Command palette
 
-Press **Cmd+Shift+M** from anywhere to open the command palette.
+Press **Control+Option+Space** from anywhere to open the command palette.
 It's a searchable list of every action the app can perform, with
 fuzzy matching on titles and subtitles.
 
@@ -231,12 +231,35 @@ Mission Control and switches Spaces through a synthetic Dock swipe under
 a screen-update freeze — the real switch path, so Dock's space model,
 Mission Control, and space-change observers all stay consistent, while
 the freeze makes it render as an instant cut. A desktop filmstrip appears
-mid-screen over a subtle dimmed, softened backdrop. The focus frame stays
+mid-screen over a subtle neutral dimmed backdrop. The focus frame stays
 centered while window-layout previews slide through it; the small rail below
 represents every desktop. The preview reads the existing desktop inventory
 without taking screenshots or scanning windows on each keypress.
 Pressing past the first or last desktop is silent. Reduce Motion updates the
-selection without sliding; Reduce Transparency removes the backdrop blur.
+selection without sliding; Reduce Transparency makes the tray and canvas backdrop opaque.
+
+While the filmstrip is visible, Control+Up, Control+Down, or Control+minus opens the full
+connected desktop canvas in one motion. You can also open it directly under
+the pointer: hold the right mouse button and pull upward, or hold
+Control+Option and scroll down. An ordinary right-click still opens its
+context menu. The opening scroll's remaining movement and momentum are
+consumed so they cannot immediately change the new canvas camera.
+
+The canvas stays open when you release the button or modifiers. Moving the
+pointer highlights a desktop without moving the canvas; Left/Right or a
+single click also chooses it. Up (with or without Control) and plus zoom
+toward the highlighted desktop. Down and minus zoom back out. Enter or a
+double-click lands there; Escape cancels without switching. Zooming never lands. Control+Option+scroll
+zooms around the pointer, ordinary scrolling pans, and the bottom-left minimap
+repositions the view. Pinch, Command+scroll, and the zoom buttons also work.
+Fit shows all desktops. Text fields keep their arrow keys. The Control+Option
+tiling HUD and Spatial Lens stay inactive while this navigator owns the gesture.
+
+Every page in the main window has a **Zoom out** control in its header. It
+opens the same connected desktop canvas over the current page. **Back to…**
+returns to that page with its draft, filters, and local view state intact.
+Choosing a sidebar page leaves the canvas and navigates normally.
+
 Agents can move the tray via
 `settings.spaceBezel.set` (`top`, `bottom`, `center`, or `travelEdge`
 to dock at the edge of travel). Only bare Ctrl+arrows are claimed;
@@ -335,7 +358,7 @@ from Settings > Shortcuts.
 
 | Shortcut          | Action              |
 |-------------------|----------------------|
-| Cmd+Shift+M       | Open command palette |
+| Control+Option+Space       | Open command palette |
 | Hyper+1            | Workspace home       |
 | Hyper+L            | Studio / screen map  |
 | Hyper+2            | Window bezel         |

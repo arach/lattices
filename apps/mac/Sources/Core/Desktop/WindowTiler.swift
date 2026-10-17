@@ -983,7 +983,10 @@ enum WindowTiler {
     ///
     /// `onCut` runs on the calling thread the moment the first swipe has
     /// landed and screen updates resume — before the landing is confirmed.
-    static func performSpaceSwitch(_ plan: SpaceSwitchPlan, onCut: (() -> Void)? = nil) -> Bool {
+    ///
+    /// `freeze: false` when an opaque overlay already covers the display: the
+    /// Dock's slide then runs live behind it and nothing pauses the screen.
+    static func performSpaceSwitch(_ plan: SpaceSwitchPlan, freeze: Bool = true, onCut: (() -> Void)? = nil, screenUpdatesChanged: ((Bool) -> Void)? = nil) -> Bool {
         guard let targetId = plan.targetSpaceId else { return false }
         let ordered = plan.display.orderedSpaceIds
         let delta = (ordered.firstIndex(of: targetId) ?? 0) - (ordered.firstIndex(of: plan.currentSpaceId) ?? 0)
@@ -995,7 +998,7 @@ enum WindowTiler {
         // Dock swipes act on the display under the live cursor.
         let cursorDisplay = displaySpaces(forDisplayID: cgDisplayID(at: currentMouseCGPoint()), in: getDisplaySpaces())
         if cursorDisplay?.displayId == plan.display.displayId {
-            if switchViaDockSwipes(delta: delta, displayId: plan.display.displayId, targetSpaceId: targetId, onCut: onCut) {
+            if switchViaDockSwipes(delta: delta, displayId: plan.display.displayId, targetSpaceId: targetId, freeze: freeze, onCut: onCut, screenUpdatesChanged: screenUpdatesChanged) {
                 DiagnosticLog.shared.info("switchToAdjacentSpace: reached target \(targetId)")
                 return true
             }
@@ -1064,13 +1067,13 @@ enum WindowTiler {
     /// the swipe drives the real WindowServer transition, so the outgoing
     /// Space's windows are actually un-composited instead of piling up on
     /// screen. Returns true when the display lands on `targetSpaceId`.
-    private static func switchViaDockSwipes(delta: Int, displayId: String, targetSpaceId: Int, onCut: (() -> Void)? = nil) -> Bool {
+    private static func switchViaDockSwipes(delta: Int, displayId: String, targetSpaceId: Int, freeze: Bool = true, onCut: (() -> Void)? = nil, screenUpdatesChanged: ((Bool) -> Void)? = nil) -> Bool {
         guard delta != 0 else { return false }
 
         let cid = CGS.mainConnectionID?()
         let disable = CGS.disableUpdate
         let enable = CGS.reenableUpdate
-        let canFreeze = cid != nil && disable != nil && enable != nil
+        let canFreeze = freeze && cid != nil && disable != nil && enable != nil
         var cut = onCut
 
         // Direction is recomputed per step from the ordered Space list rather
@@ -1101,7 +1104,10 @@ enum WindowTiler {
             // ~10ms between phases — posted back-to-back the Dock coalesces
             // the gesture and overshoots the target Space.
             let freezeStarted = ProcessInfo.processInfo.systemUptime
-            if canFreeze { _ = disable!(cid!) }
+            if canFreeze {
+                screenUpdatesChanged?(false)
+                _ = disable!(cid!)
+            }
             for phase: Int64 in [1, 2, 4] {   // began, changed, ended
                 postDockSwipe(phase: phase, direction: direction)
                 usleep(10_000)
@@ -1115,6 +1121,7 @@ enum WindowTiler {
             if canFreeze {
                 usleep(90_000)
                 _ = enable!(cid!)
+                screenUpdatesChanged?(true)
             }
             freezeMs = Int((ProcessInfo.processInfo.systemUptime - freezeStarted) * 1000)
             cut?()
@@ -1434,8 +1441,10 @@ enum WindowTiler {
               let currentIndex = display.spaces.first(where: { $0.id == display.currentSpaceId })?.index
         else { return }
         let total = display.spaces.count
-        DiagnosticLog.shared.info("SpaceSwitchBezel: system space change → bezel for index \(currentIndex) of \(total)")
         DispatchQueue.main.async {
+            guard !SpaceSwitchBezel.shared.ownsConfirmation(display: display.displayId,
+                                                            space: display.currentSpaceId) else { return }
+            DiagnosticLog.shared.info("SpaceSwitchBezel: system space change → bezel for index \(currentIndex) of \(total)")
             SpaceNumberMark.shared.refresh()
             SpaceSwitchBezel.shared.show(
                 direction: 0,

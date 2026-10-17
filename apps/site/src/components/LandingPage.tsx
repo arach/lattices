@@ -10,7 +10,7 @@ import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
 import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
 
-const latticesCliVersion = "0.14.1";
+const latticesCliVersion = "0.15.0";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 
 declare global {

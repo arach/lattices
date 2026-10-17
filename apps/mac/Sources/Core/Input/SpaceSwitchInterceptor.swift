@@ -37,7 +37,8 @@ struct SpaceSwitchInputOwnership {
 ///
 /// Only bare Ctrl+arrows are claimed, plus Ctrl+Shift+arrows for the Space
 /// landscape. Ctrl+Opt+arrows stay owned by tiling. Hyper and Command chords
-/// pass straight through.
+/// pass straight through. While the strip is showing, Ctrl+− and Ctrl+= also
+/// zoom its aperture out and back in, as do Ctrl+↓/↑ and Ctrl+Option+scroll.
 final class SpaceSwitchInterceptor: ObservableObject {
     static let shared = SpaceSwitchInterceptor()
 
@@ -65,6 +66,13 @@ final class SpaceSwitchInterceptor: ObservableObject {
     /// Guarded by pendingLock, including teardown on main. Consume key-up
     /// even if Ctrl went up first; discard ownership when the tap is removed.
     private var ownedArrows: Set<Int64> = []
+    /// Ctrl+− / Ctrl+= claimed while the strip was up. Their key-ups never
+    /// land a selection; only Ctrl's release does.
+    private var ownedZoomKeys: Set<Int64> = []
+    /// Invalidates queued key callbacks when their event tap is torn down.
+    /// Guarded by pendingLock, like the owned key sets.
+    private var zoomInputGeneration: UInt64 = 0
+    private var zoomScroll = SpaceZoomScroll()
     private let pendingLock = NSLock()
     private var pendingOffset = 0
     private var pendingPoint: CGPoint?
@@ -82,6 +90,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
     }
 
     func start() {
+        if !isRunning { SpaceZoomInput.recover() }
         isRunning = true
         installObserversIfNeeded()
         refresh()
@@ -90,6 +99,22 @@ final class SpaceSwitchInterceptor: ObservableObject {
     func stop() {
         isRunning = false
         refresh()
+    }
+
+    /// Both mouse entry points use the same retained inventory and navigator.
+    func openCanvas(from point: CGPoint) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard isRunning, Preferences.shared.spaceSwitchKeysEnabled else { return }
+        cancelPlacementPreview()
+        if !SpaceZoomInput.engaged { navigator.cancel() }
+        navigator.zoom(out: true, point: point)
+    }
+
+    private func cancelPlacementPreview() {
+        TilePointerController.shared.cancelApply()
+        #if LATTICES_BUNDLE
+        SpatialLensController.shared.resetForSystemInputBoundary(reason: "desktop canvas gesture")
+        #endif
     }
 
     func resetForSystemInputBoundary(reason: String) {
@@ -147,6 +172,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
         mask |= CGEventMask(1) << CGEventType.keyDown.rawValue
         mask |= CGEventMask(1) << CGEventType.keyUp.rawValue
         mask |= CGEventMask(1) << CGEventType.flagsChanged.rawValue
+        mask |= CGEventMask(1) << CGEventType.scrollWheel.rawValue
 
         // HID first — that is the only insertion point that reliably beats the
         // Mission Control symbolic hotkey. Session is a degraded fallback.
@@ -186,10 +212,15 @@ final class SpaceSwitchInterceptor: ObservableObject {
     }
 
     private func removeEventTap() {
-        navigator.cancel()
+        navigator.cancel(force: true)
+        SpaceCanvasKeyboard.shared.reset()
         pendingLock.lock()
         ownedArrows.removeAll()
+        ownedZoomKeys.removeAll()
+        zoomInputGeneration &+= 1
+        zoomScroll = SpaceZoomScroll()
         pendingLock.unlock()
+        SpaceZoomInput.releaseHeldKeys()
         if let source = runLoopSource {
             EventTapThread.overlay.remove(source: source)
         }
@@ -218,8 +249,13 @@ final class SpaceSwitchInterceptor: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        if type == .scrollWheel { return handleZoomScroll(event) }
+
         if type == .flagsChanged {
             if !event.flags.contains(.maskControl) {
+                pendingLock.lock()
+                zoomScroll = SpaceZoomScroll()
+                pendingLock.unlock()
                 DispatchQueue.main.async { [weak self] in self?.navigator.release() }
             }
             return Unmanaged.passUnretained(event)
@@ -235,6 +271,13 @@ final class SpaceSwitchInterceptor: ObservableObject {
         }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        if SpaceCanvasKeyboard.shared.handle(key: keyCode, pressed: type == .keyDown,
+            repeated: event.getIntegerValueField(.keyboardEventAutorepeat) != 0, flags: event.flags) {
+            return nil
+        }
+        if [27, 24, 125, 126].contains(keyCode) {
+            return handleZoomKey(type: type, event: event, keyCode: keyCode)
+        }
         guard keyCode == 123 || keyCode == 124 else {
             return Unmanaged.passUnretained(event)
         }
@@ -245,7 +288,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
             let released = ownedArrows.isEmpty
             pendingLock.unlock()
             if owned {
-                if released { DispatchQueue.main.async { [weak self] in self?.navigator.release() } }
+                if released { DispatchQueue.main.async { [weak self] in self?.navigator.release(control: false) } }
                 return nil
             }
         }
@@ -277,17 +320,122 @@ final class SpaceSwitchInterceptor: ObservableObject {
             // arrives empty, nil falls through to the live mouse position.
             let point = event.location
             if landscape {
-                DispatchQueue.main.async { [weak self] in self?.navigator.cancel() }
-                enqueue(offset: keyCode == 123 ? -1 : 1, point: point == .zero ? nil : point, landscape: true)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.navigator.cancel() else { return }
+                    self.enqueue(offset: keyCode == 123 ? -1 : 1,
+                                 point: point == .zero ? nil : point, landscape: true)
+                }
             } else {
                 pendingLock.lock()
                 ownedArrows.insert(keyCode)
                 pendingLock.unlock()
                 let repeated = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+                let received = CACurrentMediaTime()
                 DispatchQueue.main.async { [weak self] in
+                    let started = CACurrentMediaTime()
                     self?.navigator.press(offset: keyCode == 123 ? -1 : 1, repeated: repeated,
                                           point: point == .zero ? nil : point)
+                    DiagnosticLog.shared.info("SpaceFilmstrip: inputQueueMs=\(String(format: "%.2f", (started - received) * 1000)) readyMs=\(String(format: "%.2f", (CACurrentMediaTime() - received) * 1000)) repeated=\(repeated)")
                 }
+            }
+        }
+        return nil
+    }
+
+    /// Ctrl+↓/↑ enter the canvas from the strip, then zoom out/in within it.
+    /// Ctrl+−/= zoom out/in. Claimed only while engaged and never with Shift,
+    /// Option or Command, so Ctrl+_ and app shortcuts pass untouched.
+    private func handleZoomKey(type: CGEventType, event: CGEvent, keyCode: Int64) -> Unmanaged<CGEvent>? {
+        // Capture before checking engagement: teardown first dismisses the
+        // surface, then invalidates this generation under the same lock.
+        pendingLock.lock()
+        let generation = zoomInputGeneration
+        pendingLock.unlock()
+        if type == .keyUp {
+            pendingLock.lock()
+            let owned = ownedZoomKeys.remove(keyCode) != nil
+            pendingLock.unlock()
+            // The shortcut lease outlives a canvas closed mid-press until here.
+            if owned {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.isCurrentZoomInput(generation) else { return }
+                    SpaceZoomInput.setKeyHeld(keyCode, false)
+                    SpaceZoomInput.onCanvasZoomKey?(keyCode, false, false)
+                }
+            }
+            return owned ? nil : Unmanaged.passUnretained(event)
+        }
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            pendingLock.lock()
+            let owned = ownedZoomKeys.contains(keyCode)
+            pendingLock.unlock()
+            if owned { return nil }
+        }
+        let flags = event.flags
+        guard flags.contains(.maskControl), !flags.contains(.maskCommand),
+              !flags.contains(.maskAlternate), !flags.contains(.maskShift),
+              SpaceZoomInput.engaged else {
+            return Unmanaged.passUnretained(event)
+        }
+        pendingLock.lock()
+        ownedZoomKeys.insert(keyCode)
+        pendingLock.unlock()
+        guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return nil }
+        let point = event.location
+        let received = CACurrentMediaTime()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isCurrentZoomInput(generation) else { return }
+            let started = CACurrentMediaTime()
+            defer {
+                DiagnosticLog.shared.info("SpaceZoom: inputQueueMs=\(String(format: "%.2f", (started - received) * 1000)) readyMs=\(String(format: "%.2f", (CACurrentMediaTime() - received) * 1000)) key=\(keyCode)")
+            }
+            SpaceZoomInput.setKeyHeld(keyCode, true)
+            let canvas = SpaceZoomInput.canvasEngaged
+            let out = SpaceZoomKey.zoomsOut(keyCode: keyCode, canvas: canvas)
+            DiagnosticLog.shared.info("SpaceZoom: key=\(keyCode) canvas=\(canvas) out=\(out)")
+            if canvas {
+                if let zoomKey = SpaceZoomInput.onCanvasZoomKey { zoomKey(keyCode, true, false) }
+                else { SpaceZoomInput.onCanvasZoom?(out, SpaceZoomKey.exitsAtMinimum(keyCode: keyCode)) }
+            } else if SpaceSwitchBezel.acceptsZoom {
+                self.navigator.zoom(out: out, point: point == .zero ? nil : point)
+                SpaceZoomInput.onCanvasZoomKey?(keyCode, true, true)
+            }
+        }
+        return nil
+    }
+
+    private func isCurrentZoomInput(_ generation: UInt64) -> Bool {
+        pendingLock.lock(); defer { pendingLock.unlock() }
+        return generation == zoomInputGeneration
+    }
+
+    private func handleZoomScroll(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+        let flags = event.flags
+        guard flags.contains([.maskControl, .maskAlternate]),
+              !flags.contains(.maskCommand), !flags.contains(.maskShift) else { return Unmanaged.passUnretained(event) }
+        let began = event.getIntegerValueField(.scrollWheelEventScrollPhase) & 1 != 0
+        let momentum = event.getIntegerValueField(.scrollWheelEventMomentumPhase) != 0
+        let time = ProcessInfo.processInfo.systemUptime
+        if SpaceZoomInput.canvasEngaged {
+            // The gesture that opened the canvas must finish before its
+            // remaining deltas can start moving the new canvas camera.
+            pendingLock.lock()
+            let tail = zoomScroll.consumeTail(began: began, momentum: momentum, time: time)
+            pendingLock.unlock()
+            return tail ? nil : Unmanaged.passUnretained(event)
+        }
+        let precise = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+        let delta = event.getDoubleValueField(precise ? .scrollWheelEventPointDeltaAxis1 : .scrollWheelEventDeltaAxis1)
+        pendingLock.lock()
+        let step = zoomScroll.step(delta: delta, precise: precise, began: began, momentum: momentum, time: time)
+        pendingLock.unlock()
+        // Cancel an armed placement hold even before crossing the threshold.
+        // Releasing a tiny scroll must never apply a window-placement preview.
+        DispatchQueue.main.async { [weak self] in self?.cancelPlacementPreview() }
+        if let out = step {
+            let point = event.location
+            DispatchQueue.main.async { [weak self] in
+                if out { self?.openCanvas(from: point) }
             }
         }
         return nil
