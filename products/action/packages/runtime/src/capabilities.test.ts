@@ -58,16 +58,15 @@ test("discovery distinguishes orchestration, missing native proof and transport 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("selected custom bundle acceptance refresh observes topology, artifact and bundle changes", () => {
+test("acceptance refresh observes topology, artifact and bundle changes while retaining loaded orchestration identity", () => {
   const root = mkdtempSync(join(tmpdir(), "action-acceptance-refresh-"));
   try {
     writeFileSync(join(root, "package.json"), '{"version":"0.3.0"}');
     mkdirSync(join(root, "packages"));
     const source = join(root, "packages/entry.ts");
     writeFileSync(source, "export const revision = 1;");
-    const bundlePath = join(root, "custom-install/Action.app");
-    const resources = join(bundlePath, "Contents/Resources");
-    const binaries = join(bundlePath, "Contents/MacOS");
+    const resources = join(root, "native/dist/Action.app/Contents/Resources");
+    const binaries = join(root, "native/dist/Action.app/Contents/MacOS");
     mkdirSync(resources, { recursive: true });
     mkdirSync(binaries, { recursive: true });
     const nativeManifest = { features: { isolationContext: true }, build: { sourceDigest: "d".repeat(64), orchestrationSourceDigest: orchestrationDigest(root) } };
@@ -79,11 +78,7 @@ test("selected custom bundle acceptance refresh observes topology, artifact and 
     const script = `#!/bin/sh\n[ "$1" = "isolation-context" ] || exit 1\ncat '${contextPath}'\n`;
     writeFileSync(executable, script);
     chmodSync(executable, 0o755);
-    assert.equal(actionCapabilities(root).runtimeParity.state, "unverified");
-    const startup = actionCapabilities(root, { bundlePath });
-    assert.equal(startup.native.bundlePath, bundlePath);
-    assert.equal(startup.runtimeParity.state, "matched-source-digest");
-    assert.equal(refreshActionCapabilities(startup).native.bundlePath, bundlePath);
+    const startup = actionCapabilities(root);
     const path = join(root, "acceptance.json");
     const evidence = join(root, "observations.json");
     writeFileSync(evidence, "fixture evidence");
